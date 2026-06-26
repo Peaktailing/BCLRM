@@ -1,7 +1,6 @@
 """试剂瓶信息表数据模型
 
-对应Teable表：试剂瓶信息表
-表ID: tblc71S7dbkg0VuBPhO
+对应 SQLite 表：reagent_bottle
 
 字段映射说明：
 - 试剂瓶编号 -> bottle_number (主键)

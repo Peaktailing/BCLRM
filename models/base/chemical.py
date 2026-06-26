@@ -1,7 +1,6 @@
 """化学品信息表数据模型
 
-对应Teable表：化学品信息表
-表ID: tblekF6RbxeM8hxKg5Z
+对应 SQLite 表：chemical_info
 
 字段映射说明：
 - 化学品名称 -> name

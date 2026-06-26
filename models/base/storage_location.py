@@ -1,6 +1,6 @@
 """存储位置表数据模型
 
-对应Teable表：存储位置表
+对应 SQLite 表：storage_location
 
 字段映射说明：
 - 名称 -> name

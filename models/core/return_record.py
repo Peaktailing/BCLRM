@@ -1,7 +1,6 @@
 """归还记录表数据模型
 
-对应Teable表：归还记录表
-表ID: tblJhsv7PMN64TDrI1P
+对应 SQLite 表：return_record
 
 字段映射说明：
 - 归还记录 编号 -> return_number

@@ -1,6 +1,6 @@
 """供应商表数据模型
 
-对应Teable表：试剂供应商表
+对应 SQLite 表：supplier
 
 字段映射说明：
 - 名称 -> name
