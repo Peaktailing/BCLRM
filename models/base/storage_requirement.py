@@ -1,6 +1,6 @@
 """存储要求表数据模型
 
-对应Teable表：存储要求表
+对应 SQLite 表：storage_requirement
 
 字段映射说明：
 - 名称 -> name

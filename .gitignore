@@ -244,3 +244,9 @@ Thumbs.db
 # Local config
 config/local_*.py
 config/key.txt
+
+# Excel files (may contain sensitive data)
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb

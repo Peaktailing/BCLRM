@@ -1,7 +1,6 @@
 """领用记录表数据模型
 
-对应Teable表：领用记录表
-表ID: tbltQ6rcCFngZUABHrO
+对应 SQLite 表：borrow_record
 
 字段映射说明：
 - 记录编号 -> record_number (主键)

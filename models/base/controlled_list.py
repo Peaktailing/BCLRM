@@ -1,7 +1,6 @@
 """管控化学品名录表数据模型
 
-对应Teable表：管控化学品名录
-表ID: tblADJrUzMY7y8e0JyO
+对应 SQLite 表：controlled_list
 
 字段映射说明：
 - 化学品名称 -> chemical_name
