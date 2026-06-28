@@ -67,6 +67,41 @@ class ReturnRecordService(BaseService):
         records = self.get_all()
         return [self._parse_record(record) for record in records]
 
+    def search_multi_condition(
+        self,
+        bottle_number: Optional[int] = None,
+        return_user: Optional[str] = None,
+        order_by: str = None
+    ) -> List[ReturnRecord]:
+        """多条件数据库层查询归还记录（过滤在SQL层执行）
+
+        Args:
+            bottle_number: 试剂瓶编号（精确匹配）
+            return_user: 归还人（精确匹配）
+            order_by: 排序字段
+
+        Returns:
+            ReturnRecord对象列表
+        """
+        conditions = []
+
+        if bottle_number is not None:
+            conditions.append({
+                "field": "bottle_number",
+                "value": bottle_number,
+                "match_type": "exact"
+            })
+
+        if return_user:
+            conditions.append({
+                "field": "return_user",
+                "value": return_user,
+                "match_type": "exact"
+            })
+
+        records = super().search_multi_condition(conditions, order_by=order_by)
+        return [self._parse_record(record) for record in records]
+
     def _parse_record(self, record: dict) -> ReturnRecord:
         """将数据库记录解析为ReturnRecord对象
 
