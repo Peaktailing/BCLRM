@@ -53,7 +53,7 @@ class QueryService:
         storage_location: Optional[str] = None,
         borrowable_only: bool = False
     ) -> ServiceResult[List[ReagentBottle]]:
-        """多条件组合查询试剂
+        """多条件组合查询试剂（数据库层过滤）
 
         Args:
             bottle_number: 试剂瓶编号（精确匹配）
@@ -128,40 +128,18 @@ class QueryService:
                 error_code="INVALID_BORROWABLE_ONLY_TYPE"
             )
 
-        # 获取所有试剂瓶
-        all_bottles = self.bottle_service.get_all_parsed()
-        results = []
+        # 确定状态过滤
+        status = "可借" if borrowable_only else None
 
-        for bottle in all_bottles:
-            # 按试剂瓶编号筛选（精确匹配）
-            if bottle_number is not None and getattr(bottle, ReagentBottleField.BOTTLE_NUMBER, None) != bottle_number:
-                continue
-
-            # 按试剂名称筛选（模糊匹配）
-            if reagent_name:
-                name = getattr(bottle, ReagentBottleField.REAGENT_NAME, "") or ""
-                if reagent_name.lower() not in name.lower():
-                    continue
-
-            # 按CAS编号筛选（精确匹配）
-            if cas_number and getattr(bottle, ReagentBottleField.CAS_NUMBER, None) != cas_number:
-                continue
-
-            # 按供应商筛选（模糊匹配）
-            if supplier:
-                sup = getattr(bottle, ReagentBottleField.SUPPLIER, "") or ""
-                if supplier.lower() not in sup.lower():
-                    continue
-
-            # 按存储位置筛选（精确匹配）
-            if storage_location and getattr(bottle, ReagentBottleField.STORAGE_LOCATION, None) != storage_location:
-                continue
-
-            # 只显示可借的试剂
-            if borrowable_only and getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None) != "可借":
-                continue
-
-            results.append(bottle)
+        # 数据库层过滤
+        results = self.bottle_service.search_multi_condition(
+            bottle_number=bottle_number,
+            reagent_name=reagent_name,
+            cas_number=cas_number,
+            supplier=supplier,
+            storage_location=storage_location,
+            status=status
+        )
 
         logger.info(
             "多条件查询完成",
@@ -189,7 +167,7 @@ class QueryService:
         bottle_number: Optional[int] = None,
         user: Optional[str] = None
     ) -> ServiceResult[List[Dict[str, Any]]]:
-        """查询领用历史记录
+        """查询领用历史记录（数据库层过滤）
 
         Args:
             bottle_number: 试剂瓶编号（可选，过滤特定试剂瓶的记录）
@@ -220,20 +198,15 @@ class QueryService:
                 error_code="INVALID_USER_TYPE"
             )
 
-        # 获取所有领用记录
-        records = self.borrow_service.get_all_parsed()
+        # 数据库层过滤
+        records = self.borrow_service.search_multi_condition(
+            bottle_number=bottle_number,
+            user=user
+        )
+
+        # 转换为字典格式
         results = []
-
         for record in records:
-            # 按试剂瓶编号筛选
-            if bottle_number is not None and getattr(record, BorrowRecordField.BOTTLE_NUMBER, None) != bottle_number:
-                continue
-
-            # 按领用人筛选
-            if user and getattr(record, BorrowRecordField.USER, None) != user:
-                continue
-
-            # 将对象转换为字典
             record_dict = {
                 BorrowRecordField.RECORD_NUMBER: getattr(record, BorrowRecordField.RECORD_NUMBER, None),
                 BorrowRecordField.BOTTLE_NUMBER: getattr(record, BorrowRecordField.BOTTLE_NUMBER, None),
@@ -273,7 +246,7 @@ class QueryService:
         bottle_number: Optional[int] = None,
         user: Optional[str] = None
     ) -> ServiceResult[List[Dict[str, Any]]]:
-        """查询归还历史记录
+        """查询归还历史记录（数据库层过滤）
 
         Args:
             bottle_number: 试剂瓶编号（可选，过滤特定试剂瓶的记录）
@@ -304,20 +277,15 @@ class QueryService:
                 error_code="INVALID_USER_TYPE"
             )
 
-        # 获取所有归还记录
-        records = self.return_service.get_all_parsed()
+        # 数据库层过滤
+        records = self.return_service.search_multi_condition(
+            bottle_number=bottle_number,
+            return_user=user
+        )
+
+        # 转换为字典格式
         results = []
-
         for record in records:
-            # 按试剂瓶编号筛选
-            if bottle_number is not None and getattr(record, ReturnRecordField.BOTTLE_NUMBER, None) != bottle_number:
-                continue
-
-            # 按归还人筛选
-            if user and getattr(record, ReturnRecordField.RETURN_USER, None) != user:
-                continue
-
-            # 将对象转换为字典
             record_dict = {
                 ReturnRecordField.RETURN_NUMBER: getattr(record, ReturnRecordField.RETURN_NUMBER, None),
                 ReturnRecordField.BOTTLE_NUMBER: getattr(record, ReturnRecordField.BOTTLE_NUMBER, None),
@@ -355,7 +323,7 @@ class QueryService:
         status: Optional[Union[str, List[str]]] = None,
         borrowable_only: bool = False,
     ) -> ServiceResult[List[ReagentBottle]]:
-        """试剂筛选过滤（统一过滤接口，供页面调用）
+        """试剂筛选过滤（数据库层过滤，供页面调用的统一过滤接口）
 
         支持关键词搜索、试剂名称筛选、状态筛选等多种过滤条件的组合使用。
         所有过滤条件之间为 AND 关系（同时满足）。
@@ -422,49 +390,42 @@ class QueryService:
                 error_code="INVALID_BORROWABLE_ONLY_TYPE"
             )
 
-        # 获取所有试剂瓶
-        all_bottles = self.bottle_service.get_all_parsed()
-        results = []
-
-        # 预处理关键词
-        keyword_lower = keyword.strip().lower() if keyword and keyword.strip() else ""
-        reagent_name_lower = reagent_name.strip().lower() if reagent_name and reagent_name.strip() else ""
-
-        # 确定最终的状态筛选列表
+        # 确定最终的状态筛选
         # borrowable_only 优先级更高
-        effective_status_list = None
+        effective_status = None
         if borrowable_only:
-            effective_status_list = ["可借"]
+            effective_status = "可借"
         elif status is not None:
-            if isinstance(status, str):
-                effective_status_list = [status]
-            else:
-                effective_status_list = status if len(status) > 0 else None
+            # 如果是列表且只有一个元素，取第一个；否则需要特殊处理
+            if isinstance(status, list):
+                if len(status) == 1:
+                    effective_status = status[0]
+                elif len(status) > 1:
+                    # 多状态查询需要获取所有匹配的记录后在内存中过滤
+                    pass
 
-        for bottle in all_bottles:
-            # 通用关键词过滤（匹配试剂名称、CAS号、试剂瓶编号）
-            if keyword_lower:
-                name = getattr(bottle, ReagentBottleField.REAGENT_NAME, "") or ""
-                cas = getattr(bottle, ReagentBottleField.CAS_NUMBER, "") or ""
-                bottle_no = str(getattr(bottle, ReagentBottleField.BOTTLE_NUMBER, ""))
-                if (keyword_lower not in name.lower() and
-                        keyword_lower not in cas.lower() and
-                        keyword_lower not in bottle_no):
-                    continue
-
-            # 试剂名称过滤（模糊匹配）
-            if reagent_name_lower:
-                name = getattr(bottle, ReagentBottleField.REAGENT_NAME, "") or ""
-                if reagent_name_lower not in name.lower():
-                    continue
-
-            # 状态过滤（匹配列表中的任意一个）
-            if effective_status_list:
-                bottle_status = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, "")
-                if bottle_status not in effective_status_list:
-                    continue
-
-            results.append(bottle)
+        # 数据库层查询
+        if isinstance(status, list) and len(status) > 1:
+            # 多状态：先获取所有匹配的，然后过滤
+            # 注意：这种情况下仍需要获取全量数据，但可以先用 keyword 和 reagent_name 过滤
+            results = self.bottle_service.search_multi_condition(
+                keyword=keyword,
+                reagent_name=reagent_name,
+                status=None
+            )
+            # Python 层过滤状态
+            effective_status_list = status
+            filtered_results = [
+                bottle for bottle in results
+                if getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, "") in effective_status_list
+            ]
+        else:
+            # 单状态或无状态：直接数据库层过滤
+            filtered_results = self.bottle_service.search_multi_condition(
+                keyword=keyword,
+                reagent_name=reagent_name,
+                status=effective_status
+            )
 
         logger.info(
             "试剂筛选过滤完成",
@@ -472,13 +433,13 @@ class QueryService:
             reagent_name=reagent_name,
             status=status,
             borrowable_only=borrowable_only,
-            effective_status_list=effective_status_list,
-            result_count=len(results)
+            effective_status=effective_status,
+            result_count=len(filtered_results)
         )
 
         return ServiceResult.ok(
-            data=results,
-            message=f"筛选到 {len(results)} 条匹配记录"
+            data=filtered_results,
+            message=f"筛选到 {len(filtered_results)} 条匹配记录"
         )
 
     # ------------------------------------------------------------------

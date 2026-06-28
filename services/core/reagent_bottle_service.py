@@ -84,6 +84,87 @@ class ReagentBottleService(BaseService):
         records = super().get_all_by_field('borrowable_flag', '可借')
         return [self._parse_record(record) for record in records]
 
+    def search_multi_condition(
+        self,
+        bottle_number: Optional[int] = None,
+        reagent_name: Optional[str] = None,
+        cas_number: Optional[str] = None,
+        supplier: Optional[str] = None,
+        storage_location: Optional[str] = None,
+        status: Optional[str] = None,
+        keyword: Optional[str] = None,
+        order_by: str = None
+    ) -> List[ReagentBottle]:
+        """多条件数据库层查询试剂瓶（过滤在SQL层执行）
+
+        Args:
+            bottle_number: 试剂瓶编号（精确匹配）
+            reagent_name: 试剂名称（模糊匹配）
+            cas_number: CAS编号（精确匹配）
+            supplier: 供应商（模糊匹配）
+            storage_location: 存储位置（精确匹配）
+            status: 状态（精确匹配，如 "可借"、"已借出"、"耗尽"）
+            keyword: 关键词（跨字段模糊匹配：试剂名称、CAS号、试剂瓶编号）
+            order_by: 排序字段
+
+        Returns:
+            ReagentBottle对象列表
+        """
+        conditions = []
+
+        if bottle_number is not None:
+            conditions.append({
+                "field": "bottle_number",
+                "value": bottle_number,
+                "match_type": "exact"
+            })
+
+        if reagent_name:
+            conditions.append({
+                "field": "reagent_name",
+                "value": reagent_name,
+                "match_type": "fuzzy"
+            })
+
+        if cas_number:
+            conditions.append({
+                "field": "cas_number",
+                "value": cas_number,
+                "match_type": "exact"
+            })
+
+        if supplier:
+            conditions.append({
+                "field": "supplier",
+                "value": supplier,
+                "match_type": "fuzzy"
+            })
+
+        if storage_location:
+            conditions.append({
+                "field": "storage_location",
+                "value": storage_location,
+                "match_type": "exact"
+            })
+
+        if status:
+            conditions.append({
+                "field": "borrowable_flag",
+                "value": status,
+                "match_type": "exact"
+            })
+
+        if keyword:
+            conditions.append({
+                "field": "reagent_name",
+                "value": keyword,
+                "match_type": "keyword",
+                "keyword_fields": ["reagent_name", "cas_number", "CAST(bottle_number AS TEXT)"]
+            })
+
+        records = super().search_multi_condition(conditions, order_by=order_by)
+        return [self._parse_record(record) for record in records]
+
     def get_all_parsed(self) -> List[ReagentBottle]:
         """获取所有试剂瓶记录（解析为ReagentBottle对象列表）
 

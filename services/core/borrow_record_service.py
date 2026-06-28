@@ -82,6 +82,50 @@ class BorrowRecordService(BaseService):
         records = self.get_all()
         return [self._parse_record(record) for record in records]
 
+    def search_multi_condition(
+        self,
+        bottle_number: Optional[int] = None,
+        user: Optional[str] = None,
+        reagent_name: Optional[str] = None,
+        order_by: str = None
+    ) -> List[BorrowRecord]:
+        """多条件数据库层查询领用记录（过滤在SQL层执行）
+
+        Args:
+            bottle_number: 试剂瓶编号（精确匹配）
+            user: 领用人（精确匹配）
+            reagent_name: 试剂名称（模糊匹配）
+            order_by: 排序字段
+
+        Returns:
+            BorrowRecord对象列表
+        """
+        conditions = []
+
+        if bottle_number is not None:
+            conditions.append({
+                "field": "bottle_number",
+                "value": bottle_number,
+                "match_type": "exact"
+            })
+
+        if user:
+            conditions.append({
+                "field": "user",
+                "value": user,
+                "match_type": "exact"
+            })
+
+        if reagent_name:
+            conditions.append({
+                "field": "reagent_name",
+                "value": reagent_name,
+                "match_type": "fuzzy"
+            })
+
+        records = super().search_multi_condition(conditions, order_by=order_by)
+        return [self._parse_record(record) for record in records]
+
     def _parse_record(self, record: dict) -> BorrowRecord:
         """将数据库记录解析为BorrowRecord对象
 
