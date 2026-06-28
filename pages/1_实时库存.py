@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from business.query_service import get_all_reagents, filter_reagents
+from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
 
 def main():
@@ -21,7 +21,8 @@ def main():
     render_sidebar(current_page="实时库存")
     
     # 获取所有试剂
-    reagents = get_all_reagents()
+    result = query_service.get_all_reagents()
+    reagents = result.data if result.is_success() else []
     
     # 统计信息
     total_count = len(reagents)
@@ -58,12 +59,13 @@ def main():
     
     # 使用业务层统一过滤方法
     status_param = None if status_filter == "全部" else status_filter
-    filtered_reagents = filter_reagents(
+    _filter_result = query_service.filter_reagents(
         keyword=extra_search if extra_search else None,
         reagent_name=selected_name if selected_name else None,
         status=status_param,
         borrowable_only=False,
     )
+    filtered_reagents = _filter_result.data if _filter_result.is_success() else []
     
     # 显示试剂列表
     if filtered_reagents:

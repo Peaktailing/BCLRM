@@ -9,9 +9,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from business.borrow_service import reagent_borrow, get_all_borrow_users, get_latest_borrow_record
-from business.return_service import reagent_return
-from business.query_service import get_all_reagents, filter_reagents
+from business.borrow_service import borrow_service
+from business.return_service import return_service
+from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
 from utils.error_handler import logger
 
@@ -42,10 +42,11 @@ def main():
             show_only_borrowable = st.checkbox("只显示可借", value=True)
         
         # 使用业务层统一过滤方法
-        display_reagents = filter_reagents(
+        _filter_result = query_service.filter_reagents(
             keyword=search_keyword if search_keyword else None,
             borrowable_only=show_only_borrowable,
         )
+        display_reagents = _filter_result.data if _filter_result.is_success() else []
         
         if display_reagents:
             cart_bottle_numbers = [item["bottle_number"] for item in st.session_state.borrow_cart]
@@ -149,7 +150,8 @@ def main():
             st.markdown("---")
             
             # 领用人下拉选择（从业务层获取）
-            user_list = get_all_borrow_users()
+            _result = borrow_service.get_all_borrow_users()
+            user_list = _result.data if _result.is_success() else []
             
             col_user, col_submit = st.columns([2, 1])
             with col_user:
@@ -172,16 +174,16 @@ def main():
                         
                         for item in st.session_state.borrow_cart:
                             logger.debug(f"[页面] 正在领用试剂瓶: {item['bottle_number']}")
-                            success, msg = reagent_borrow(
+                            _result = borrow_service.reagent_borrow(
                                 bottle_number=item["bottle_number"],
                                 user=user,
                                 borrow_qty=item["remaining_quantity"] or 0.1
                             )
-                            logger.debug(f"[页面] 领用结果: {success}, {msg}")
-                            if success:
+                            logger.debug(f"[页面] 领用结果: {_result.success}, {_result.message}")
+                            if _result.is_success():
                                 success_count += 1
                             else:
-                                fail_messages.append(f"{item['bottle_number']}: {msg}")
+                                fail_messages.append(f"{item['bottle_number']}: {_result.message}")
                         
                         if success_count == len(st.session_state.borrow_cart):
                             st.success(f"✅ 全部领用成功！共领用 {success_count} 瓶试剂")
@@ -200,7 +202,8 @@ def main():
         st.subheader("试剂归还")
         
         # 获取已借出和耗尽的试剂（都可以归还）- 使用业务层统一过滤方法
-        borrowed_reagents = filter_reagents(status=["已借出", "耗尽"])
+        _filter_result = query_service.filter_reagents(status=["已借出", "耗尽"])
+        borrowed_reagents = _filter_result.data if _filter_result.is_success() else []
         
         if borrowed_reagents:
             # 选择试剂瓶
@@ -215,7 +218,8 @@ def main():
             )
             
             # 获取最近的借出记录（从业务层获取）
-            latest_record = get_latest_borrow_record(selected_reagent.bottle_number)
+            _result = borrow_service.get_latest_borrow_record(selected_reagent.bottle_number)
+            latest_record = _result.data if _result.is_success() else None
             default_borrow_user = ""
             if latest_record:
                 default_borrow_user = latest_record.user or ""
@@ -256,17 +260,17 @@ def main():
                 if not return_user:
                     st.error("请填写归还人")
                 else:
-                    success, msg = reagent_return(
+                    result = return_service.reagent_return(
                         bottle_number=selected_reagent.bottle_number,
                         return_user=return_user,
                         remaining_qty=remaining_qty
                     )
-                    if success:
-                        st.success(msg)
+                    if result.is_success():
+                        st.success(result.message)
                         # 重新加载页面
                         st.rerun()
                     else:
-                        st.error(msg)
+                        st.error(result.message)
         
         else:
             st.info("当前没有已借出的试剂")

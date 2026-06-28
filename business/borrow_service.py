@@ -143,7 +143,7 @@ class BorrowService:
         controlled_type = None
         cas_number = getattr(bottle, ReagentBottleField.CAS_NUMBER, None)
         if cas_number:
-            controlled_item = self.controlled_service.get_by_cas(cas_number)
+            controlled_item = self.controlled_service.get_by_cas_number(cas_number)
             if controlled_item:
                 is_controlled = True
                 controlled_type = getattr(controlled_item, 'dangerous_type', None)
@@ -409,81 +409,7 @@ class BorrowService:
 
 
 # ============================================================================
-# 向后兼容：模块级函数别名
+# 全局单例实例
 # ============================================================================
 
-# 全局单例实例
-_borrow_service = BorrowService()
-
-
-def reagent_borrow(
-    bottle_number: int,
-    user: str,
-    borrow_qty: float
-) -> tuple[bool, str]:
-    """
-    试剂领用核心业务逻辑（向后兼容版本）
-
-    参数：
-        bottle_number: 试剂瓶编号
-        user: 领用人姓名
-        borrow_qty: 领用数量
-
-    返回：
-        (是否成功, 提示信息)
-    """
-    result = _borrow_service.reagent_borrow(bottle_number, user, borrow_qty)
-    return result.success, result.message
-
-
-def get_borrow_record(record_id: str) -> Optional[BorrowRecord]:
-    """
-    根据记录ID查询领用记录（向后兼容版本）
-
-    参数：
-        record_id: 领用记录ID
-
-    返回：
-        BorrowRecord对象或None
-    """
-    result = _borrow_service.get_borrow_record(record_id)
-    return result.data if result.success else None
-
-
-def get_borrow_records_by_user(user: str) -> List[BorrowRecord]:
-    """
-    查询指定用户的所有领用记录（向后兼容版本）
-
-    参数：
-        user: 用户姓名
-
-    返回：
-        领用记录列表
-    """
-    result = _borrow_service.get_borrow_records_by_user(user)
-    return result.data if result.success else []
-
-
-def get_all_borrow_users() -> List[str]:
-    """
-    获取所有领用人列表（去重排序）（向后兼容版本）
-
-    返回：
-        领用人姓名列表
-    """
-    result = _borrow_service.get_all_borrow_users()
-    return result.data if result.success else []
-
-
-def get_latest_borrow_record(bottle_number: int) -> Optional[BorrowRecord]:
-    """
-    获取指定试剂瓶的最新领用记录（向后兼容版本）
-
-    参数：
-        bottle_number: 试剂瓶编号
-
-    返回：
-        最新的BorrowRecord对象，没有记录时返回None
-    """
-    result = _borrow_service.get_latest_borrow_record(bottle_number)
-    return result.data if result.success else None
+borrow_service = BorrowService()

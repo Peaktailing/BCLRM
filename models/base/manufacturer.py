@@ -3,10 +3,10 @@
 对应 SQLite 表：manufacturer
 
 字段映射说明：
-- 名称 -> name
-- 联系人 -> contact
-- 电话 -> phone
-- 地址 -> address
+- 生产商全称 -> full_name
+- 品牌名称 -> brand_name
+- 官方网址 -> website
+- 附件 -> attachment
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -17,8 +17,8 @@ class Manufacturer:
     
     存储试剂生产商信息，用于溯源和质量控制。
     """
-    name: Optional[str] = None        # 生产商名称（文本类型）
-    contact: Optional[str] = None     # 联系人（文本类型）
-    phone: Optional[str] = None       # 电话（文本类型）
-    address: Optional[str] = None     # 地址（文本类型）
-    id: Optional[str] = None       # Teable内部记录ID（系统自动生成）
+    full_name: Optional[str] = None      # 生产商全称（文本类型）
+    brand_name: Optional[str] = None     # 品牌名称（文本类型，唯一标识）
+    website: Optional[str] = None        # 官方网址（文本类型）
+    attachment: Optional[str] = None     # 附件（文件路径）
+    id: Optional[int] = None             # 自增主键

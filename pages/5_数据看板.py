@@ -10,13 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 import matplotlib.pyplot as plt
-from business.dashboard_service import (
-    get_inventory_stats,
-    get_borrow_stats,
-    get_return_stats,
-    get_supplier_stats,
-    get_storage_location_stats
-)
+from business.dashboard_service import dashboard_service
 from components.sidebar_nav import render_sidebar
 
 def main():
@@ -28,11 +22,16 @@ def main():
     render_sidebar(current_page="数据看板")
     
     # 获取统计数据
-    inventory_stats = get_inventory_stats()
-    borrow_stats = get_borrow_stats()
-    return_stats = get_return_stats()
-    supplier_stats = get_supplier_stats()
-    location_stats = get_storage_location_stats()
+    _inv_result = dashboard_service.get_inventory_stats()
+    inventory_stats = _inv_result.data if _inv_result.is_success() else {}
+    _borrow_result = dashboard_service.get_borrow_stats()
+    borrow_stats = _borrow_result.data if _borrow_result.is_success() else {}
+    _return_result = dashboard_service.get_return_stats()
+    return_stats = _return_result.data if _return_result.is_success() else {}
+    _supplier_result = dashboard_service.get_supplier_stats()
+    supplier_stats = _supplier_result.data if _supplier_result.is_success() else {}
+    _location_result = dashboard_service.get_storage_location_stats()
+    location_stats = _location_result.data if _location_result.is_success() else {}
     
     # 库存统计卡片
     st.subheader("库存概览")

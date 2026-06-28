@@ -7,7 +7,7 @@
 - 试剂瓶编号 -> bottle_number
 - 试剂名称 -> reagent_name
 - 领用人 -> user
-- 试剂CAS编码 -> cas_number
+- CAS号 -> cas_number
 - 生产日期 -> production_date
 - 领用时间 -> borrow_time
 - 审批人 -> approver
@@ -27,10 +27,12 @@ class BorrowRecord:
     bottle_number: int            # 试剂瓶编号（数字类型，关联试剂瓶表）
     user: str                     # 领用人（文本类型）
     reagent_name: Optional[str] = None    # 试剂名称（文本类型）
-    cas_number: Optional[str] = None      # 试剂CAS编码（文本类型）
+    cas_number: Optional[str] = None      # CAS号（文本类型）
     production_date: Optional[str] = None # 生产日期（ISO格式字符串）
     borrow_time: Optional[str] = None     # 领用时间（文本格式：YYYY/MM/DD HH:MM）
     approver: Optional[str] = None        # 审批人（文本类型，管控试剂必填）
     approval_file: Optional[str] = None   # 审批记录上传（文件路径）
     approved: Optional[bool] = None       # 是否通过审批（复选框类型）
-    id: Optional[str] = None       # Teable内部记录ID（系统自动生成）
+    is_controlled: Optional[int] = None    # 是否管控试剂（0=否，1=是）
+    is_violation: Optional[int] = None     # 是否违规借出（0=否，1=是）
+    id: Optional[int] = None       # 自增主键

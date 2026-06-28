@@ -66,17 +66,17 @@ class ChemicalService(BaseService):
                 return chemical
         return None
 
-    def get_by_cas(self, cas: str) -> Optional[ChemicalInfo]:
+    def get_by_cas_number(self, cas_number: str) -> Optional[ChemicalInfo]:
         """通过CAS号查询
 
         Args:
-            cas: CAS号
+            cas_number: CAS号
 
         Returns:
             ChemicalInfo对象或None
         """
         # 使用 BaseService 的 get_by_field 方法
-        record = super().get_by_field('cas', cas)
+        record = super().get_by_field('cas_number', cas_number)
         if record:
             return self._parse_record(record)
         return None
@@ -113,7 +113,7 @@ class ChemicalService(BaseService):
             name=record.get('name'),
             display_name=record.get('display_name'),
             formula=record.get('formula'),
-            cas=record.get('cas'),
+            cas_number=record.get('cas_number'),
             msds=record.get('msds'),
             reagent_type=record.get('reagent_type'),
             storage_requirement=record.get('storage_requirement'),

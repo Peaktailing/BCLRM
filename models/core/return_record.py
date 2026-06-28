@@ -27,4 +27,4 @@ class ReturnRecord:
     remaining_quantity: Optional[float] = None # 归还时余量（数字类型）
     last_update_time: Optional[str] = None    # 最后更新时间（文本格式）
     modifier: Optional[str] = None        # 修改人（文本类型）
-    id: Optional[str] = None       # Teable内部记录ID（系统自动生成）
+    id: Optional[int] = None       # 自增主键
