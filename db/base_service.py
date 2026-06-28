@@ -293,6 +293,82 @@ class BaseService:
             logger.error(f"搜索记录失败 [{self.table_name}]: {str(e)}", exception=e)
             return []
 
+    def search_multi_condition(
+        self,
+        conditions: List[Dict[str, Any]],
+        order_by: str = None,
+        limit: int = None
+    ) -> List[Dict]:
+        """多条件组合查询（数据库层过滤，支持精确匹配和模糊匹配）
+
+        将过滤逻辑下沉到 SQLite 数据库层执行，避免全量加载后在 Python 内存中过滤，
+        大幅减少数据传输量和内存占用，提升查询效率。
+
+        Args:
+            conditions: 条件列表，每个条件为 dict，格式：
+                {
+                    "field": "字段名",
+                    "value": 匹配值,
+                    "match_type": "exact" | "fuzzy" | "keyword"
+                }
+                - exact: 精确匹配 (field = ?)
+                - fuzzy: 模糊匹配 (field LIKE ?)
+                - keyword: 关键词跨字段搜索 (field1 LIKE ? OR field2 LIKE ? ...)，
+                  此时 value 为关键词字符串，额外需要 "keyword_fields" 列表
+            order_by: 排序字段，格式如 'created_at DESC'
+            limit: 限制返回数量
+
+        Returns:
+            匹配的记录列表
+        """
+        if not conditions:
+            return self.get_all(order_by=order_by, limit=limit)
+
+        where_clauses = []
+        params = []
+
+        for cond in conditions:
+            match_type = cond.get("match_type", "exact")
+            field = cond.get("field", "")
+            value = cond.get("value")
+
+            if value is None or value == "":
+                continue
+
+            if match_type == "exact":
+                where_clauses.append(f"{field} = ?")
+                params.append(value)
+            elif match_type == "fuzzy":
+                where_clauses.append(f"{field} LIKE ?")
+                params.append(f"%{value}%")
+            elif match_type == "keyword":
+                keyword = str(value)
+                keyword_fields = cond.get("keyword_fields", [field])
+                if keyword_fields:
+                    keyword_clauses = " OR ".join([f"{kf} LIKE ?" for kf in keyword_fields])
+                    where_clauses.append(f"({keyword_clauses})")
+                    params.extend([f"%{keyword}%" for _ in keyword_fields])
+
+        if not where_clauses:
+            return self.get_all(order_by=order_by, limit=limit)
+
+        query = f"SELECT * FROM {self.table_name} WHERE {' AND '.join(where_clauses)}"
+
+        if order_by:
+            query += f" ORDER BY {order_by}"
+
+        if limit:
+            query += f" LIMIT {limit}"
+
+        try:
+            return self.db.execute_query(query, tuple(params))
+        except Exception as e:
+            logger.error(
+                f"多条件查询失败 [{self.table_name}]: {str(e)}",
+                exception=e
+            )
+            return []
+
     def exists(self, field_name: str, value: Any) -> bool:
         """检查记录是否存在
 
