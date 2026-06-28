@@ -1,7 +1,6 @@
 """SQLite 数据库连接和初始化模块
 
 该模块提供 SQLite 数据库的连接管理和表结构初始化。
-用于替代原有的 Teable 数据库系统。
 """
 import sqlite3
 import os
@@ -84,12 +83,10 @@ class Database:
                 CREATE TABLE IF NOT EXISTS person (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
-                    gender TEXT,
-                    person_id TEXT,
-                    feishu_person TEXT,
-                    person_attribute TEXT,
-                    student_id_work_id TEXT,
-                    photo TEXT,
+                    role TEXT,
+                    department TEXT,
+                    phone TEXT,
+                    student_or_work_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -160,11 +157,11 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     chemical_name TEXT NOT NULL,
                     alias TEXT,
-                    cas TEXT,
+                    cas_number TEXT,
                     dangerous_type TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(chemical_name, cas)
+                    UNIQUE(chemical_name, cas_number)
                 )
             """)
 
@@ -175,7 +172,7 @@ class Database:
                     name TEXT NOT NULL,
                     display_name TEXT,
                     formula TEXT,
-                    cas TEXT,
+                    cas_number TEXT,
                     msds TEXT,
                     reagent_type TEXT,
                     storage_requirement TEXT,
@@ -296,11 +293,11 @@ class Database:
 
             # 管控化学品表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_controlled_name ON controlled_list(chemical_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_controlled_cas ON controlled_list(cas)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_controlled_cas ON controlled_list(cas_number)")
 
             # 化学品信息表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_name ON chemical_info(name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_cas ON chemical_info(cas)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_cas ON chemical_info(cas_number)")
 
             self.connection.commit()
             logger.info("数据库表初始化完成")

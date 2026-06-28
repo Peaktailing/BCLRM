@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from config.settings import SYSTEM_NAME, VERSION
-from business.dashboard_service import get_inventory_stats
+from business.dashboard_service import dashboard_service
 from components.sidebar_nav import render_sidebar
 
 def main():
@@ -90,7 +90,8 @@ def main():
     
     # 快速统计
     try:
-        stats = get_inventory_stats()
+        result = dashboard_service.get_inventory_stats()
+        stats = result.data if result.is_success() else {}
         st.markdown("### 📊 库存概览")
         stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
         stat_col1.metric("试剂瓶总数", stats["total_bottles"])

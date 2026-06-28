@@ -1,6 +1,6 @@
 """SQLite 数据库基础服务类
 
-该模块提供数据库 CRUD 操作的基础封装，替代原有的 BaseTeableService。
+该模块提供数据库 CRUD 操作的基础封装。
 """
 from typing import List, Dict, Optional, Any
 from db.database import Database

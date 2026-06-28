@@ -272,7 +272,7 @@ def import_controlled_list(db, df):
         fields = {
             'chemical_name': str(row.get('化学品名称', '')),
             'alias': str(row.get('化学品别名', '')) if not pd.isna(row.get('化学品别名')) else None,
-            'cas': str(row.get('CAS', '')) if not pd.isna(row.get('CAS')) else None,
+            'cas_number': str(row.get('CAS', '')) if not pd.isna(row.get('CAS')) else None,
             'dangerous_type': str(row.get('危化品类型', '')) if not pd.isna(row.get('危化品类型')) else None,
         }
 

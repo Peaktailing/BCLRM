@@ -4,11 +4,11 @@
 包括试剂瓶编号、条码、领用记录编号、归还记录编号等。
 """
 from datetime import datetime
-from services.core.reagent_bottle_service import reagent_bottle_service
-from services.core.borrow_record_service import borrow_record_service
-from services.core.return_record_service import return_record_service
 from utils.field_mapper import ReagentBottleField, BorrowRecordField, ReturnRecordField
 from utils.error_handler import logger
+
+# 注意：services 层的实例通过方法内延迟导入获取，
+# 避免工具层在模块级反向依赖服务层，导致循环导入。
 
 
 class IDGenerator:
@@ -53,6 +53,7 @@ class IDGenerator:
             42
         """
         try:
+            from services.core.reagent_bottle_service import reagent_bottle_service
             bottles = reagent_bottle_service.get_all_parsed()
             if not bottles:
                 return 1
@@ -89,6 +90,7 @@ class IDGenerator:
         """
         today = datetime.now().strftime("%Y%m%d")
         try:
+            from services.core.reagent_bottle_service import reagent_bottle_service
             bottles = reagent_bottle_service.get_all_parsed()
             today_count = sum(
                 1 for bottle in bottles
@@ -118,6 +120,7 @@ class IDGenerator:
             'L20260521143025'
         """
         try:
+            from services.core.borrow_record_service import borrow_record_service
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             record_num = f"L{timestamp}"
 
@@ -152,6 +155,7 @@ class IDGenerator:
             20260521143025
         """
         try:
+            from services.core.return_record_service import return_record_service
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             record_num = int(timestamp)
 

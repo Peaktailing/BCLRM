@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from business.query_service import search_reagents, get_borrow_history, get_return_history
+from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
 
 def main():
@@ -45,13 +45,14 @@ def main():
         
         # 查询按钮
         if st.button("查询", type="primary", use_container_width=True):
-            results = search_reagents(
+            _result = query_service.search_reagents(
                 bottle_number=bottle_number,
                 reagent_name=reagent_name,
                 cas_number=cas_number,
                 supplier=supplier,
                 borrowable_only=borrowable_only
             )
+            results = _result.data if _result.is_success() else []
             
             # 显示结果
             if results:
@@ -93,7 +94,8 @@ def main():
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button("查询领用记录", type="primary", use_container_width=True):
-                results = get_borrow_history(bottle_number=bottle_number, user=user)
+                _result = query_service.get_borrow_history(bottle_number=bottle_number, user=user)
+                results = _result.data if _result.is_success() else []
                 
                 if results:
                     st.dataframe(results, use_container_width=True)
@@ -102,7 +104,8 @@ def main():
                     st.info("没有找到领用记录")
         with col_btn2:
             if st.button("查询全部", use_container_width=True):
-                results = get_borrow_history()
+                _result = query_service.get_borrow_history()
+                results = _result.data if _result.is_success() else []
                 
                 if results:
                     st.dataframe(results, use_container_width=True)
@@ -122,7 +125,8 @@ def main():
             user = st.text_input("归还人")
         
         if st.button("查询归还记录", type="primary", use_container_width=True):
-            results = get_return_history(bottle_number=bottle_number, user=user)
+            _result = query_service.get_return_history(bottle_number=bottle_number, user=user)
+            results = _result.data if _result.is_success() else []
             
             if results:
                 st.dataframe(results, use_container_width=True)

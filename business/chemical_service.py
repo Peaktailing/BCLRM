@@ -112,7 +112,7 @@ class ChemicalService:
             )
 
         # 6. 检查CAS号是否已存在
-        existing_cas = self.chemical_service.get_by_cas(cas.strip())
+        existing_cas = self.chemical_service.get_by_cas_number(cas.strip())
         if existing_cas:
             logger.warning(
                 "CAS号已存在",
@@ -179,7 +179,7 @@ class ChemicalService:
                 error_code="EMPTY_CAS_NUMBER"
             )
 
-        controlled = self.controlled_list_service.get_by_cas(cas.strip())
+        controlled = self.controlled_list_service.get_by_cas_number(cas.strip())
         if controlled:
             dangerous_type = getattr(controlled, 'dangerous_type', None)
             logger.info(
@@ -255,7 +255,7 @@ class ChemicalService:
             ChemicalInfoField.NAME: name.strip(),
             ChemicalInfoField.DISPLAY_NAME: display_name.strip() if display_name else "",
             ChemicalInfoField.FORMULA: formula.strip() if formula else "",
-            ChemicalInfoField.CAS: cas.strip(),
+            ChemicalInfoField.CAS_NUMBER: cas.strip(),
             ChemicalInfoField.MSDS: msds if msds else "",
             ChemicalInfoField.REAGENT_TYPE: reagent_type.strip(),
             ChemicalInfoField.STORAGE_REQUIREMENT: storage_requirement.strip()
@@ -363,7 +363,7 @@ class ChemicalService:
             )
 
         # 3. 检查CAS号是否被其他记录使用
-        existing_cas = self.chemical_service.get_by_cas(cas.strip() if cas else "")
+        existing_cas = self.chemical_service.get_by_cas_number(cas.strip() if cas else "")
         if existing_cas and existing_cas.id != record_id:
             logger.warning(
                 "CAS号已被其他记录使用",
@@ -394,7 +394,7 @@ class ChemicalService:
             ChemicalInfoField.NAME: name.strip() if name else "",
             ChemicalInfoField.DISPLAY_NAME: display_name.strip() if display_name else "",
             ChemicalInfoField.FORMULA: formula.strip() if formula else "",
-            ChemicalInfoField.CAS: cas.strip() if cas else "",
+            ChemicalInfoField.CAS_NUMBER: cas.strip() if cas else "",
             ChemicalInfoField.MSDS: msds if msds else "",
             ChemicalInfoField.REAGENT_TYPE: reagent_type.strip() if reagent_type else "",
             ChemicalInfoField.STORAGE_REQUIREMENT: storage_requirement.strip() if storage_requirement else "",
@@ -589,173 +589,7 @@ class ChemicalService:
 
 
 # ============================================================================
-# 向后兼容：模块级函数别名
+# 全局单例实例
 # ============================================================================
 
-# 全局单例实例
-_chemical_service = ChemicalService()
-
-
-def validate_chemical_data(
-    name: str,
-    cas: str,
-    reagent_type: str,
-    storage_requirement: str
-) -> tuple:
-    """
-    校验化学品数据（向后兼容版本）
-
-    参数：
-        name: 化学品名称
-        cas: CAS号
-        reagent_type: 试剂类型
-        storage_requirement: 存储要求
-
-    返回：
-        (是否校验通过, 错误信息)
-    """
-    result = _chemical_service.validate_chemical_data(
-        name, cas, reagent_type, storage_requirement
-    )
-    return result.success, result.message
-
-
-def match_controlled_type(cas: str) -> Optional[str]:
-    """
-    根据CAS号匹配管控试剂类型（向后兼容版本）
-
-    参数：
-        cas: CAS号
-
-    返回：
-        管控试剂类型（如：剧毒、易制爆、易制毒），如果不在管控名录中则返回None
-    """
-    result = _chemical_service.match_controlled_type(cas)
-    return result.data if result.success else None
-
-
-def create_chemical(
-    name: str,
-    display_name: str,
-    formula: str,
-    cas: str,
-    msds: str,
-    reagent_type: str,
-    storage_requirement: str
-) -> tuple:
-    """
-    创建化学品信息（向后兼容版本）
-
-    参数：
-        name: 化学品名称（必填）
-        display_name: 通用显示名称（可选）
-        formula: 化学式（可选）
-        cas: CAS号（必填，纯文本）
-        msds: MSDS附件（可选）
-        reagent_type: 试剂类型（必填，从试剂类型表选择）
-        storage_requirement: 存储要求（必填，从存储要求表选择）
-
-    返回：
-        (是否成功, 提示信息)
-    """
-    result = _chemical_service.create_chemical(
-        name, display_name, formula, cas, msds, reagent_type, storage_requirement
-    )
-    return result.success, result.message
-
-
-def update_chemical(
-    record_id: str,
-    name: str,
-    display_name: str,
-    formula: str,
-    cas: str,
-    msds: str,
-    reagent_type: str,
-    storage_requirement: str
-) -> tuple:
-    """
-    更新化学品信息（向后兼容版本）
-
-    参数：
-        record_id: 记录ID
-        name: 化学品名称
-        display_name: 通用显示名称
-        formula: 化学式
-        cas: CAS号
-        msds: MSDS附件
-        reagent_type: 试剂类型
-        storage_requirement: 存储要求
-
-    返回：
-        (是否成功, 提示信息)
-    """
-    result = _chemical_service.update_chemical(
-        record_id, name, display_name, formula, cas, msds,
-        reagent_type, storage_requirement
-    )
-    return result.success, result.message
-
-
-def get_all_chemicals() -> List[ChemicalInfo]:
-    """
-    获取所有化学品信息（向后兼容版本）
-
-    返回：
-        ChemicalInfo对象列表
-    """
-    result = _chemical_service.get_all_chemicals()
-    return result.data if result.success else []
-
-
-def search_chemicals(keyword: str) -> List[ChemicalInfo]:
-    """
-    双向模糊搜索化学品（向后兼容版本）
-
-    搜索关键词同时匹配：化学品名称、通用显示名称
-    不区分大小写，只要包含关键词就返回结果
-
-    参数：
-        keyword: 搜索关键词
-
-    返回：
-        匹配的ChemicalInfo对象列表
-    """
-    result = _chemical_service.search_chemicals(keyword)
-    return result.data if result.success else []
-
-
-def get_reagent_type_names() -> List[str]:
-    """
-    获取试剂类型名称列表（向后兼容版本）
-
-    返回：
-        试剂类型名称列表
-    """
-    result = _chemical_service.get_reagent_type_names()
-    return result.data if result.success else []
-
-
-def get_storage_requirement_names() -> List[str]:
-    """
-    获取存储要求名称列表（向后兼容版本）
-
-    返回：
-        存储要求名称列表
-    """
-    result = _chemical_service.get_storage_requirement_names()
-    return result.data if result.success else []
-
-
-def get_chemical_by_name(name: str) -> Optional[ChemicalInfo]:
-    """
-    根据名称获取化学品详情（向后兼容版本）
-
-    参数：
-        name: 化学品名称
-
-    返回：
-        ChemicalInfo对象，不存在时返回None
-    """
-    result = _chemical_service.get_chemical_by_name(name)
-    return result.data if result.success else None
+chemical_manage_service = ChemicalService()

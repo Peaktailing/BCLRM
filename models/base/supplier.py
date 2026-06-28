@@ -21,4 +21,4 @@ class Supplier:
     contact: Optional[str] = None # 联系人（文本类型）
     phone: Optional[str] = None   # 电话（文本类型）
     address: Optional[str] = None # 地址（文本类型）
-    id: Optional[str] = None       # Teable内部记录ID（系统自动生成）
+    id: Optional[int] = None       # 自增主键
