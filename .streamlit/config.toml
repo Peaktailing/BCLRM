@@ -1,0 +1,20 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
+port = 8501
+enableCORS = false
+enableXsrfProtection = false
+
+[client]
+showErrorDetails = true
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#FF6B6B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F8F9FA"
+textColor = "#262730"
+font = "sans serif"
