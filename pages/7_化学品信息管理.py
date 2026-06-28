@@ -8,15 +8,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from business.chemical_service import (
-    create_chemical,
-    update_chemical,
-    get_all_chemicals,
-    search_chemicals,
-    get_reagent_type_names,
-    get_storage_requirement_names,
-    get_chemical_by_name
-)
+from business.chemical_service import chemical_manage_service
 from components.sidebar_nav import render_sidebar
 from utils.formula_utils import format_formula
 
@@ -37,14 +29,16 @@ def main():
 
     chemicals = []
     try:
-        chemicals = get_all_chemicals()
+        _result = chemical_manage_service.get_all_chemicals()
+        chemicals = _result.data if _result.is_success() else []
     except Exception as e:
         st.error(f"无法加载化学品列表，请检查Teable连接。错误原因：{str(e)}")
         st.info("可能的原因：1. Teable服务不可用 2. Token无效 3. 表ID配置错误")
 
     if search_query and chemicals:
         try:
-            filtered_chemicals = search_chemicals(search_query)
+            _result = chemical_manage_service.search_chemicals(search_query)
+            filtered_chemicals = _result.data if _result.is_success() else []
         except Exception as e:
             st.error(f"搜索失败：{str(e)}")
             filtered_chemicals = chemicals
@@ -74,7 +68,8 @@ def main():
     st.subheader("➕ 添加新化学品")
 
     # 试剂类型下拉框（从业务层获取）
-    reagent_type_names = get_reagent_type_names()
+    _result = chemical_manage_service.get_reagent_type_names()
+    reagent_type_names = _result.data if _result.is_success() else []
     if not reagent_type_names:
         st.warning("试剂类型数据加载失败，请检查Teable连接或表ID配置")
         reagent_type = st.text_input("试剂类型*", help="手动输入试剂类型")
@@ -86,7 +81,8 @@ def main():
         )
 
     # 存储要求下拉框（从业务层获取）
-    storage_requirement_names = get_storage_requirement_names()
+    _result = chemical_manage_service.get_storage_requirement_names()
+    storage_requirement_names = _result.data if _result.is_success() else []
     if not storage_requirement_names:
         st.warning("存储要求数据加载失败，请检查Teable连接或表ID配置")
         storage_requirement = st.text_input("存储要求*", help="手动输入存储要求")
@@ -135,7 +131,7 @@ def main():
 
         if submitted:
             msds_value = msds.name if msds else None
-            success, msg = create_chemical(
+            _result = chemical_manage_service.create_chemical(
                 name=name,
                 display_name=display_name,
                 formula=formula,
@@ -145,18 +141,19 @@ def main():
                 storage_requirement=storage_requirement
             )
 
-            if success:
-                st.success(msg)
+            if _result.is_success():
+                st.success(_result.message)
                 st.rerun()
             else:
-                st.error(msg)
+                st.error(_result.message)
 
     # ========== 底部：编辑化学品区域 ==========
     st.divider()
     st.subheader("✏️ 编辑化学品")
 
     try:
-        chemicals_for_edit = get_all_chemicals()
+        _result = chemical_manage_service.get_all_chemicals()
+        chemicals_for_edit = _result.data if _result.is_success() else []
     except Exception as e:
         chemicals_for_edit = []
         st.error(f"获取化学品列表失败：{str(e)}")
@@ -176,7 +173,8 @@ def main():
             # 编辑化学品时自动填充试剂类型和存储要求
             if selected_chemical_to_edit:
                 # 从业务层获取化学品详情
-                chem = get_chemical_by_name(selected_chemical_to_edit)
+                _result = chemical_manage_service.get_chemical_by_name(selected_chemical_to_edit)
+                chem = _result.data if _result.is_success() else None
                 
                 # 自动选中对应的试剂类型
                 if chem and chem.reagent_type in reagent_type_names:
@@ -234,7 +232,7 @@ def main():
 
                 if edit_submitted:
                     edit_msds_value = edit_msds.name if edit_msds else getattr(selected_chemical, 'msds', None)
-                    success, msg = update_chemical(
+                    _result = chemical_manage_service.update_chemical(
                         record_id=getattr(selected_chemical, 'id', ''),
                         name=edit_name,
                         display_name=edit_display_name,
@@ -245,11 +243,11 @@ def main():
                         storage_requirement=edit_storage_requirement
                     )
 
-                    if success:
-                        st.success(msg)
+                    if _result.is_success():
+                        st.success(_result.message)
                         st.rerun()
                     else:
-                        st.error(msg)
+                        st.error(_result.message)
     else:
         st.info("暂无化学品数据，无法进行编辑")
 

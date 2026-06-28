@@ -7,14 +7,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from business.inventory_service import (
-    create_inventory_record,
-    get_available_chemical_names,
-    get_available_suppliers,
-    get_available_storage_locations,
-    get_available_reagent_types,
-    get_chemical_info_by_name
-)
+from business.inventory_service import inventory_service
 from components.sidebar_nav import render_sidebar
 
 # 纯度选项（从业务需求定义）
@@ -28,19 +21,24 @@ def main():
     render_sidebar(current_page="试剂入库")
 
     # 获取下拉框数据源
-    chemical_names = get_available_chemical_names()
-    supplier_names = get_available_suppliers()
-    storage_location_names = get_available_storage_locations()
-    
+    _result = inventory_service.get_available_chemical_names()
+    chemical_names = _result.data if _result.is_success() else []
+    _result = inventory_service.get_available_suppliers()
+    supplier_names = _result.data if _result.is_success() else []
+    _result = inventory_service.get_available_storage_locations()
+    storage_location_names = _result.data if _result.is_success() else []
+
     # 获取试剂类型选项（从业务层获取）
-    reagent_type_names = get_available_reagent_types()
+    _result = inventory_service.get_available_reagent_types()
+    reagent_type_names = _result.data if _result.is_success() else []
     if not reagent_type_names:
         reagent_type_names = ["普通固体试剂", "普通液体试剂", "胶体试剂/培养基", "标准品", "气体钢瓶", "生化试剂"]
 
     # 化学品名称到CAS号的映射（同时使用display_name作为备选匹配）
     name_to_cas = {}
     for name in chemical_names:
-        info = get_chemical_info_by_name(name)
+        _info_result = inventory_service.get_chemical_info_by_name(name)
+        info = _info_result.data if _info_result.is_success() else None
         if info:
             if info.get("cas"):
                 name_to_cas[name] = info["cas"]
@@ -75,7 +73,8 @@ def main():
                 cas_value = name_to_cas.get(selected_name.strip(), "")
                 if not cas_value:
                     # 尝试直接查询
-                    info = get_chemical_info_by_name(selected_name)
+                    _info_result = inventory_service.get_chemical_info_by_name(selected_name)
+                    info = _info_result.data if _info_result.is_success() else None
                     cas_value = info.get("cas", "") if info else ""
             
             st.text_input(
@@ -155,7 +154,7 @@ def main():
             elif not cas_value:
                 st.error("CAS号不能为空，请检查化学品信息表")
             else:
-                success, msg = create_inventory_record(
+                result = inventory_service.create_inventory_record(
                     reagent_name=selected_name,
                     cas_number=cas_value,
                     remaining_quantity=remaining_qty,
@@ -167,12 +166,12 @@ def main():
                     production_date=str(production_date),
                     storage_location=storage_location if storage_location else None
                 )
-                
-                if success:
-                    st.success(msg)
+
+                if result.is_success():
+                    st.success(result.message)
                     st.rerun()
                 else:
-                    st.error(msg)
+                    st.error(result.message)
 
 if __name__ == "__main__":
     main()

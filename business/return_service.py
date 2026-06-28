@@ -376,73 +376,7 @@ class ReturnService:
 
 
 # ============================================================================
-# 向后兼容：模块级函数别名
+# 全局单例实例
 # ============================================================================
 
-# 全局单例实例
-_return_service = ReturnService()
-
-
-def reagent_return(
-    bottle_number: int,
-    return_user: str,
-    remaining_qty: float
-) -> tuple[bool, str]:
-    """
-    试剂归还核心业务逻辑（向后兼容版本）
-
-    参数：
-        bottle_number: 试剂瓶编号
-        return_user: 归还人姓名
-        remaining_qty: 归还时的剩余量
-
-    返回：
-        (是否成功, 提示信息)
-    """
-    result = _return_service.reagent_return(bottle_number, return_user, remaining_qty)
-    return result.success, result.message
-
-
-def batch_return(return_list: list) -> tuple[int, int, list]:
-    """
-    批量归还业务逻辑（向后兼容版本）
-
-    参数：
-        return_list: 归还列表，每个元素为dict，包含bottle_number、return_user、remaining_qty等字段
-
-    返回：
-        (成功数量, 失败数量, 失败详情列表)
-    """
-    result = _return_service.batch_return(return_list)
-    if result.success:
-        data = result.data
-        return data["success_count"], data["fail_count"], data["fail_details"]
-    return 0, len(return_list), [{"bottle_number": item.get("bottle_number", 0), "error": result.message} for item in return_list]
-
-
-def get_return_record(record_id: str) -> Optional[ReturnRecord]:
-    """
-    根据记录ID查询归还记录（向后兼容版本）
-
-    参数：
-        record_id: 归还记录ID
-
-    返回：
-        ReturnRecord对象或None
-    """
-    result = _return_service.get_return_record(record_id)
-    return result.data if result.success else None
-
-
-def get_return_records_by_user(user: str) -> List[ReturnRecord]:
-    """
-    查询指定用户的所有归还记录（向后兼容版本）
-
-    参数：
-        user: 用户姓名
-
-    返回：
-        归还记录列表
-    """
-    result = _return_service.get_return_records_by_user(user)
-    return result.data if result.success else []
+return_service = ReturnService()
