@@ -143,7 +143,7 @@ class BorrowService:
         controlled_type = None
         cas_number = getattr(bottle, ReagentBottleField.CAS_NUMBER, None)
         if cas_number:
-            controlled_item = self.controlled_service.get_by_cas(cas_number)
+            controlled_item = self.controlled_service.get_by_cas_number(cas_number)
             if controlled_item:
                 is_controlled = True
                 controlled_type = getattr(controlled_item, 'dangerous_type', None)

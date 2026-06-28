@@ -40,11 +40,11 @@ def main():
         _info_result = inventory_service.get_chemical_info_by_name(name)
         info = _info_result.data if _info_result.is_success() else None
         if info:
-            if info.get("cas"):
-                name_to_cas[name] = info["cas"]
+            if info.get("cas_number"):
+                name_to_cas[name] = info["cas_number"]
                 # 同时添加display_name作为备选键
                 if info.get("display_name") and info["display_name"] != name:
-                    name_to_cas[info["display_name"]] = info["cas"]
+                    name_to_cas[info["display_name"]] = info["cas_number"]
 
     # ========== 入库表单区域 ==========
     st.subheader("➕ 新建入库记录")
@@ -75,7 +75,7 @@ def main():
                     # 尝试直接查询
                     _info_result = inventory_service.get_chemical_info_by_name(selected_name)
                     info = _info_result.data if _info_result.is_success() else None
-                    cas_value = info.get("cas", "") if info else ""
+                    cas_value = info.get("cas_number", "") if info else ""
             
             st.text_input(
                 "CAS号",

@@ -48,5 +48,8 @@ class ReagentBottle:
     last_return_record_no: Optional[int] = None # 最后归还记录号（数字类型）
     storage_location: Optional[str] = None     # 存储位置（文本类型，如：危化品存储柜1）
     borrowable_flag: Optional[str] = None      # 可借标记（文本类型：可借/已借出/耗尽）
+    reagent_type: Optional[str] = None     # 试剂类型（文本类型，关联试剂类型表）
+    is_controlled: Optional[int] = None    # 是否管控（0=否，1=是）
+    storage_requirement: Optional[str] = None  # 存储要求（文本类型，关联存储要求表）
     borrowable_check: Optional[bool] = None    # 可借标记判断（复选框类型）
-    id: Optional[str] = None       # Teable内部记录ID（系统自动生成）
+    id: Optional[int] = None       # 自增主键

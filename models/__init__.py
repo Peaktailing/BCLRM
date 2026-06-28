@@ -1,6 +1,6 @@
 """数据模型模块
 
-该模块包含所有与Teable数据库表对应的数据模型类。
+该模块包含所有与数据库表对应的数据模型类。
 
 核心业务表模型：
 - ReagentBottle: 试剂瓶信息表（系统主表）
@@ -17,7 +17,7 @@
 - Manufacturer: 试剂生产商表
 - StorageLocation: 存储位置表
 
-所有模型均使用dataclass定义，字段名与Teable表字段一一对应。
+所有模型均使用dataclass定义，字段名与数据库表字段一一对应。
 """
 from models.core.reagent_bottle import ReagentBottle
 from models.core.borrow_record import BorrowRecord
