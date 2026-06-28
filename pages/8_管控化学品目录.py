@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from business.query_service import get_all_controlled_chemicals
+from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
 
 def main():
@@ -24,7 +24,8 @@ def main():
     st.info("📋 本页面用于查看管控化学品名录，数据为只读。")
 
     # 获取所有管控化学品（从业务层获取）
-    all_controlled = get_all_controlled_chemicals()
+    _result = query_service.get_all_controlled_chemicals()
+    all_controlled = _result.data if _result.is_success() else []
 
     if all_controlled:
         # 显示统计
