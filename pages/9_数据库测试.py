@@ -2,6 +2,11 @@
 
 该页面用于测试 SQLite 数据库的连接和基本功能。
 """
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 from datetime import datetime
 from db.database import Database
