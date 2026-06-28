@@ -92,7 +92,7 @@ class DatabaseError(ReagentException):
     用于数据库操作失败的场景，如连接失败、查询错误、写入失败等。
     
     Examples:
-        >>> raise DatabaseError("Teable连接超时", error_code="DB_CONNECTION_TIMEOUT")
+        >>> raise DatabaseError("数据库连接超时", error_code="DB_CONNECTION_TIMEOUT")
         >>> raise DatabaseError("记录创建失败", error_code="DB_CREATE_FAILED", details={"table": "reagent_bottle"})
     """
     

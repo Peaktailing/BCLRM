@@ -32,8 +32,8 @@ def main():
         _result = chemical_manage_service.get_all_chemicals()
         chemicals = _result.data if _result.is_success() else []
     except Exception as e:
-        st.error(f"无法加载化学品列表，请检查Teable连接。错误原因：{str(e)}")
-        st.info("可能的原因：1. Teable服务不可用 2. Token无效 3. 表ID配置错误")
+        st.error(f"无法加载化学品列表，请检查数据库连接。错误原因：{str(e)}")
+        st.info("可能的原因：1. 数据库服务不可用 2. 表结构未初始化")
 
     if search_query and chemicals:
         try:
@@ -53,7 +53,7 @@ def main():
                 "化学品名称": getattr(chemical, 'name', '-'),
                 "通用显示名称": getattr(chemical, 'display_name', '-'),
                 "化学式": format_formula(getattr(chemical, 'formula', '-')),
-                "CAS号": getattr(chemical, 'cas', '-'),
+                "CAS号": getattr(chemical, 'cas_number', '-'),
                 "试剂类型": getattr(chemical, 'reagent_type', '-'),
                 "存储要求": getattr(chemical, 'storage_requirement', '-'),
                 "管控类型": f"{controlled_badge} {getattr(chemical, 'controlled_type', '')}" if getattr(chemical, 'controlled_type', None) else "无",
@@ -71,7 +71,7 @@ def main():
     _result = chemical_manage_service.get_reagent_type_names()
     reagent_type_names = _result.data if _result.is_success() else []
     if not reagent_type_names:
-        st.warning("试剂类型数据加载失败，请检查Teable连接或表ID配置")
+        st.warning("试剂类型数据加载失败，请检查数据库连接")
         reagent_type = st.text_input("试剂类型*", help="手动输入试剂类型")
     else:
         reagent_type = st.selectbox(
@@ -84,7 +84,7 @@ def main():
     _result = chemical_manage_service.get_storage_requirement_names()
     storage_requirement_names = _result.data if _result.is_success() else []
     if not storage_requirement_names:
-        st.warning("存储要求数据加载失败，请检查Teable连接或表ID配置")
+        st.warning("存储要求数据加载失败，请检查数据库连接")
         storage_requirement = st.text_input("存储要求*", help="手动输入存储要求")
     else:
         storage_requirement = st.selectbox(
@@ -111,7 +111,7 @@ def main():
             if selected_chemical_name and selected_chemical_name in chemical_options_dict:
                 selected = chemical_options_dict[selected_chemical_name]
                 name = st.text_input("化学品名称*", value=getattr(selected, 'name', ''))
-                cas = st.text_input("CAS号（只读）", value=getattr(selected, 'cas', ''), disabled=True)
+                cas = st.text_input("CAS号（只读）", value=getattr(selected, 'cas_number', ''), disabled=True)
                 display_name = st.text_input("通用显示名称", value=getattr(selected, 'display_name', ''))
                 formula = st.text_input("化学式", value=getattr(selected, 'formula', ''))
             else:
@@ -193,7 +193,7 @@ def main():
 
                 with col1:
                     edit_name = st.text_input("化学品名称*", value=getattr(selected_chemical, 'name', ''))
-                    edit_cas = st.text_input("CAS号*", value=getattr(selected_chemical, 'cas', ''))
+                    edit_cas = st.text_input("CAS号*", value=getattr(selected_chemical, 'cas_number', ''))
 
                     # 试剂类型下拉框 - 带默认值
                     if reagent_type_names:

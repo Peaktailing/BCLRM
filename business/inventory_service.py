@@ -157,7 +157,7 @@ class InventoryService:
             ServiceResult[Tuple[bool, str]] - (是否管控, 管控类型描述)
         """
         try:
-            controlled = self.controlled_list_service.get_by_cas(cas)
+            controlled = self.controlled_list_service.get_by_cas_number(cas)
             if controlled:
                 logger.info(
                     "检测到管控化学品",
@@ -617,7 +617,7 @@ class InventoryService:
             chem = self.chemical_service.get_by_name(name)
             if chem:
                 info = {
-                    "cas": chem.cas,
+                    "cas_number": chem.cas_number,
                     "display_name": chem.display_name,
                     "formula": chem.formula,
                     "reagent_type": chem.reagent_type,

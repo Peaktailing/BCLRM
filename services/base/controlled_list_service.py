@@ -34,16 +34,16 @@ class ControlledListService(BaseService):
             return self._parse_record(record)
         return None
 
-    def get_by_cas(self, cas: str) -> Optional[ControlledList]:
+    def get_by_cas_number(self, cas_number: str) -> Optional[ControlledList]:
         """通过CAS号查询管控化学品
 
         Args:
-            cas: CAS号
+            cas_number: CAS号
 
         Returns:
             ControlledList对象或None
         """
-        record = super().get_by_field('cas', cas)
+        record = super().get_by_field('cas_number', cas_number)
         if record:
             return self._parse_record(record)
         return None
@@ -62,16 +62,16 @@ class ControlledListService(BaseService):
             return self._parse_record(record)
         return None
 
-    def is_controlled(self, cas: str) -> bool:
+    def is_controlled(self, cas_number: str) -> bool:
         """检查CAS号是否在管控名录中
 
         Args:
-            cas: CAS号
+            cas_number: CAS号
 
         Returns:
             是否为管控化学品
         """
-        return self.get_by_cas(cas) is not None
+        return self.get_by_cas_number(cas_number) is not None
 
     def get_all_controlled(self) -> List[ControlledList]:
         """获取所有管控化学品
@@ -95,7 +95,7 @@ class ControlledListService(BaseService):
             id=record.get('id'),
             chemical_name=record.get('chemical_name'),
             alias=record.get('alias'),
-            cas=record.get('cas'),
+            cas_number=record.get('cas_number'),
             dangerous_type=record.get('dangerous_type')
         )
 

@@ -17,4 +17,4 @@ class ReagentType:
     """
     name: Optional[str] = None        # 试剂类型名称（文本类型）
     description: Optional[str] = None # 描述（文本类型）
-    id: Optional[str] = None       # Teable内部记录ID（系统自动生成）
+    id: Optional[int] = None       # 自增主键

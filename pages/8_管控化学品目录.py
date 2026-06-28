@@ -37,7 +37,7 @@ def main():
             table_data.append({
                 "化学品名称": item.chemical_name or "-",
                 "别名": item.alias or "-",
-                "CAS号": item.cas or "-",
+                "CAS号": item.cas_number or "-",
                 "危化品类型": item.dangerous_type or "-"
             })
 

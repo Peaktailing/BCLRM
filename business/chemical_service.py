@@ -112,7 +112,7 @@ class ChemicalService:
             )
 
         # 6. 检查CAS号是否已存在
-        existing_cas = self.chemical_service.get_by_cas(cas.strip())
+        existing_cas = self.chemical_service.get_by_cas_number(cas.strip())
         if existing_cas:
             logger.warning(
                 "CAS号已存在",
@@ -179,7 +179,7 @@ class ChemicalService:
                 error_code="EMPTY_CAS_NUMBER"
             )
 
-        controlled = self.controlled_list_service.get_by_cas(cas.strip())
+        controlled = self.controlled_list_service.get_by_cas_number(cas.strip())
         if controlled:
             dangerous_type = getattr(controlled, 'dangerous_type', None)
             logger.info(
@@ -255,7 +255,7 @@ class ChemicalService:
             ChemicalInfoField.NAME: name.strip(),
             ChemicalInfoField.DISPLAY_NAME: display_name.strip() if display_name else "",
             ChemicalInfoField.FORMULA: formula.strip() if formula else "",
-            ChemicalInfoField.CAS: cas.strip(),
+            ChemicalInfoField.CAS_NUMBER: cas.strip(),
             ChemicalInfoField.MSDS: msds if msds else "",
             ChemicalInfoField.REAGENT_TYPE: reagent_type.strip(),
             ChemicalInfoField.STORAGE_REQUIREMENT: storage_requirement.strip()
@@ -363,7 +363,7 @@ class ChemicalService:
             )
 
         # 3. 检查CAS号是否被其他记录使用
-        existing_cas = self.chemical_service.get_by_cas(cas.strip() if cas else "")
+        existing_cas = self.chemical_service.get_by_cas_number(cas.strip() if cas else "")
         if existing_cas and existing_cas.id != record_id:
             logger.warning(
                 "CAS号已被其他记录使用",
@@ -394,7 +394,7 @@ class ChemicalService:
             ChemicalInfoField.NAME: name.strip() if name else "",
             ChemicalInfoField.DISPLAY_NAME: display_name.strip() if display_name else "",
             ChemicalInfoField.FORMULA: formula.strip() if formula else "",
-            ChemicalInfoField.CAS: cas.strip() if cas else "",
+            ChemicalInfoField.CAS_NUMBER: cas.strip() if cas else "",
             ChemicalInfoField.MSDS: msds if msds else "",
             ChemicalInfoField.REAGENT_TYPE: reagent_type.strip() if reagent_type else "",
             ChemicalInfoField.STORAGE_REQUIREMENT: storage_requirement.strip() if storage_requirement else "",
