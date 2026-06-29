@@ -409,8 +409,8 @@ def import_return_record(db, df):
             continue
 
         fields = {
-            'return_number': int(row.get('归还记录编号', 0)),
-            'bottle_number': int(row.get('试剂瓶编号', 0)) if not pd.isna(row.get('试剂瓶编号')) else None,
+            'return_number': str(row.get('归还记录编号', '')),
+            'bottle_number': str(row.get('试剂瓶编号', '')) if not pd.isna(row.get('试剂瓶编号')) else None,
             'return_user': str(row.get('归还人', '')),
             'return_time': excel_date_to_string(row.get('归还时间')),
             'remaining_quantity': float(row.get('归还时余量', 0)) if not pd.isna(row.get('归还时余量')) else None,
