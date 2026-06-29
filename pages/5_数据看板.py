@@ -8,11 +8,18 @@ import os
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# ── 权限控制 ──────────────────────────────────────────────
+from components.auth import (
+    init_auth, require_login, render_auth_sidebar,
+    get_role, get_user_id, check_perm, require_perm,
+    can_add_reagent, can_edit_reagent, can_delete_reagent,
+    can_borrow, can_approve, can_approve_bottle,
+    can_manage_users, can_system_settings,
+)
 import streamlit as st
 import matplotlib.pyplot as plt
 from business.dashboard_service import dashboard_service
 from business.expiry_service import expiry_service
-from components.sidebar_nav import render_sidebar
 
 def main():
     """主函数：数据看板页面"""
@@ -20,7 +27,10 @@ def main():
     st.title("📊 数据看板")
     
     # 使用统一的侧边栏导航
-    render_sidebar()
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
     
     # 获取统计数据
     _inv_result = dashboard_service.get_inventory_stats()

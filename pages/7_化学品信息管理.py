@@ -7,9 +7,16 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# ── 权限控制 ──────────────────────────────────────────────
+from components.auth import (
+    init_auth, require_login, render_auth_sidebar,
+    get_role, get_user_id, check_perm, require_perm,
+    can_add_reagent, can_edit_reagent, can_delete_reagent,
+    can_borrow, can_approve, can_approve_bottle,
+    can_manage_users, can_system_settings,
+)
 import streamlit as st
 from business.chemical_service import chemical_manage_service
-from components.sidebar_nav import render_sidebar
 from utils.formula_utils import format_formula
 
 MSDS_FILE_TYPES = ["jpg", "jpeg", "png", "pdf", "doc", "docx", "txt"]
@@ -42,7 +49,13 @@ def main():
     st.title("🧪 化学品信息管理")
 
     # 使用统一的侧边栏导航
-    render_sidebar()
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
+
+    if not require_perm(can_manage_users, error_msg="仅超级管理员可以管理化学品信息"):
+        st.stop()
 
     # ========== 顶部：化学品列表 ==========
     st.subheader("📋 化学品列表")

@@ -82,13 +82,29 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS person (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE,
                     name TEXT NOT NULL UNIQUE,
+                    password TEXT DEFAULT '123456',
                     role TEXT,
                     department TEXT,
                     phone TEXT,
                     student_or_work_id TEXT,
+                    display_name TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 1.1 用户-管理员关联表（多对多）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_admin (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    admin_id TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, admin_id),
+                    FOREIGN KEY (user_id) REFERENCES person(user_id) ON DELETE CASCADE,
+                    FOREIGN KEY (admin_id) REFERENCES person(user_id) ON DELETE CASCADE
                 )
             """)
 
@@ -213,6 +229,8 @@ class Database:
                     borrowable_flag TEXT DEFAULT '可借',
                     borrowable_check INTEGER DEFAULT 1,
                     expired_flag TEXT DEFAULT '正常',
+                    creator TEXT,
+                    creator_name TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (supplier) REFERENCES supplier(name),
@@ -230,9 +248,12 @@ class Database:
                     user TEXT NOT NULL,
                     cas_number TEXT,
                     production_date TEXT,
+                    borrow_qty REAL,
                     is_controlled INTEGER DEFAULT 0,
                     borrow_time TEXT,
+                    borrow_status TEXT DEFAULT '已批准',
                     approver TEXT,
+                    approver_id TEXT,
                     approval_file TEXT,
                     approved INTEGER,
                     is_violation INTEGER DEFAULT 0,
@@ -323,46 +344,83 @@ class Database:
         try:
             cursor = self.connection.cursor()
 
-            # 迁移：reagent_bottle 表增加 expired_flag 字段
-            cursor.execute("PRAGMA table_info(reagent_bottle)")
-            columns = {row[1] for row in cursor.fetchall()}
-            if "expired_flag" not in columns:
-                cursor.execute(
-                    "ALTER TABLE reagent_bottle ADD COLUMN expired_flag TEXT DEFAULT '正常'"
-                )
-                logger.info("迁移完成：reagent_bottle 表添加 expired_flag 字段")
+            # ── person 表迁移 ──
+            cursor.execute("PRAGMA table_info(person)")
+            person_cols = {row[1] for row in cursor.fetchall()}
+            if "user_id" not in person_cols:
+                cursor.execute("ALTER TABLE person ADD COLUMN user_id TEXT")
+                logger.info("迁移完成：person 表添加 user_id 字段")
+            if "password" not in person_cols:
+                cursor.execute("ALTER TABLE person ADD COLUMN password TEXT DEFAULT '123456'")
+                logger.info("迁移完成：person 表添加 password 字段")
+            if "display_name" not in person_cols:
+                cursor.execute("ALTER TABLE person ADD COLUMN display_name TEXT")
+                logger.info("迁移完成：person 表添加 display_name 字段")
 
-            # 迁移：chemical_info 表增加 unsealed_shelf_life 和 sealed_shelf_life 字段
+            # 为已有用户自动生成 user_id
+            existing = cursor.execute("SELECT id, name, user_id, display_name FROM person").fetchall()
+            for row in existing:
+                pid, name, uid, dn = row
+                if not uid:
+                    import hashlib
+                    uid = "U" + hashlib.md5(name.encode()).hexdigest()[:8].upper()
+                    cursor.execute("UPDATE person SET user_id=? WHERE id=?", (uid, pid))
+                if not dn:
+                    cursor.execute("UPDATE person SET display_name=? WHERE id=?", (name, pid))
+            self.connection.commit()
+
+            # ── reagent_bottle 表迁移 ──
+            cursor.execute("PRAGMA table_info(reagent_bottle)")
+            bottle_cols = {row[1] for row in cursor.fetchall()}
+            if "expired_flag" not in bottle_cols:
+                cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN expired_flag TEXT DEFAULT '正常'")
+                logger.info("迁移完成：reagent_bottle 表添加 expired_flag 字段")
+            if "creator" not in bottle_cols:
+                cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN creator TEXT")
+                logger.info("迁移完成：reagent_bottle 表添加 creator 字段")
+            if "creator_name" not in bottle_cols:
+                cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN creator_name TEXT")
+                logger.info("迁移完成：reagent_bottle 表添加 creator_name 字段")
+
+            # ── borrow_record 表迁移 ──
+            cursor.execute("PRAGMA table_info(borrow_record)")
+            borrow_cols = {row[1] for row in cursor.fetchall()}
+            if "borrow_status" not in borrow_cols:
+                cursor.execute("ALTER TABLE borrow_record ADD COLUMN borrow_status TEXT DEFAULT '已批准'")
+                logger.info("迁移完成：borrow_record 表添加 borrow_status 字段")
+            if "borrow_qty" not in borrow_cols:
+                cursor.execute("ALTER TABLE borrow_record ADD COLUMN borrow_qty REAL")
+                logger.info("迁移完成：borrow_record 表添加 borrow_qty 字段")
+            if "approver_id" not in borrow_cols:
+                cursor.execute("ALTER TABLE borrow_record ADD COLUMN approver_id TEXT")
+                logger.info("迁移完成：borrow_record 表添加 approver_id 字段")
+
+            # ── user_admin 索引 ──
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_admin_user ON user_admin(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_admin_admin ON user_admin(admin_id)")
+
+            # ── 原有迁移 ──
             cursor.execute("PRAGMA table_info(chemical_info)")
             chem_columns = {row[1] for row in cursor.fetchall()}
             if "unsealed_shelf_life" not in chem_columns:
-                cursor.execute(
-                    "ALTER TABLE chemical_info ADD COLUMN unsealed_shelf_life INTEGER"
-                )
+                cursor.execute("ALTER TABLE chemical_info ADD COLUMN unsealed_shelf_life INTEGER")
                 logger.info("迁移完成：chemical_info 表添加 unsealed_shelf_life 字段")
             if "sealed_shelf_life" not in chem_columns:
-                cursor.execute(
-                    "ALTER TABLE chemical_info ADD COLUMN sealed_shelf_life INTEGER"
-                )
+                cursor.execute("ALTER TABLE chemical_info ADD COLUMN sealed_shelf_life INTEGER")
                 logger.info("迁移完成：chemical_info 表添加 sealed_shelf_life 字段")
 
-            # 迁移：reagent_type 表增加默认有效期字段
             cursor.execute("PRAGMA table_info(reagent_type)")
             rt_columns = {row[1] for row in cursor.fetchall()}
             if "default_unsealed_shelf_life" not in rt_columns:
-                cursor.execute(
-                    "ALTER TABLE reagent_type ADD COLUMN default_unsealed_shelf_life INTEGER"
-                )
+                cursor.execute("ALTER TABLE reagent_type ADD COLUMN default_unsealed_shelf_life INTEGER")
                 logger.info("迁移完成：reagent_type 表添加 default_unsealed_shelf_life 字段")
             if "default_sealed_shelf_life" not in rt_columns:
-                cursor.execute(
-                    "ALTER TABLE reagent_type ADD COLUMN default_sealed_shelf_life INTEGER"
-                )
+                cursor.execute("ALTER TABLE reagent_type ADD COLUMN default_sealed_shelf_life INTEGER")
                 logger.info("迁移完成：reagent_type 表添加 default_sealed_shelf_life 字段")
 
             self.connection.commit()
 
-            # 迁移：移除 chemical_info 表的 reagent_type 外键约束（支持多类型标签存储）
+            # 迁移：移除 chemical_info 表的 reagent_type 外键约束
             self._migrate_chemical_info_drop_reagent_type_fk()
 
         except Exception as e:

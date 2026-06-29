@@ -8,11 +8,18 @@ import os
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# ── 权限控制 ──────────────────────────────────────────────
+from components.auth import (
+    init_auth, require_login, render_auth_sidebar,
+    get_role, get_user_id, check_perm, require_perm,
+    can_add_reagent, can_edit_reagent, can_delete_reagent,
+    can_borrow, can_approve, can_approve_bottle,
+    can_manage_users, can_system_settings,
+)
 import streamlit as st
 from business.borrow_service import borrow_service
 from business.return_service import return_service
 from business.query_service import query_service
-from components.sidebar_nav import render_sidebar
 from utils.error_handler import logger
 
 def main():
@@ -21,7 +28,10 @@ def main():
     st.title("📤 试剂领用/归还")
     
     # 使用统一的侧边栏导航
-    render_sidebar()
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
     
     # 标签切换
     tab1, tab2 = st.tabs(["📥 试剂领用", "📤 试剂归还"])
@@ -29,6 +39,9 @@ def main():
     # 领用标签
     with tab1:
         st.subheader("试剂领用")
+        
+        if not require_perm(can_borrow, error_msg="仅教师及以上角色可以领用试剂"):
+            st.stop()
         
         if "borrow_cart" not in st.session_state:
             st.session_state.borrow_cart = []

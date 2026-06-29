@@ -53,4 +53,6 @@ class ReagentBottle:
     storage_requirement: Optional[str] = None  # 存储要求（文本类型，关联存储要求表）
     borrowable_check: Optional[bool] = None    # 可借标记判断（复选框类型）
     expired_flag: Optional[str] = None     # 过期状态（文本类型：正常/即将过期/已过期）
+    creator: Optional[str] = None          # 录入人 user_id
+    creator_name: Optional[str] = None     # 录入人显示名称
     id: Optional[int] = None       # 自增主键

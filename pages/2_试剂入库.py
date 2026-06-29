@@ -6,9 +6,16 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# ── 权限控制 ──────────────────────────────────────────────
+from components.auth import (
+    init_auth, require_login, render_auth_sidebar,
+    get_role, get_user_id, check_perm, require_perm,
+    can_add_reagent, can_edit_reagent, can_delete_reagent,
+    can_borrow, can_approve, can_approve_bottle,
+    can_manage_users, can_system_settings,
+)
 import streamlit as st
 from business.inventory_service import inventory_service
-from components.sidebar_nav import render_sidebar
 
 # 纯度选项（从业务需求定义）
 PURITY_OPTIONS = ["分析纯", "化学纯", "优级纯", "色谱纯", "光谱纯", "电子纯", "工业纯"]
@@ -18,7 +25,10 @@ def main():
     st.title("📦 试剂入库")
 
     # 使用统一的侧边栏导航
-    render_sidebar()
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
 
     # 获取下拉框数据源
     _result = inventory_service.get_available_chemical_names()
@@ -148,6 +158,8 @@ def main():
         submitted = st.form_submit_button("确认入库", type="primary", use_container_width=True)
 
         if submitted:
+            if not require_perm(can_add_reagent, error_msg="仅管理员可以新增试剂瓶"):
+                st.stop()
             if not selected_name:
                 st.error("请选择试剂名称")
             elif not cas_value:
