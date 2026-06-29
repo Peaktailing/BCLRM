@@ -60,6 +60,9 @@ from business.dashboard_service import dashboard_service
 # 化学品管理业务
 from business.chemical_service import chemical_manage_service
 
+# 过期判断业务
+from business.expiry_service import expiry_service
+
 # 权限业务
 from business.permission_service import permission_service
 
@@ -71,6 +74,8 @@ __all__ = [
     'query_service',
     'dashboard_service',
     'chemical_manage_service',
+    # 过期判断业务
+    'expiry_service',
     # 权限业务
     'permission_service',
 ]

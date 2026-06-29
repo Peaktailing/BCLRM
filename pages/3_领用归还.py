@@ -64,6 +64,7 @@ def main():
                     "规格": f"{reagent.specification}g" if reagent.specification else "-",
                     "纯度": reagent.purity or "-",
                     "启封日期": reagent.unseal_date or "-",
+                    "过期状态": reagent.expired_flag or "正常",
                     "状态": f"{status_color} {reagent.borrowable_flag}" if reagent.borrowable_flag else "-",
                     "存储位置": reagent.storage_location or "-",
                     "_bottle_number": reagent.bottle_number

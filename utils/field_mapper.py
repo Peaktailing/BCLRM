@@ -54,6 +54,8 @@ class ReagentBottleField:
     BORROWABLE_FLAG = 'borrowable_flag'  # 可借标记
     # ---- 可借标记判断（复选框类型）----
     BORROWABLE_CHECK = 'borrowable_check'  # 可借标记判断
+    # ---- 过期状态（文本类型：正常/即将过期/已过期）----
+    EXPIRED_FLAG = 'expired_flag'  # 过期状态
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 
