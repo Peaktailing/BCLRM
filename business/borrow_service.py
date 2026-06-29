@@ -228,6 +228,16 @@ class BorrowService:
             ReagentBottleField.BORROWABLE_FLAG: "已借出",
             ReagentBottleField.BORROWABLE_CHECK: False
         }
+
+        # 首次借出时写入启封日期（精确到小时），后续不再覆盖
+        existing_unseal = getattr(bottle, ReagentBottleField.UNSEAL_DATE, None)
+        if not existing_unseal:
+            updates[ReagentBottleField.UNSEAL_DATE] = current_time
+            logger.info(
+                "首次借出，写入启封日期",
+                bottle_number=bottle_number,
+                unseal_date=current_time
+            )
         self.bottle_service.update(bottle.id, updates)
 
         logger.info(
