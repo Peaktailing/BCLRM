@@ -21,7 +21,6 @@ export default function LoginForm() {
   });
   const [loggedInUser, setLoggedInUser] = useState<TestAccount | null>(null);
 
-  // 加载记住的工号
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -37,12 +36,8 @@ export default function LoginForm() {
 
   const validate = () => {
     const newErrors: { workId?: string; password?: string } = {};
-    if (!workId.trim()) {
-      newErrors.workId = "请输入工号";
-    }
-    if (!password.trim()) {
-      newErrors.password = "请输入密码";
-    }
+    if (!workId.trim()) newErrors.workId = "请输入工号";
+    if (!password.trim()) newErrors.password = "请输入密码";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -50,7 +45,6 @@ export default function LoginForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-
     setLoading(true);
     const result = await mockLogin(workId, password);
     setLoading(false);
@@ -80,40 +74,35 @@ export default function LoginForm() {
       <>
         <Toast {...toast} />
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
+          transition={{ duration: 0.3 }}
           className="space-y-6"
         >
           <div className="text-center">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-              className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border-2"
-              style={{
-                borderColor: "#00d4ff",
-                background: "rgba(0, 212, 255, 0.1)",
-                boxShadow: "0 0 30px rgba(0, 212, 255, 0.3)",
-              }}
+              transition={{ delay: 0.15, type: "spring", stiffness: 200 }}
+              className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-100"
             >
-              <User size={32} className="text-lab-cyan" strokeWidth={1.5} />
+              <User size={32} className="text-primary" strokeWidth={1.5} />
             </motion.div>
-            <h3 className="font-display text-2xl font-bold text-lab-text text-glow-cyan">
+            <h3 className="text-2xl font-bold text-text-main">
               {loggedInUser.display_name}
             </h3>
-            <p className="mt-1 font-mono text-sm text-lab-muted">
+            <p className="mt-1 text-sm text-text-sub">
               {loggedInUser.department}
             </p>
-            <div className="mt-2 flex items-center justify-center gap-2 font-mono text-xs text-lab-muted">
+            <div className="mt-2 flex items-center justify-center gap-2 text-xs text-text-sub">
               <span>工号: {loggedInUser.work_id}</span>
-              <span className="text-lab-border">|</span>
+              <span className="text-border-medium">|</span>
               <span>角色: {loggedInUser.role}</span>
             </div>
           </div>
 
-          <div className="rounded-lg border border-lab-border bg-lab-card p-4 backdrop-blur-sm">
-            <p className="text-center font-mono text-xs text-lab-muted">
+          <div className="rounded-lg border border-border-light bg-bg-sub p-4">
+            <p className="text-center text-xs text-text-sub">
               演示模式 - 登录成功后此处将跳转至对应角色的系统主页
             </p>
           </div>
@@ -124,7 +113,7 @@ export default function LoginForm() {
               setWorkId("");
               setPassword("");
             }}
-            className="w-full rounded-lg border border-lab-border bg-lab-card py-2.5 font-mono text-sm text-lab-muted transition-colors hover:border-lab-cyan/50 hover:text-lab-cyan"
+            className="w-full rounded-lg border border-border-medium bg-white py-2.5 text-sm text-text-sub transition-colors hover:border-primary hover:text-primary"
           >
             重新登录
           </button>
@@ -139,7 +128,7 @@ export default function LoginForm() {
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* 工号输入 */}
         <div>
-          <label className="mb-2 flex items-center gap-1.5 font-mono text-xs text-lab-muted">
+          <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-sub">
             <User size={14} strokeWidth={2} />
             工号
           </label>
@@ -152,15 +141,15 @@ export default function LoginForm() {
                 if (errors.workId) setErrors((p) => ({ ...p, workId: undefined }));
               }}
               placeholder="请输入工号"
-              className={`w-full rounded-lg border bg-lab-card/50 px-4 py-3 pl-11 font-mono text-sm text-lab-text placeholder:text-lab-muted/50 backdrop-blur-sm outline-none transition-all focus:bg-lab-card focus:glow-cyan ${
+              className={`w-full rounded-lg border bg-white px-4 py-2.5 pl-10 text-sm text-text-main placeholder:text-text-muted outline-none transition-all focus:ring-2 ${
                 errors.workId
-                  ? "border-red-500/50"
-                  : "border-lab-border focus:border-lab-cyan/50"
+                  ? "border-red-400 focus:ring-red-100"
+                  : "border-border-medium focus:border-primary focus:ring-primary/10"
               }`}
             />
             <User
               size={16}
-              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lab-muted"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted"
               strokeWidth={1.5}
             />
           </div>
@@ -170,7 +159,7 @@ export default function LoginForm() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mt-1.5 flex items-center gap-1 font-mono text-xs text-red-400"
+                className="mt-1 flex items-center gap-1 text-xs text-red-500"
               >
                 <AlertCircle size={12} />
                 {errors.workId}
@@ -181,7 +170,7 @@ export default function LoginForm() {
 
         {/* 密码输入 */}
         <div>
-          <label className="mb-2 flex items-center gap-1.5 font-mono text-xs text-lab-muted">
+          <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-sub">
             <Lock size={14} strokeWidth={2} />
             密码
           </label>
@@ -194,21 +183,21 @@ export default function LoginForm() {
                 if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
               }}
               placeholder="请输入密码"
-              className={`w-full rounded-lg border bg-lab-card/50 px-4 py-3 pl-11 pr-11 font-mono text-sm text-lab-text placeholder:text-lab-muted/50 backdrop-blur-sm outline-none transition-all focus:bg-lab-card focus:glow-cyan ${
+              className={`w-full rounded-lg border bg-white px-4 py-2.5 pl-10 pr-10 text-sm text-text-main placeholder:text-text-muted outline-none transition-all focus:ring-2 ${
                 errors.password
-                  ? "border-red-500/50"
-                  : "border-lab-border focus:border-lab-cyan/50"
+                  ? "border-red-400 focus:ring-red-100"
+                  : "border-border-medium focus:border-primary focus:ring-primary/10"
               }`}
             />
             <Lock
               size={16}
-              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lab-muted"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted"
               strokeWidth={1.5}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-lab-muted transition-colors hover:text-lab-cyan"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted transition-colors hover:text-primary"
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -219,7 +208,7 @@ export default function LoginForm() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mt-1.5 flex items-center gap-1 font-mono text-xs text-red-400"
+                className="mt-1 flex items-center gap-1 text-xs text-red-500"
               >
                 <AlertCircle size={12} />
                 {errors.password}
@@ -234,29 +223,27 @@ export default function LoginForm() {
             type="button"
             onClick={() => setRemember(!remember)}
             className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
-              remember
-                ? "border-lab-cyan bg-lab-cyan/20"
-                : "border-lab-border"
+              remember ? "border-primary bg-primary" : "border-border-medium bg-white"
             }`}
           >
             {remember && (
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="h-2 w-2 rounded-sm bg-lab-cyan"
+                className="h-2 w-2 rounded-sm bg-white"
               />
             )}
           </button>
-          <span className="font-mono text-xs text-lab-muted">记住工号</span>
+          <span className="text-xs text-text-sub">记住工号</span>
         </div>
 
         {/* 登录按钮 */}
         <motion.button
           type="submit"
           disabled={loading}
-          whileHover={{ scale: loading ? 1 : 1.02 }}
-          whileTap={{ scale: loading ? 1 : 0.98 }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-lab-cyan/40 bg-gradient-to-r from-lab-cyan/20 via-lab-teal/20 to-lab-cyan/20 py-3 font-display text-sm font-semibold tracking-wider text-lab-cyan backdrop-blur-sm transition-all hover:from-lab-cyan/30 hover:via-lab-teal/30 hover:to-lab-cyan/30 hover:glow-cyan-strong disabled:opacity-50"
+          whileHover={{ scale: loading ? 1 : 1.01 }}
+          whileTap={{ scale: loading ? 1 : 0.99 }}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-white shadow-primary transition-all hover:bg-primary-dark hover:shadow-primary-hover disabled:opacity-60"
         >
           {loading ? (
             <>
@@ -266,7 +253,7 @@ export default function LoginForm() {
           ) : (
             <>
               <LogIn size={18} strokeWidth={2} />
-              <span>登 录 系 统</span>
+              <span>登录系统</span>
             </>
           )}
         </motion.button>

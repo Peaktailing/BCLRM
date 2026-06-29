@@ -1,7 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 
 export default {
-  darkMode: "class",
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     container: {
@@ -9,38 +8,48 @@ export default {
     },
     extend: {
       colors: {
-        "lab-bg": "#0a0e1a",
-        "lab-card": "rgba(15,23,42,0.6)",
-        "lab-cyan": "#00d4ff",
-        "lab-teal": "#14b8a6",
-        "lab-amber": "#f59e0b",
-        "lab-text": "#e2e8f0",
-        "lab-muted": "#64748b",
-        "lab-border": "rgba(0,212,255,0.2)",
+        primary: "#FF6B6B",
+        "primary-dark": "#ee5a52",
+        "primary-light": "#ff8a8a",
+        "primary-50": "#fff5f5",
+        "primary-100": "#ffe8e8",
+        "bg-main": "#FFFFFF",
+        "bg-sub": "#F8F9FA",
+        "bg-card": "#FFFFFF",
+        "text-main": "#262730",
+        "text-sub": "#6c757d",
+        "text-muted": "#adb5bd",
+        "border-light": "#e9ecef",
+        "border-medium": "#dee2e6",
       },
       fontFamily: {
-        display: ["Orbitron", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        sans: ["Noto Sans SC", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+      },
+      boxShadow: {
+        card: "0 2px 8px rgba(0, 0, 0, 0.06)",
+        "card-hover": "0 4px 16px rgba(0, 0, 0, 0.1)",
+        primary: "0 4px 12px rgba(255, 107, 107, 0.3)",
+        "primary-hover": "0 6px 20px rgba(255, 107, 107, 0.4)",
       },
       animation: {
-        "molecule-rotate": "rotate 30s linear infinite",
-        "molecule-float": "moleculeFloat 8s ease-in-out infinite",
-        "glow-pulse": "glowPulse 3s ease-in-out infinite",
-        "particle-drift": "particleDrift 20s linear infinite",
-        "spin-slow": "spin 1.5s linear infinite",
+        "fade-in": "fadeIn 0.4s ease-out",
+        "slide-up": "slideUp 0.5s ease-out",
+        "blob-drift": "blobDrift 25s ease-in-out infinite",
+        "blob-drift-slow": "blobDrift 35s ease-in-out infinite",
       },
       keyframes: {
-        moleculeFloat: {
-          "0%, 100%": { transform: "translateY(0px) rotate(0deg)" },
-          "50%": { transform: "translateY(-20px) rotate(180deg)" },
+        fadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
         },
-        glowPulse: {
-          "0%, 100%": { opacity: "0.4" },
-          "50%": { opacity: "0.8" },
+        slideUp: {
+          "0%": { opacity: "0", transform: "translateY(16px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
-        particleDrift: {
-          "0%": { transform: "translate(0, 0)" },
-          "100%": { transform: "translate(100px, -100px)" },
+        blobDrift: {
+          "0%, 100%": { transform: "translate(0, 0) scale(1)" },
+          "33%": { transform: "translate(30px, -30px) scale(1.1)" },
+          "66%": { transform: "translate(-20px, 20px) scale(0.95)" },
         },
       },
     },
