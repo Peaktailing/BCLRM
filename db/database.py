@@ -357,6 +357,51 @@ class Database:
                 cursor.execute("ALTER TABLE person ADD COLUMN display_name TEXT")
                 logger.info("迁移完成：person 表添加 display_name 字段")
 
+            # 确保 person.user_id 有 UNIQUE 约束（user_admin 外键引用需要）
+            # SQLite 的 ALTER TABLE 不支持添加约束，需要重建表
+            cursor.execute("PRAGMA index_list('person')")
+            has_user_id_unique = False
+            for idx in cursor.fetchall():
+                # idx: (seq, name, unique, origin, partial)
+                if idx[2] == 1:  # unique index
+                    cursor.execute(f"PRAGMA index_info('{idx[1]}')")
+                    for col in cursor.fetchall():
+                        # col: (cid, name, seqno_in_index...); col[2] is column name
+                        if col[2] == 'user_id':
+                            has_user_id_unique = True
+                            break
+            if not has_user_id_unique:
+                logger.info("迁移：重建 person 表以添加 user_id UNIQUE 约束")
+                cursor.execute("PRAGMA foreign_keys=OFF")
+                cursor.execute("""
+                    CREATE TABLE person_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id TEXT UNIQUE,
+                        name TEXT NOT NULL UNIQUE,
+                        password TEXT DEFAULT '123456',
+                        role TEXT,
+                        department TEXT,
+                        phone TEXT,
+                        student_or_work_id TEXT,
+                        display_name TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    INSERT INTO person_new
+                        (id, user_id, name, password, role, department, phone,
+                         student_or_work_id, display_name, created_at, updated_at)
+                    SELECT id, user_id, name, password, role, department, phone,
+                           student_or_work_id, display_name, created_at, updated_at
+                    FROM person
+                """)
+                cursor.execute("DROP TABLE person")
+                cursor.execute("ALTER TABLE person_new RENAME TO person")
+                cursor.execute("PRAGMA foreign_key_check")
+                cursor.execute("PRAGMA foreign_keys=ON")
+                logger.info("迁移完成：person 表 user_id UNIQUE 约束已添加")
+
             # 为已有用户自动生成 user_id
             existing = cursor.execute("SELECT id, name, user_id, display_name FROM person").fetchall()
             for row in existing:
