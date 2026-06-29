@@ -52,4 +52,5 @@ class ReagentBottle:
     is_controlled: Optional[int] = None    # 是否管控（0=否，1=是）
     storage_requirement: Optional[str] = None  # 存储要求（文本类型，关联存储要求表）
     borrowable_check: Optional[bool] = None    # 可借标记判断（复选框类型）
+    expired_flag: Optional[str] = None     # 过期状态（文本类型：正常/即将过期/已过期）
     id: Optional[int] = None       # 自增主键

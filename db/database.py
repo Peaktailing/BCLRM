@@ -209,6 +209,7 @@ class Database:
                     storage_location TEXT,
                     borrowable_flag TEXT DEFAULT '可借',
                     borrowable_check INTEGER DEFAULT 1,
+                    expired_flag TEXT DEFAULT '正常',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (supplier) REFERENCES supplier(name),
@@ -306,10 +307,29 @@ class Database:
             self.connection.commit()
             logger.info("数据库表初始化完成")
 
+            # 数据库迁移：为已有表添加新字段
+            self._run_migrations()
+
         except Exception as e:
             self.connection.rollback()
             logger.error(f"数据库表初始化失败: {str(e)}", exception=e)
             raise
+
+    def _run_migrations(self):
+        """执行数据库迁移（为已有表补充新字段）"""
+        try:
+            cursor = self.connection.cursor()
+            # 迁移：reagent_bottle 表增加 expired_flag 字段
+            cursor.execute("PRAGMA table_info(reagent_bottle)")
+            columns = {row[1] for row in cursor.fetchall()}
+            if "expired_flag" not in columns:
+                cursor.execute(
+                    "ALTER TABLE reagent_bottle ADD COLUMN expired_flag TEXT DEFAULT '正常'"
+                )
+                logger.info("迁移完成：reagent_bottle 表添加 expired_flag 字段")
+                self.connection.commit()
+        except Exception as e:
+            logger.warning(f"数据库迁移执行异常（可忽略）: {str(e)}")
 
     def execute_query(self, query: str, params: tuple = None) -> list:
         """执行查询语句

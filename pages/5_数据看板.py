@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 import matplotlib.pyplot as plt
 from business.dashboard_service import dashboard_service
+from business.expiry_service import expiry_service
 from components.sidebar_nav import render_sidebar
 
 def main():
@@ -46,6 +47,20 @@ def main():
         st.metric("已耗尽", inventory_stats["exhausted"])
     with col5:
         st.metric("总剩余量", f"{inventory_stats['total_quantity']}g")
+    
+    st.divider()
+
+    # 过期状态概览
+    st.subheader("过期状态概览")
+    _expiry_result = expiry_service.get_expiry_stats()
+    expiry_stats = _expiry_result.data if _expiry_result.is_success() else {}
+    ec1, ec2, ec3 = st.columns(3)
+    with ec1:
+        st.metric("✅ 正常", expiry_stats.get("normal", 0))
+    with ec2:
+        st.metric("⚠️ 即将过期", expiry_stats.get("expiring", 0))
+    with ec3:
+        st.metric("❌ 已过期", expiry_stats.get("expired", 0))
     
     st.divider()
     

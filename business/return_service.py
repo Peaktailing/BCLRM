@@ -7,6 +7,7 @@
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
 from services.core.borrow_record_service import borrow_record_service
+from business.expiry_service import expiry_service
 from models.core.return_record import ReturnRecord
 from utils.id_generator import id_generator
 from utils.field_mapper import ReturnRecordField, ReagentBottleField, BorrowRecordField
@@ -218,7 +219,19 @@ class ReturnService:
             borrowable_flag=borrowable_flag
         )
 
-        # 9. 构造返回结果
+        # 9. 同步过期状态
+        try:
+            updated_bottle = self.bottle_service.get_by_bottle_number(bottle_number)
+            if updated_bottle:
+                expiry_service.check_and_update(updated_bottle)
+        except Exception as e:
+            logger.warning(
+                "同步过期状态失败",
+                bottle_number=bottle_number,
+                exception=e,
+            )
+
+        # 10. 构造返回结果
         result_data = {
             "record_id": rid,
             "return_number": return_num,

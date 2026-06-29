@@ -9,6 +9,7 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.borrow_record_service import borrow_record_service
 from services.core.return_record_service import return_record_service
 from services.base.controlled_list_service import controlled_list_service
+from business.expiry_service import expiry_service
 from models.core.reagent_bottle import ReagentBottle
 from models.base.controlled_list import ControlledList
 from utils.field_mapper import ReagentBottleField, BorrowRecordField, ReturnRecordField
@@ -151,6 +152,10 @@ class QueryService:
             borrowable_only=borrowable_only,
             result_count=len(results)
         )
+
+        # 同步过期状态
+        for bottle in results:
+            expiry_service.check_and_update(bottle)
 
         return ServiceResult.ok(
             data=results,
@@ -437,6 +442,10 @@ class QueryService:
             result_count=len(filtered_results)
         )
 
+        # 同步过期状态
+        for bottle in filtered_results:
+            expiry_service.check_and_update(bottle)
+
         return ServiceResult.ok(
             data=filtered_results,
             message=f"筛选到 {len(filtered_results)} 条匹配记录"
@@ -454,6 +463,10 @@ class QueryService:
             ServiceResult[List[ReagentBottle]]: 所有试剂瓶对象列表
         """
         all_bottles = self.bottle_service.get_all_parsed()
+
+        # 同步过期状态
+        for bottle in all_bottles:
+            expiry_service.check_and_update(bottle)
 
         logger.info(
             "获取所有试剂完成",

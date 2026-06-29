@@ -202,7 +202,8 @@ class ReagentBottleService(BaseService):
             last_return_record_no=record.get('last_return_record_no'),
             storage_location=record.get('storage_location'),
             borrowable_flag=record.get('borrowable_flag'),
-            borrowable_check=record.get('borrowable_check')
+            borrowable_check=record.get('borrowable_check'),
+            expired_flag=record.get('expired_flag'),
         )
 
 # 全局实例
