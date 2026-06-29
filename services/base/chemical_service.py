@@ -117,7 +117,9 @@ class ChemicalService(BaseService):
             msds=record.get('msds'),
             reagent_type=record.get('reagent_type'),
             storage_requirement=record.get('storage_requirement'),
-            controlled_type=record.get('controlled_type')
+            controlled_type=record.get('controlled_type'),
+            unsealed_shelf_life=record.get('unsealed_shelf_life'),
+            sealed_shelf_life=record.get('sealed_shelf_life'),
         )
 
 

@@ -177,6 +177,8 @@ class Database:
                     reagent_type TEXT,
                     storage_requirement TEXT,
                     controlled_type TEXT,
+                    unsealed_shelf_life INTEGER,
+                    sealed_shelf_life INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (reagent_type) REFERENCES reagent_type(name),
@@ -319,6 +321,7 @@ class Database:
         """执行数据库迁移（为已有表补充新字段）"""
         try:
             cursor = self.connection.cursor()
+
             # 迁移：reagent_bottle 表增加 expired_flag 字段
             cursor.execute("PRAGMA table_info(reagent_bottle)")
             columns = {row[1] for row in cursor.fetchall()}
@@ -327,7 +330,22 @@ class Database:
                     "ALTER TABLE reagent_bottle ADD COLUMN expired_flag TEXT DEFAULT '正常'"
                 )
                 logger.info("迁移完成：reagent_bottle 表添加 expired_flag 字段")
-                self.connection.commit()
+
+            # 迁移：chemical_info 表增加 unsealed_shelf_life 和 sealed_shelf_life 字段
+            cursor.execute("PRAGMA table_info(chemical_info)")
+            chem_columns = {row[1] for row in cursor.fetchall()}
+            if "unsealed_shelf_life" not in chem_columns:
+                cursor.execute(
+                    "ALTER TABLE chemical_info ADD COLUMN unsealed_shelf_life INTEGER"
+                )
+                logger.info("迁移完成：chemical_info 表添加 unsealed_shelf_life 字段")
+            if "sealed_shelf_life" not in chem_columns:
+                cursor.execute(
+                    "ALTER TABLE chemical_info ADD COLUMN sealed_shelf_life INTEGER"
+                )
+                logger.info("迁移完成：chemical_info 表添加 sealed_shelf_life 字段")
+
+            self.connection.commit()
         except Exception as e:
             logger.warning(f"数据库迁移执行异常（可忽略）: {str(e)}")
 

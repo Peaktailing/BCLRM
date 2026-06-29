@@ -49,6 +49,8 @@ def main():
         table_data = []
         for chemical in filtered_chemicals:
             controlled_badge = "🔴" if getattr(chemical, 'controlled_type', None) else "⚪"
+            unsealed = getattr(chemical, 'unsealed_shelf_life', None)
+            sealed = getattr(chemical, 'sealed_shelf_life', None)
             table_data.append({
                 "化学品名称": getattr(chemical, 'name', '-'),
                 "通用显示名称": getattr(chemical, 'display_name', '-'),
@@ -57,6 +59,8 @@ def main():
                 "试剂类型": getattr(chemical, 'reagent_type', '-'),
                 "存储要求": getattr(chemical, 'storage_requirement', '-'),
                 "管控类型": f"{controlled_badge} {getattr(chemical, 'controlled_type', '')}" if getattr(chemical, 'controlled_type', None) else "无",
+                "未启封有效期（天）": f"{unsealed}天" if unsealed else "默认730天",
+                "启封有效期（天）": f"{sealed}天" if sealed else "默认365天",
                 "MSDS": "✅" if getattr(chemical, 'msds', None) else "❌"
             })
         st.dataframe(table_data, use_container_width=True, hide_index=True)
@@ -126,6 +130,18 @@ def main():
                 type=MSDS_FILE_TYPES,
                 help=f"支持格式：{', '.join(MSDS_FILE_TYPES)}，大小限制：{MSDS_MAX_SIZE_MB}MB"
             )
+            unsealed_life = st.number_input(
+                "未启封有效时长（天）",
+                min_value=0,
+                value=730,
+                help="试剂未启封时的有效期（天），默认730天（2年），0表示永久有效"
+            )
+            sealed_life = st.number_input(
+                "启封有效时长（天）",
+                min_value=0,
+                value=365,
+                help="试剂启封后的有效期（天），默认365天（1年），0表示启封后永久有效"
+            )
 
         submitted = st.form_submit_button("添加化学品", type="primary", use_container_width=True)
 
@@ -138,7 +154,9 @@ def main():
                 cas=cas,
                 msds=msds_value,
                 reagent_type=reagent_type,
-                storage_requirement=storage_requirement
+                storage_requirement=storage_requirement,
+                unsealed_shelf_life=unsealed_life if unsealed_life > 0 else None,
+                sealed_shelf_life=sealed_life if sealed_life > 0 else None,
             )
 
             if _result.is_success():
@@ -222,6 +240,18 @@ def main():
                 with col2:
                     edit_display_name = st.text_input("通用显示名称", value=getattr(selected_chemical, 'display_name', ''))
                     edit_formula = st.text_input("化学式", value=getattr(selected_chemical, 'formula', ''))
+                    edit_unsealed_life = st.number_input(
+                        "未启封有效时长（天）",
+                        min_value=0,
+                        value=getattr(selected_chemical, 'unsealed_shelf_life', None) or 730,
+                        help="试剂未启封时的有效期（天），0表示永久有效"
+                    )
+                    edit_sealed_life = st.number_input(
+                        "启封有效时长（天）",
+                        min_value=0,
+                        value=getattr(selected_chemical, 'sealed_shelf_life', None) or 365,
+                        help="试剂启封后的有效期（天），0表示启封后永久有效"
+                    )
                     edit_msds = st.file_uploader(
                         "更新MSDS附件",
                         type=MSDS_FILE_TYPES,
@@ -240,7 +270,9 @@ def main():
                         cas=edit_cas,
                         msds=edit_msds_value,
                         reagent_type=edit_reagent_type,
-                        storage_requirement=edit_storage_requirement
+                        storage_requirement=edit_storage_requirement,
+                        unsealed_shelf_life=edit_unsealed_life if edit_unsealed_life > 0 else None,
+                        sealed_shelf_life=edit_sealed_life if edit_sealed_life > 0 else None,
                     )
 
                     if _result.is_success():
