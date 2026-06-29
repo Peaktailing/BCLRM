@@ -40,7 +40,7 @@ class BorrowService:
     @handle_exception(context="试剂领用")
     def reagent_borrow(
         self,
-        bottle_number: int,
+        bottle_number: str,
         user: str,
         borrow_qty: float
     ) -> ServiceResult:
@@ -50,7 +50,7 @@ class BorrowService:
         领用记录创建和库存更新。
 
         Args:
-            bottle_number: 试剂瓶编号
+            bottle_number: 试剂瓶编号（格式如：202606290001）
             user: 领用人姓名
             borrow_qty: 领用数量
 
@@ -59,13 +59,13 @@ class BorrowService:
                           失败时包含错误信息
         """
         # 参数校验
-        if not isinstance(bottle_number, int) or bottle_number <= 0:
+        if not bottle_number or not isinstance(bottle_number, str) or not bottle_number.strip():
             logger.warning(
                 "参数校验失败: 试剂瓶编号无效",
                 bottle_number=bottle_number
             )
             return ServiceResult.fail(
-                message="试剂瓶编号必须为正整数",
+                message="试剂瓶编号不能为空",
                 error_code="INVALID_BOTTLE_NUMBER"
             )
 
@@ -361,24 +361,24 @@ class BorrowService:
         return ServiceResult.ok(data=user_list, message=f"共 {len(user_list)} 个领用人")
 
     @handle_exception(context="获取指定试剂瓶最新领用记录")
-    def get_latest_borrow_record(self, bottle_number: int) -> ServiceResult:
+    def get_latest_borrow_record(self, bottle_number: str) -> ServiceResult:
         """获取指定试剂瓶的最新领用记录
 
         Args:
-            bottle_number: 试剂瓶编号
+            bottle_number: 试剂瓶编号（格式如：202606290001）
 
         Returns:
             ServiceResult: 查询结果，成功时 data 为最新的 BorrowRecord 对象，
                           没有记录时 data 为 None
         """
         # 参数校验
-        if not isinstance(bottle_number, int) or bottle_number <= 0:
+        if not bottle_number or not isinstance(bottle_number, str) or not bottle_number.strip():
             logger.warning(
                 "参数校验失败: 试剂瓶编号无效",
                 bottle_number=bottle_number
             )
             return ServiceResult.fail(
-                message="试剂瓶编号必须为正整数",
+                message="试剂瓶编号不能为空",
                 error_code="INVALID_BOTTLE_NUMBER"
             )
 

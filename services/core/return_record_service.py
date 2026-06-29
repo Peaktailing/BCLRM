@@ -34,11 +34,11 @@ class ReturnRecordService(BaseService):
             return self._parse_record(record)
         return None
 
-    def get_by_bottle_number(self, bottle_number: int) -> List[ReturnRecord]:
-        """查询某个试剂瓶的所有归还记录
+    def get_by_bottle_number(self, bottle_number: str) -> List[ReturnRecord]:
+        """通过试剂瓶编号查询归还记录
 
         Args:
-            bottle_number: 试剂瓶编号
+            bottle_number: 试剂瓶编号（格式如：202606290001）
 
         Returns:
             ReturnRecord对象列表
@@ -69,14 +69,14 @@ class ReturnRecordService(BaseService):
 
     def search_multi_condition(
         self,
-        bottle_number: Optional[int] = None,
+        bottle_number: Optional[str] = None,
         return_user: Optional[str] = None,
         order_by: str = None
     ) -> List[ReturnRecord]:
         """多条件数据库层查询归还记录（过滤在SQL层执行）
 
         Args:
-            bottle_number: 试剂瓶编号（精确匹配）
+            bottle_number: 试剂瓶编号（精确匹配，格式如：202606290001）
             return_user: 归还人（精确匹配）
             order_by: 排序字段
 
@@ -114,7 +114,7 @@ class ReturnRecordService(BaseService):
         return ReturnRecord(
             id=record.get('id'),
             return_number=record.get('return_number', 0),
-            bottle_number=record.get('bottle_number', 0),
+            bottle_number=record.get('bottle_number', ''),
             return_user=record.get('return_user', ""),
             return_time=record.get('return_time'),
             remaining_quantity=record.get('remaining_quantity', 0.0),

@@ -34,11 +34,11 @@ class BorrowRecordService(BaseService):
             return self._parse_record(record)
         return None
 
-    def get_by_bottle_number(self, bottle_number: int) -> List[BorrowRecord]:
-        """查询某个试剂瓶的所有领用记录
+    def get_by_bottle_number(self, bottle_number: str) -> List[BorrowRecord]:
+        """通过试剂瓶编号查询领用记录
 
         Args:
-            bottle_number: 试剂瓶编号
+            bottle_number: 试剂瓶编号（格式如：202606290001）
 
         Returns:
             BorrowRecord对象列表
@@ -84,7 +84,7 @@ class BorrowRecordService(BaseService):
 
     def search_multi_condition(
         self,
-        bottle_number: Optional[int] = None,
+        bottle_number: Optional[str] = None,
         user: Optional[str] = None,
         reagent_name: Optional[str] = None,
         order_by: str = None
@@ -92,7 +92,7 @@ class BorrowRecordService(BaseService):
         """多条件数据库层查询领用记录（过滤在SQL层执行）
 
         Args:
-            bottle_number: 试剂瓶编号（精确匹配）
+            bottle_number: 试剂瓶编号（精确匹配，格式如：202606290001）
             user: 领用人（精确匹配）
             reagent_name: 试剂名称（模糊匹配）
             order_by: 排序字段
@@ -138,7 +138,7 @@ class BorrowRecordService(BaseService):
         return BorrowRecord(
             id=record.get('id'),
             record_number=record.get('record_number', ""),
-            bottle_number=record.get('bottle_number', 0),
+            bottle_number=record.get('bottle_number', ''),
             reagent_name=record.get('reagent_name'),
             user=record.get('user', ""),
             cas_number=record.get('cas_number'),

@@ -259,8 +259,8 @@ class InventoryService:
 
         # 4. 生成试剂瓶编号
         bottle_no = self.id_generator.generate_bottle_number()
-        if bottle_no <= 0:
-            logger.error("生成试剂瓶编号失败")
+        if not bottle_no or len(bottle_no) < 12:
+            logger.error("生成试剂瓶编号失败", bottle_no=bottle_no)
             return ServiceResult.fail(
                 message="生成试剂瓶编号失败",
                 error_code="BOTTLE_NUMBER_GENERATION_FAILED"
@@ -287,7 +287,7 @@ class InventoryService:
             inventory_data[ReagentBottleField.PURITY] = purity
 
         if reagent_type:
-            inventory_data["reagent_type"] = reagent_type
+            inventory_data[ReagentBottleField.REAGENT_TYPE] = reagent_type
 
         if unit_price and unit_price > 0:
             inventory_data[ReagentBottleField.UNIT_PRICE] = unit_price

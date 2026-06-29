@@ -48,11 +48,11 @@ class ReagentBottleService(BaseService):
             return self._parse_record(record)
         return None
 
-    def get_by_bottle_number(self, bottle_number: int) -> Optional[ReagentBottle]:
-        """通过试剂瓶编号查询（主键查询）
+    def get_by_bottle_number(self, bottle_number: str) -> Optional[ReagentBottle]:
+        """通过试剂瓶编号查询试剂瓶
 
         Args:
-            bottle_number: 试剂瓶编号
+            bottle_number: 试剂瓶编号（格式如：202606290001）
 
         Returns:
             ReagentBottle对象或None
@@ -86,7 +86,7 @@ class ReagentBottleService(BaseService):
 
     def search_multi_condition(
         self,
-        bottle_number: Optional[int] = None,
+        bottle_number: Optional[str] = None,
         reagent_name: Optional[str] = None,
         cas_number: Optional[str] = None,
         supplier: Optional[str] = None,
@@ -98,7 +98,7 @@ class ReagentBottleService(BaseService):
         """多条件数据库层查询试剂瓶（过滤在SQL层执行）
 
         Args:
-            bottle_number: 试剂瓶编号（精确匹配）
+            bottle_number: 试剂瓶编号（精确匹配，格式如：202606290001）
             reagent_name: 试剂名称（模糊匹配）
             cas_number: CAS编号（精确匹配）
             supplier: 供应商（模糊匹配）
@@ -185,7 +185,7 @@ class ReagentBottleService(BaseService):
         """
         return ReagentBottle(
             id=record.get('id'),
-            bottle_number=record.get('bottle_number', 0),
+            bottle_number=record.get('bottle_number', ''),
             barcode=record.get('barcode'),
             reagent_name=record.get('reagent_name'),
             cas_number=record.get('cas_number'),

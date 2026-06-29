@@ -31,7 +31,7 @@ class ReagentBottle:
     
     系统主表，存储每个试剂瓶的详细信息，是所有业务操作的核心关联表。
     """
-    bottle_number: int            # 试剂瓶编号（主键，数字类型，唯一标识）
+    bottle_number: str            # 试剂瓶编号（主键，TEXT类型，格式：YYYYMMDD+NNNN，如202606290001）
     barcode: Optional[str] = None # 条码（文本类型，用于扫码识别）
     reagent_name: Optional[str] = None # 试剂名称（文本类型）
     cas_number: Optional[str] = None   # 试剂CAS编号（文本类型，化学品唯一标识）

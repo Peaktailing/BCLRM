@@ -24,7 +24,7 @@ class BorrowRecord:
     记录所有试剂领用操作，用于追踪试剂的使用历史和责任归属。
     """
     record_number: str            # 记录编号（主键，文本类型，格式：L+时间戳）
-    bottle_number: int            # 试剂瓶编号（数字类型，关联试剂瓶表）
+    bottle_number: str            # 试剂瓶编号（TEXT类型，关联试剂瓶表）
     user: str                     # 领用人（文本类型）
     reagent_name: Optional[str] = None    # 试剂名称（文本类型）
     cas_number: Optional[str] = None      # CAS号（文本类型）
