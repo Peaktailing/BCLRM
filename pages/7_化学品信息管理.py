@@ -42,7 +42,7 @@ def main():
     st.title("🧪 化学品信息管理")
 
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="化学品信息管理")
+    render_sidebar()
 
     # ========== 顶部：化学品列表 ==========
     st.subheader("📋 化学品列表")

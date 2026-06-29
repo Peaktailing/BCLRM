@@ -18,7 +18,7 @@ def main():
     st.title("📦 实时库存")
     
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="实时库存")
+    render_sidebar()
     
     # 获取所有试剂
     result = query_service.get_all_reagents()

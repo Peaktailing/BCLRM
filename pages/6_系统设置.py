@@ -19,7 +19,7 @@ def main():
     st.title("⚙️ 系统设置")
 
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="系统设置")
+    render_sidebar()
 
     # ========== 添加用户 ==========
     st.subheader("添加用户")

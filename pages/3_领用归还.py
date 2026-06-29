@@ -21,7 +21,7 @@ def main():
     st.title("📤 试剂领用/归还")
     
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="领用归还")
+    render_sidebar()
     
     # 标签切换
     tab1, tab2 = st.tabs(["📥 试剂领用", "📤 试剂归还"])

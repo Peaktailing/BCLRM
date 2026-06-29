@@ -18,7 +18,7 @@ def main():
     st.title("🔍 综合查询")
     
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="综合查询")
+    render_sidebar()
     
     # 标签切换
     tab1, tab2, tab3 = st.tabs(["🧪 试剂查询", "📥 领用历史", "📤 归还历史"])
