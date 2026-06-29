@@ -20,7 +20,7 @@ def main():
     st.title("📊 数据看板")
     
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="数据看板")
+    render_sidebar()
     
     # 获取统计数据
     _inv_result = dashboard_service.get_inventory_stats()

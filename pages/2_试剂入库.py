@@ -18,7 +18,7 @@ def main():
     st.title("📦 试剂入库")
 
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="试剂入库")
+    render_sidebar()
 
     # 获取下拉框数据源
     _result = inventory_service.get_available_chemical_names()

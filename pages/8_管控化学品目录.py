@@ -18,7 +18,7 @@ def main():
     st.title("📋 管控化学品目录")
 
     # 使用统一的侧边栏导航
-    render_sidebar(current_page="管控化学品目录")
+    render_sidebar()
 
     # 页面说明
     st.info("📋 本页面用于查看管控化学品名录，数据为只读。")
