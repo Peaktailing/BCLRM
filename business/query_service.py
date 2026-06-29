@@ -46,7 +46,7 @@ class QueryService:
     @handle_exception(context="多条件查询试剂")
     def search_reagents(
         self,
-        bottle_number: Optional[int] = None,
+        bottle_number: Optional[str] = None,
         reagent_name: Optional[str] = None,
         cas_number: Optional[str] = None,
         supplier: Optional[str] = None,
@@ -56,7 +56,7 @@ class QueryService:
         """多条件组合查询试剂（数据库层过滤）
 
         Args:
-            bottle_number: 试剂瓶编号（精确匹配）
+            bottle_number: 试剂瓶编号（精确匹配，格式如：202606290001）
             reagent_name: 试剂名称（模糊匹配）
             cas_number: CAS编号（精确匹配）
             supplier: 供应商（模糊匹配）
@@ -164,13 +164,13 @@ class QueryService:
     @handle_exception(context="查询领用历史")
     def get_borrow_history(
         self,
-        bottle_number: Optional[int] = None,
+        bottle_number: Optional[str] = None,
         user: Optional[str] = None
     ) -> ServiceResult[List[Dict[str, Any]]]:
         """查询领用历史记录（数据库层过滤）
 
         Args:
-            bottle_number: 试剂瓶编号（可选，过滤特定试剂瓶的记录）
+            bottle_number: 试剂瓶编号（可选，格式如：202606290001）
             user: 领用人姓名（可选，过滤特定用户的记录）
 
         Returns:
@@ -178,13 +178,13 @@ class QueryService:
         """
         # 参数校验
         if bottle_number is not None:
-            if not isinstance(bottle_number, int) or bottle_number <= 0:
+            if not isinstance(bottle_number, str) or not bottle_number.strip():
                 logger.warning(
                     "参数校验失败: 试剂瓶编号无效",
                     bottle_number=bottle_number
                 )
                 return ServiceResult.fail(
-                    message="试剂瓶编号必须为正整数",
+                    message="试剂瓶编号不能为空",
                     error_code="INVALID_BOTTLE_NUMBER"
                 )
 
@@ -243,13 +243,13 @@ class QueryService:
     @handle_exception(context="查询归还历史")
     def get_return_history(
         self,
-        bottle_number: Optional[int] = None,
+        bottle_number: Optional[str] = None,
         user: Optional[str] = None
     ) -> ServiceResult[List[Dict[str, Any]]]:
         """查询归还历史记录（数据库层过滤）
 
         Args:
-            bottle_number: 试剂瓶编号（可选，过滤特定试剂瓶的记录）
+            bottle_number: 试剂瓶编号（可选，格式如：202606290001）
             user: 归还人姓名（可选，过滤特定用户的记录）
 
         Returns:
@@ -257,13 +257,13 @@ class QueryService:
         """
         # 参数校验
         if bottle_number is not None:
-            if not isinstance(bottle_number, int) or bottle_number <= 0:
+            if not isinstance(bottle_number, str) or not bottle_number.strip():
                 logger.warning(
                     "参数校验失败: 试剂瓶编号无效",
                     bottle_number=bottle_number
                 )
                 return ServiceResult.fail(
-                    message="试剂瓶编号必须为正整数",
+                    message="试剂瓶编号不能为空",
                     error_code="INVALID_BOTTLE_NUMBER"
                 )
 

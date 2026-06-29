@@ -188,7 +188,7 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reagent_bottle (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    bottle_number INTEGER NOT NULL UNIQUE,
+                    bottle_number TEXT NOT NULL UNIQUE,
                     barcode TEXT,
                     reagent_name TEXT,
                     cas_number TEXT,
@@ -221,7 +221,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS borrow_record (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     record_number TEXT NOT NULL UNIQUE,
-                    bottle_number INTEGER NOT NULL,
+                    bottle_number TEXT NOT NULL,
                     reagent_name TEXT,
                     user TEXT NOT NULL,
                     cas_number TEXT,
@@ -232,6 +232,9 @@ class Database:
                     approval_file TEXT,
                     approved INTEGER,
                     is_violation INTEGER DEFAULT 0,
+                    linked_return_record_number TEXT,
+                    last_update_time TEXT,
+                    modifier TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (bottle_number) REFERENCES reagent_bottle(bottle_number),
@@ -244,10 +247,11 @@ class Database:
                 CREATE TABLE IF NOT EXISTS return_record (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     return_number INTEGER NOT NULL UNIQUE,
-                    bottle_number INTEGER NOT NULL,
+                    bottle_number TEXT NOT NULL,
                     return_user TEXT NOT NULL,
                     return_time TEXT,
                     remaining_quantity REAL,
+                    linked_borrow_record_number TEXT,
                     last_update_time TEXT,
                     modifier TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

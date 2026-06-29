@@ -41,7 +41,7 @@ class ReturnService:
     @handle_exception(context="试剂归还")
     def reagent_return(
         self,
-        bottle_number: int,
+        bottle_number: str,
         return_user: str,
         remaining_qty: float
     ) -> ServiceResult:
@@ -51,7 +51,7 @@ class ReturnService:
         领用记录关联更新和试剂瓶库存更新。
 
         Args:
-            bottle_number: 试剂瓶编号
+            bottle_number: 试剂瓶编号（格式如：202606290001）
             return_user: 归还人姓名
             remaining_qty: 归还时的剩余量
 
@@ -60,13 +60,13 @@ class ReturnService:
                           失败时包含错误信息
         """
         # 参数校验
-        if not isinstance(bottle_number, int) or bottle_number <= 0:
+        if not bottle_number or not isinstance(bottle_number, str) or not bottle_number.strip():
             logger.warning(
                 "参数校验失败: 试剂瓶编号无效",
                 bottle_number=bottle_number
             )
             return ServiceResult.fail(
-                message="试剂瓶编号必须为正整数",
+                message="试剂瓶编号不能为空",
                 error_code="INVALID_BOTTLE_NUMBER"
             )
 
@@ -269,7 +269,7 @@ class ReturnService:
         fail_details = []
 
         for item in return_list:
-            bottle_number = item.get("bottle_number", 0)
+            bottle_number = item.get("bottle_number", "")
             return_user = item.get("return_user", "")
             remaining_qty = item.get("remaining_qty", 0.0)
 

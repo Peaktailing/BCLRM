@@ -61,11 +61,7 @@ from business.dashboard_service import dashboard_service
 from business.chemical_service import chemical_manage_service
 
 # 权限业务
-from business.permission_service import (
-    check_permission,
-    can_borrow_controlled,
-    is_admin
-)
+from business.permission_service import permission_service
 
 __all__ = [
     # 业务服务实例
@@ -75,8 +71,6 @@ __all__ = [
     'query_service',
     'dashboard_service',
     'chemical_manage_service',
-    # 权限业务（过程式函数）
-    'check_permission',
-    'can_borrow_controlled',
-    'is_admin',
+    # 权限业务
+    'permission_service',
 ]

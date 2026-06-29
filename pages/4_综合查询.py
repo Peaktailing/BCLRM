@@ -30,8 +30,8 @@ def main():
         # 查询条件
         col1, col2, col3 = st.columns(3)
         with col1:
-            bottle_number = st.number_input("试剂瓶编号", min_value=0, step=1, help="精确匹配")
-            bottle_number = bottle_number if bottle_number > 0 else None
+            bottle_number = st.text_input("试剂瓶编号", help="精确匹配，格式如：202606290001")
+            bottle_number = bottle_number if bottle_number.strip() else None
         with col2:
             reagent_name = st.text_input("试剂名称", help="模糊匹配")
         with col3:
@@ -86,8 +86,8 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            bottle_number = st.number_input("试剂瓶编号", min_value=0, step=1, key="borrow_bottle")
-            bottle_number = bottle_number if bottle_number > 0 else None
+            bottle_number = st.text_input("试剂瓶编号", key="borrow_bottle", help="格式如：202606290001")
+            bottle_number = bottle_number if bottle_number.strip() else None
         with col2:
             user = st.text_input("领用人")
         
@@ -119,8 +119,8 @@ def main():
         
         col1, col2 = st.columns(2)
         with col1:
-            bottle_number = st.number_input("试剂瓶编号", min_value=0, step=1, key="return_bottle")
-            bottle_number = bottle_number if bottle_number > 0 else None
+            bottle_number = st.text_input("试剂瓶编号", key="return_bottle", help="格式如：202606290001")
+            bottle_number = bottle_number if bottle_number.strip() else None
         with col2:
             user = st.text_input("归还人")
         

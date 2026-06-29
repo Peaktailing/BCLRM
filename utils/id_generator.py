@@ -17,7 +17,7 @@ class IDGenerator:
     统一管理系统中所有编号的生成逻辑，确保编号规则的一致性和可维护性。
 
     支持的编号类型：
-        - 试剂瓶编号：自增正整数
+        - 试剂瓶编号：日期 + 4位序号（如 202606290001）
         - 试剂瓶条码：日期 + 4位序号（如 202605210001）
         - 领用记录编号：L + 时间戳（如 L20260521143025）
         - 归还记录编号：时间戳数字（如 20260521143025）
@@ -37,40 +37,36 @@ class IDGenerator:
         self._initialized = True
 
     # ------------------------------------------------------------------
-    # 1. 试剂瓶编号生成（自增数字）
+    # 1. 试剂瓶编号生成（日期+四位自增）
     # ------------------------------------------------------------------
-    def generate_bottle_number(self) -> int:
-        """生成下一个试剂瓶编号（自增正整数）
+    def generate_bottle_number(self) -> str:
+        """生成下一个试剂瓶编号（日期+四位自增）
 
-        查询当前所有试剂瓶的最大编号，返回最大值 + 1。
+        格式：YYYYMMDD + 4位自增数字（例：202606290001）
+        同一日期内从 0001 开始自增，次日重置为 0001。
 
         Returns:
-            下一个试剂瓶编号，失败返回 0
+            试剂瓶编号字符串，失败返回当天 0001
 
         Examples:
             >>> generator = IDGenerator()
             >>> generator.generate_bottle_number()
-            42
+            '202606290003'
         """
+        today = datetime.now().strftime("%Y%m%d")
         try:
             from services.core.reagent_bottle_service import reagent_bottle_service
             bottles = reagent_bottle_service.get_all_parsed()
-            if not bottles:
-                return 1
+            today_count = sum(
+                1 for bottle in bottles
+                if bottle.bottle_number and str(bottle.bottle_number).startswith(today)
+            )
 
-            valid_numbers = [
-                bottle.bottle_number
-                for bottle in bottles
-                if bottle.bottle_number and isinstance(bottle.bottle_number, (int, float))
-            ]
-
-            if not valid_numbers:
-                return 1
-
-            return max(valid_numbers) + 1
+            seq_num = today_count + 1
+            return f"{today}{seq_num:04d}"
         except Exception as e:
             logger.error(f"[IDGenerator] 生成试剂瓶编号时发生错误: {e}", exception=e)
-            return 0
+            return f"{today}0001"
 
     # ------------------------------------------------------------------
     # 2. 条码生成（日期+序号）

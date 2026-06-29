@@ -18,7 +18,7 @@ class ReagentBottleField:
 
     系统主表，存储每个试剂瓶的详细信息，是所有业务操作的核心关联表。
     """
-    # ---- 试剂瓶编号（主键，数字类型，唯一标识）----
+    # ---- 试剂瓶编号（主键，TEXT类型，格式：YYYYMMDD+NNNN，如202606290001）----
     BOTTLE_NUMBER = 'bottle_number'  # 试剂瓶编号
     # ---- 条码（文本类型，用于扫码识别）----
     BARCODE = 'barcode'  # 条码
