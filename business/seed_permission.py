@@ -5,15 +5,15 @@
 from db.database import db
 from utils.error_handler import logger
 
-# 格式: (user_id, name, password, role, department, work_id, display_name)
+# 格式: (user_id, name, password, role, department, work_id, display_name, phone)
 SEED_USERS = [
-    ("SA001", "系统管理员", "admin123", "super_admin", "系统管理部", "root", "系统管理员"),
-    ("AD001", "张管理", "123456", "admin", "化学实验室", "zhang", "张管理"),
-    ("AD002", "李管理", "123456", "admin", "生物实验室", "li", "李管理"),
-    ("TE001", "王教授", "123456", "teacher", "化学系", "wang", "王教授"),
-    ("TE002", "赵教授", "123456", "teacher", "生物系", "zhao", "赵教授"),
-    ("ST001", "小学生", "123456", "student", "化学系", "stu1", "小学生"),
-    ("ST002", "中学生", "123456", "student", "生物系", "stu2", "中学生"),
+    ("SA001", "系统管理员", "SysAdmin@2024", "super_admin", "系统管理部", "root", "系统管理员", "13800000001"),
+    ("AD001", "张管理", "Zhang@1234", "admin", "化学实验室", "zhang", "张管理", "13800000002"),
+    ("AD002", "李管理", "LiManager@12", "admin", "生物实验室", "li", "李管理", "13800000003"),
+    ("TE001", "王教授", "Wang@1234", "teacher", "化学系", "wang", "王教授", "13800000004"),
+    ("TE002", "赵教授", "Zhao@1234", "teacher", "生物系", "zhao", "赵教授", "13800000005"),
+    ("ST001", "小学生", "Student@12", "student", "化学系", "stu1", "小学生", "13800000006"),
+    ("ST002", "中学生", "Student@12", "student", "生物系", "stu2", "中学生", "13800000007"),
 ]
 
 # 用户-管理员关联: (user_id, admin_id)
@@ -31,12 +31,12 @@ def seed_permission_data():
         cursor = db.connection.cursor()
 
         # 插入用户
-        for uid, name, pwd, role, dept, work_id, dn in SEED_USERS:
+        for uid, name, pwd, role, dept, work_id, dn, phone in SEED_USERS:
             cursor.execute(
                 """INSERT OR IGNORE INTO person
-                   (user_id, name, password, role, department, student_or_work_id, display_name)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (uid, name, pwd, role, dept, work_id, dn),
+                   (user_id, name, password, role, department, student_or_work_id, display_name, phone)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (uid, name, pwd, role, dept, work_id, dn, phone),
             )
 
         # 插入用户-管理员关联

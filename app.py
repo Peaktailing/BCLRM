@@ -107,6 +107,7 @@ for col, (title, desc, link, allowed) in zip([col4, col5, col6], cards_row2):
 # 第三行
 cards_row3 = [
     ("📋 管控化学品目录", "查看管控化学品名录", "pages/8_管控化学品目录.py", True),
+    ("👥 人员管理", "管理用户和权限", "pages/9_人员管理.py", can_manage_users(role)[0]),
     ("⚙️ 系统设置", "系统配置和数据查看", "pages/6_系统设置.py", can_system_settings(role)[0]),
 ]
 col7, col8, col9 = st.columns(3)

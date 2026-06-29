@@ -356,6 +356,9 @@ class Database:
             if "display_name" not in person_cols:
                 cursor.execute("ALTER TABLE person ADD COLUMN display_name TEXT")
                 logger.info("迁移完成：person 表添加 display_name 字段")
+            if "phone" not in person_cols:
+                cursor.execute("ALTER TABLE person ADD COLUMN phone TEXT")
+                logger.info("迁移完成：person 表添加 phone 字段")
 
             # 确保 person.user_id 有 UNIQUE 约束（user_admin 外键引用需要）
             # SQLite 的 ALTER TABLE 不支持添加约束，需要重建表

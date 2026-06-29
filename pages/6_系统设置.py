@@ -1,6 +1,6 @@
 """系统设置页面
 
-提供用户管理功能。
+提供数据库数据查看功能。
 """
 import sys
 import os
@@ -34,46 +34,10 @@ def main():
     if not require_perm(can_system_settings, error_msg="仅超级管理员可以访问系统设置"):
         st.stop()
 
-    # ========== 添加用户 ==========
-    st.subheader("添加用户")
-    st.info("💡 添加普通用户，权限问题后续再处理")
-
-    with st.form("add_user_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            new_user_name = st.text_input("用户名*", help="要添加的用户名")
-        with col2:
-            user_role = st.selectbox(
-                "用户角色*",
-                options=["普通用户"],
-                disabled=True,
-                help="暂时只支持添加普通用户"
-            )
-
-        submitted = st.form_submit_button("添加用户", type="primary", use_container_width=True)
-
-        if submitted:
-            if not new_user_name or not new_user_name.strip():
-                st.error("❌ 请填写用户名")
-            else:
-                # 临时保存到session_state
-                if "user_list" not in st.session_state:
-                    st.session_state.user_list = []
-                if new_user_name not in st.session_state.user_list:
-                    st.session_state.user_list.append(new_user_name.strip())
-                    st.success(f"✅ 用户 {new_user_name} 添加成功！")
-                else:
-                    st.warning(f"⚠️ 用户 {new_user_name} 已存在")
-
-    # 显示已添加的用户
-    if "user_list" in st.session_state and st.session_state.user_list:
-        st.markdown("---")
-        st.subheader("已添加用户")
-        st.dataframe(
-            [{"序号": i+1, "用户名": name} for i, name in enumerate(st.session_state.user_list)],
-            use_container_width=True,
-            hide_index=True
-        )
+    # ── 人员管理入口 ──
+    st.subheader("👥 人员管理")
+    st.markdown("管理用户信息，包括新增、编辑、删除用户，以及设置手机号和密码强度要求。")
+    st.page_link("pages/9_人员管理.py", label="进入人员管理", icon="👥", use_container_width=True)
 
     # ========== 数据库数据查看 ==========
     st.divider()
