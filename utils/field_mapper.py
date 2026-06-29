@@ -63,7 +63,7 @@ class BorrowRecordField:
 
     记录所有试剂领用操作，用于追踪试剂的使用历史和责任归属。
     """
-    # ---- 记录编号（主键，文本类型，格式：L+时间戳）----
+    # ---- 记录编号（主键，TEXT类型，格式：YYYYMMDD+NNNN，如202606290001）----
     RECORD_NUMBER = 'record_number'  # 记录编号
     # ---- 试剂瓶编号（数字类型，关联试剂瓶表）----
     BOTTLE_NUMBER = 'bottle_number'  # 试剂瓶编号
@@ -98,7 +98,7 @@ class ReturnRecordField:
 
     记录所有试剂归还操作，更新试剂瓶的剩余量状态。
     """
-    # ---- 归还记录编号（主键，数字类型，格式：时间戳）----
+    # ---- 归还记录编号（主键，TEXT类型，格式：YYYYMMDD+NNNN，如202606290001）----
     RETURN_NUMBER = 'return_number'  # 归还记录编号
     # ---- 试剂瓶编号（数字类型，关联试剂瓶表）----
     BOTTLE_NUMBER = 'bottle_number'  # 试剂瓶编号

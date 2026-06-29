@@ -246,7 +246,7 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS return_record (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    return_number INTEGER NOT NULL UNIQUE,
+                    return_number TEXT NOT NULL UNIQUE,
                     bottle_number TEXT NOT NULL,
                     return_user TEXT NOT NULL,
                     return_time TEXT,

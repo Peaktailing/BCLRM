@@ -260,7 +260,7 @@ def insert_reagent_bottles(db, records, status, start_number):
                 continue
 
             fields = {
-                'bottle_number': current_number,
+                'bottle_number': f"{datetime.now().strftime('%Y%m%d')}{current_number:04d}",
                 'reagent_name': r['name'],
                 'remaining_quantity': remaining,
                 'specification': remaining,

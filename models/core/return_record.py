@@ -20,7 +20,7 @@ class ReturnRecord:
     
     记录所有试剂归还操作，更新试剂瓶的剩余量状态。
     """
-    return_number: Optional[int] = None   # 归还记录编号（数字类型，格式：时间戳）
+    return_number: Optional[str] = None   # 归还记录编号（TEXT类型，格式：YYYYMMDD+NNNN，如202606290001）
     bottle_number: Optional[str] = None   # 试剂瓶编号（TEXT类型，关联试剂瓶表）
     return_user: Optional[str] = None     # 归还人（文本类型）
     return_time: Optional[str] = None     # 归还时间（文本格式：YYYY/MM/DD HH:MM）

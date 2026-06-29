@@ -113,7 +113,7 @@ class ReturnRecordService(BaseService):
         """
         return ReturnRecord(
             id=record.get('id'),
-            return_number=record.get('return_number', 0),
+            return_number=record.get('return_number', ''),
             bottle_number=record.get('bottle_number', ''),
             return_user=record.get('return_user', ""),
             return_time=record.get('return_time'),
