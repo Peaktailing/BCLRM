@@ -280,7 +280,8 @@ class InventoryService:
             ReagentBottleField.SPECIFICATION: specification,
             ReagentBottleField.INBOUND_DATE: current_time,
             ReagentBottleField.BORROWABLE_FLAG: borrowable_text,
-            ReagentBottleField.BORROWABLE_CHECK: is_available
+            ReagentBottleField.BORROWABLE_CHECK: is_available,
+            ReagentBottleField.IS_CONTROLLED: 1 if is_controlled else 0
         }
 
         if purity:

@@ -2,7 +2,7 @@
 
 提供化学品信息的增删改查业务逻辑，包括数据校验、管控试剂匹配等功能。
 
-使用面向对象设计，所有业务方法封装在 ChemicalService 类中。
+使用面向对象设计，所有业务方法封装在 ChemicalManageService 类中。
 """
 from services.base.chemical_service import chemical_service
 from services.base.reagent_type_service import reagent_type_service
@@ -14,7 +14,7 @@ from utils.error_handler import logger, ServiceResult, handle_exception
 from typing import Optional, List
 
 
-class ChemicalService:
+class ChemicalManageService:
     """化学品信息管理业务服务类
 
     封装所有化学品信息管理相关的业务逻辑，包括：
@@ -592,4 +592,4 @@ class ChemicalService:
 # 全局单例实例
 # ============================================================================
 
-chemical_manage_service = ChemicalService()
+chemical_manage_service = ChemicalManageService()
