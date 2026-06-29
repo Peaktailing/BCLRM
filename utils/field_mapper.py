@@ -145,6 +145,10 @@ class ChemicalInfoField:
     STORAGE_REQUIREMENT = 'storage_requirement'  # 存储要求
     # ---- 管控试剂类型（文本类型，如：易制毒、易制爆等）----
     CONTROLLED_TYPE = 'controlled_type'  # 管控试剂类型
+    # ---- 未启封有效时长（天）----
+    UNSEALED_SHELF_LIFE = 'unsealed_shelf_life'  # 未启封有效时长（天）
+    # ---- 启封有效时长（天）----
+    SEALED_SHELF_LIFE = 'sealed_shelf_life'  # 启封有效时长（天）
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 

@@ -1,37 +1,27 @@
 """试剂过期判断业务服务
 
-根据试剂类型、启封日期和当前日期判断试剂是否过期。
+根据试剂类型、生产日期、启封日期和当前日期判断试剂是否过期。
 
-过期规则（启封后有效期）：
-  - 普通固体试剂：5年（60个月）
-  - 普通液体试剂：3年（36个月）
-  - 胶体试剂/培养基：1年（12个月）
-  - 标准品：2年（24个月）
-  - 气体钢瓶：无有效期（标记为正常）
-  - 生化试剂：1年（12个月）
-  - 其他未识别类型：2年（24个月，保守估计）
+过期规则（两段日期判断）：
+  - 未启封：使用生产日期 + 未启封有效时长（天）来判断是否过期
+  - 已启封：使用启封日期 + 启封有效时长（天）来判断是否过期
+  - 具体每个试剂的判断时长从化学品信息表（chemical_info）中获取：
+      * unsealed_shelf_life（未启封有效时长，天）
+      * sealed_shelf_life（启封有效时长，天）
 """
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 
 from models.core.reagent_bottle import ReagentBottle
 from services.core.reagent_bottle_service import reagent_bottle_service
+from services.base.chemical_service import chemical_service
 from utils.error_handler import logger, ServiceResult, handle_exception
 from utils.field_mapper import ReagentBottleField
 
 
-# 试剂类型 → 启封后有效期（月）
-SHELF_LIFE_MONTHS = {
-    "普通固体试剂": 60,
-    "普通液体试剂": 36,
-    "胶体试剂/培养基": 12,
-    "标准品": 24,
-    "气体钢瓶": None,       # 无有效期限制
-    "生化试剂": 12,
-}
-
-# 默认有效期（未匹配到的类型）
-DEFAULT_SHELF_LIFE_MONTHS = 24
+# 默认有效期（当化学品信息表中未设置时使用）
+DEFAULT_UNSEALED_SHELF_LIFE_DAYS = 730    # 2年
+DEFAULT_SEALED_SHELF_LIFE_DAYS = 365      # 1年
 
 # 即将过期提醒阈值（天）
 EXPIRY_WARNING_DAYS = 30
@@ -48,6 +38,7 @@ class ExpiryService:
 
     def __init__(self):
         self.bottle_service = reagent_bottle_service
+        self.chemical_service = chemical_service
         logger.info("ExpiryService 初始化完成")
 
     # ------------------------------------------------------------------
@@ -57,7 +48,8 @@ class ExpiryService:
     def check_bottle(self, bottle: ReagentBottle) -> str:
         """判断单个试剂瓶的过期状态（不写库）
 
-        根据试剂类型和启封日期计算当前过期状态。
+        根据试剂的生产日期/启封日期以及化学品信息表中的有效时长
+        计算当前过期状态。
 
         Args:
             bottle: 试剂瓶对象
@@ -65,10 +57,16 @@ class ExpiryService:
         Returns:
             过期状态字符串："正常" / "即将过期" / "已过期"
         """
-        return self._compute_expired_flag(
-            reagent_type=bottle.reagent_type,
-            unseal_date=bottle.unseal_date,
-        )
+        # 查询化学品信息获取有效时长
+        shelf_life_days = self._get_shelf_life_for_bottle(bottle)
+
+        # 根据是否启封选择判断逻辑
+        if bottle.unseal_date:
+            # 已启封：基于启封日期 + 启封有效时长
+            return self._compute_by_date(bottle.unseal_date, shelf_life_days.sealed)
+        else:
+            # 未启封：基于生产日期 + 未启封有效时长
+            return self._compute_by_date(bottle.production_date, shelf_life_days.unsealed)
 
     def check_and_update(self, bottle: ReagentBottle) -> str:
         """判断并更新试剂瓶的过期状态（写库）
@@ -185,55 +183,66 @@ class ExpiryService:
     # 内部方法
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _get_shelf_life(reagent_type: Optional[str]) -> Optional[int]:
-        """获取试剂类型的启封后有效期（月）
+    def _get_shelf_life_for_bottle(self, bottle: ReagentBottle) -> '_ShelfLife':
+        """获取试剂瓶对应的有效时长
+
+        优先从化学品信息表（chemical_info）中按试剂名称或CAS号查找，
+        若未找到或未设置，则使用系统默认值。
 
         Args:
-            reagent_type: 试剂类型名称
+            bottle: 试剂瓶对象
 
         Returns:
-            有效期月数，None 表示永久有效
+            _ShelfLife 命名元组（unsealed, sealed）
         """
-        if not reagent_type:
-            return DEFAULT_SHELF_LIFE_MONTHS
+        # 尝试通过试剂名称查找化学品信息
+        chem_info = None
+        if bottle.reagent_name:
+            chem_info = self.chemical_service.get_by_name(bottle.reagent_name)
 
-        return SHELF_LIFE_MONTHS.get(reagent_type, DEFAULT_SHELF_LIFE_MONTHS)
+        # 未匹配到名称，尝试 CAS 号
+        if not chem_info and bottle.cas_number:
+            chem_info = self.chemical_service.get_by_cas_number(bottle.cas_number)
+
+        if chem_info:
+            unsealed = chem_info.unsealed_shelf_life
+            sealed = chem_info.sealed_shelf_life
+            return _ShelfLife(
+                unsealed=unsealed if unsealed is not None else DEFAULT_UNSEALED_SHELF_LIFE_DAYS,
+                sealed=sealed if sealed is not None else DEFAULT_SEALED_SHELF_LIFE_DAYS,
+            )
+
+        return _ShelfLife(
+            unsealed=DEFAULT_UNSEALED_SHELF_LIFE_DAYS,
+            sealed=DEFAULT_SEALED_SHELF_LIFE_DAYS,
+        )
 
     @staticmethod
-    def _compute_expired_flag(
-        reagent_type: Optional[str],
-        unseal_date: Optional[str],
+    def _compute_by_date(
+        date_str: Optional[str],
+        shelf_life_days: int,
     ) -> str:
-        """计算过期状态
+        """基于日期和有效天数计算过期状态
 
         Args:
-            reagent_type: 试剂类型
-            unseal_date: 启封日期（格式：YYYY/MM/DD HH:MM）
+            date_str: 起始日期字符串（格式：YYYY/MM/DD ...）
+            shelf_life_days: 有效天数
 
         Returns:
             "正常" / "即将过期" / "已过期"
         """
-        # 未启封 → 正常
-        if not unseal_date:
-            return "正常"
-
-        # 获取有效期
-        shelf_months = ExpiryService._get_shelf_life(reagent_type)
-        if shelf_months is None:
-            # 永久有效（如气体钢瓶）
+        # 没有起始日期 → 无法判断，返回正常
+        if not date_str or not shelf_life_days:
             return "正常"
 
         try:
-            # 解析启封日期
-            unseal_dt = datetime.strptime(unseal_date.strip()[:10], "%Y/%m/%d")
+            start_dt = datetime.strptime(date_str.strip()[:10], "%Y/%m/%d")
         except (ValueError, IndexError):
-            # 解析失败，保守返回正常
-            logger.warning("无法解析启封日期", unseal_date=unseal_date)
+            logger.warning("无法解析日期", date_str=date_str)
             return "正常"
 
         # 计算到期日期
-        expiry_dt = unseal_dt + timedelta(days=shelf_months * 30)
+        expiry_dt = start_dt + timedelta(days=shelf_life_days)
         now = datetime.now()
 
         if now >= expiry_dt:
@@ -243,6 +252,13 @@ class ExpiryService:
             return "即将过期"
 
         return "正常"
+
+
+class _ShelfLife:
+    """有效时长值对象"""
+    def __init__(self, unsealed: int, sealed: int):
+        self.unsealed = unsealed
+        self.sealed = sealed
 
 
 # 全局单例

@@ -29,4 +29,6 @@ class ChemicalInfo:
     reagent_type: Optional[str] = None   # 试剂类型（文本类型，关联试剂类型表）
     storage_requirement: Optional[str] = None  # 存储要求（文本类型，关联存储要求表）
     controlled_type: Optional[str] = None      # 管控试剂类型（文本类型，匹配管控名录）
+    unsealed_shelf_life: Optional[int] = None  # 未启封有效时长（天）
+    sealed_shelf_life: Optional[int] = None    # 启封有效时长（天）
     id: Optional[int] = None            # 自增主键

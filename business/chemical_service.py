@@ -208,7 +208,9 @@ class ChemicalManageService:
         cas: str,
         msds: str,
         reagent_type: str,
-        storage_requirement: str
+        storage_requirement: str,
+        unsealed_shelf_life: Optional[int] = None,
+        sealed_shelf_life: Optional[int] = None,
     ) -> ServiceResult:
         """创建化学品信息
 
@@ -265,6 +267,12 @@ class ChemicalManageService:
         if controlled_type:
             chemical_data[ChemicalInfoField.CONTROLLED_TYPE] = controlled_type
 
+        # 添加有效时长字段（仅当有值时设置）
+        if unsealed_shelf_life is not None:
+            chemical_data[ChemicalInfoField.UNSEALED_SHELF_LIFE] = unsealed_shelf_life
+        if sealed_shelf_life is not None:
+            chemical_data[ChemicalInfoField.SEALED_SHELF_LIFE] = sealed_shelf_life
+
         logger.info(
             "尝试创建化学品记录",
             name=name,
@@ -310,7 +318,9 @@ class ChemicalManageService:
         cas: str,
         msds: str,
         reagent_type: str,
-        storage_requirement: str
+        storage_requirement: str,
+        unsealed_shelf_life: Optional[int] = None,
+        sealed_shelf_life: Optional[int] = None,
     ) -> ServiceResult:
         """更新化学品信息
 
@@ -398,7 +408,9 @@ class ChemicalManageService:
             ChemicalInfoField.MSDS: msds if msds else "",
             ChemicalInfoField.REAGENT_TYPE: reagent_type.strip() if reagent_type else "",
             ChemicalInfoField.STORAGE_REQUIREMENT: storage_requirement.strip() if storage_requirement else "",
-            ChemicalInfoField.CONTROLLED_TYPE: controlled_type
+            ChemicalInfoField.CONTROLLED_TYPE: controlled_type,
+            ChemicalInfoField.UNSEALED_SHELF_LIFE: unsealed_shelf_life,
+            ChemicalInfoField.SEALED_SHELF_LIFE: sealed_shelf_life,
         }
 
         logger.info(
