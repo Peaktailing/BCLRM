@@ -9,12 +9,36 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.borrow_record_service import borrow_record_service
 from services.core.return_record_service import return_record_service
 from services.base.controlled_list_service import controlled_list_service
+from services.base.chemical_service import chemical_service
 from business.expiry_service import expiry_service
 from models.core.reagent_bottle import ReagentBottle
 from models.base.controlled_list import ControlledList
 from utils.field_mapper import ReagentBottleField, BorrowRecordField, ReturnRecordField
 from utils.error_handler import logger, ServiceResult, handle_exception
 from typing import List, Optional, Dict, Any, Union
+
+
+def _build_chemical_cache() -> Dict[str, Any]:
+    """构建化学品信息缓存（一次性查询所有化学品）
+
+    用于批量过期判断时避免对每个试剂瓶都触发全表扫描。
+
+    Returns:
+        字典，key 为 "name:xxx" 或 "cas:xxx"，value 为 ChemicalInfo 对象
+    """
+    cache: Dict[str, Any] = {}
+    try:
+        all_chemicals = chemical_service.get_all_parsed()
+        for chem in all_chemicals:
+            name = getattr(chem, 'name', None)
+            cas = getattr(chem, 'cas_number', None)
+            if name:
+                cache[f"name:{name}"] = chem
+            if cas:
+                cache[f"cas:{cas}"] = chem
+    except Exception as e:
+        logger.warning("构建化学品缓存失败", exception=e)
+    return cache
 
 
 class QueryService:
@@ -69,13 +93,13 @@ class QueryService:
         """
         # 参数校验
         if bottle_number is not None:
-            if not isinstance(bottle_number, int) or bottle_number <= 0:
+            if not isinstance(bottle_number, str) or not bottle_number.strip():
                 logger.warning(
                     "参数校验失败: 试剂瓶编号无效",
                     bottle_number=bottle_number
                 )
                 return ServiceResult.fail(
-                    message="试剂瓶编号必须为正整数",
+                    message="试剂瓶编号必须为非空字符串",
                     error_code="INVALID_BOTTLE_NUMBER"
                 )
 
@@ -153,9 +177,11 @@ class QueryService:
             result_count=len(results)
         )
 
-        # 同步过期状态
-        for bottle in results:
-            expiry_service.check_and_update(bottle)
+        # 批量同步过期状态（使用缓存避免重复查询化学品信息）
+        if results:
+            chemical_cache = _build_chemical_cache()
+            for bottle in results:
+                expiry_service.check_and_update(bottle, chemical_cache=chemical_cache)
 
         return ServiceResult.ok(
             data=results,
@@ -442,9 +468,11 @@ class QueryService:
             result_count=len(filtered_results)
         )
 
-        # 同步过期状态
-        for bottle in filtered_results:
-            expiry_service.check_and_update(bottle)
+        # 批量同步过期状态（使用缓存避免重复查询化学品信息）
+        if filtered_results:
+            chemical_cache = _build_chemical_cache()
+            for bottle in filtered_results:
+                expiry_service.check_and_update(bottle, chemical_cache=chemical_cache)
 
         return ServiceResult.ok(
             data=filtered_results,
@@ -464,9 +492,11 @@ class QueryService:
         """
         all_bottles = self.bottle_service.get_all_parsed()
 
-        # 同步过期状态
-        for bottle in all_bottles:
-            expiry_service.check_and_update(bottle)
+        # 批量同步过期状态（使用缓存避免重复查询化学品信息）
+        if all_bottles:
+            chemical_cache = _build_chemical_cache()
+            for bottle in all_bottles:
+                expiry_service.check_and_update(bottle, chemical_cache=chemical_cache)
 
         logger.info(
             "获取所有试剂完成",

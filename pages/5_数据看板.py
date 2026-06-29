@@ -38,15 +38,15 @@ def main():
     st.subheader("库存概览")
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("试剂瓶总数", inventory_stats["total_bottles"])
+        st.metric("试剂瓶总数", inventory_stats.get("total_bottles", 0))
     with col2:
-        st.metric("可借数量", inventory_stats["borrowable"])
+        st.metric("可借数量", inventory_stats.get("borrowable", 0))
     with col3:
-        st.metric("已借出", inventory_stats["borrowed"])
+        st.metric("已借出", inventory_stats.get("borrowed", 0))
     with col4:
-        st.metric("已耗尽", inventory_stats["exhausted"])
+        st.metric("已耗尽", inventory_stats.get("exhausted", 0))
     with col5:
-        st.metric("总剩余量", f"{inventory_stats['total_quantity']}g")
+        st.metric("总剩余量", f"{inventory_stats.get('total_quantity', 0)}g")
     
     st.divider()
 
@@ -68,13 +68,13 @@ def main():
     st.subheader("领用/归还统计")
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("累计领用次数", borrow_stats["total_borrows"])
+        st.metric("累计领用次数", borrow_stats.get("total_borrows", 0))
     with col2:
-        st.metric("累计归还次数", return_stats["total_returns"])
+        st.metric("累计归还次数", return_stats.get("total_returns", 0))
     
     # 领用排行
     st.subheader("领用排行（按人员）")
-    if borrow_stats["user_stats"]:
+    if borrow_stats.get("user_stats"):
         top_users = sorted(borrow_stats["user_stats"].items(), key=lambda x: x[1], reverse=True)[:5]
         users, counts = zip(*top_users) if top_users else ([], [])
         

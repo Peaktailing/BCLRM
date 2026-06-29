@@ -85,16 +85,20 @@ def main():
         )
 
         if selected_table:
-            try:
-                records = db.execute_query(f"SELECT * FROM {selected_table}")
+            # 白名单验证：确保表名来自 sqlite_master
+            if selected_table not in all_tables:
+                st.error("无效的表名")
+            else:
+                try:
+                    records = db.execute_query(f"SELECT * FROM {selected_table}")
 
-                if records:
-                    st.info(f"📋 表 `{selected_table}` 共 {len(records)} 条记录")
-                    st.dataframe(records, use_container_width=True, hide_index=True)
-                else:
-                    st.warning(f"表 `{selected_table}` 中暂无数据")
-            except Exception as e:
-                st.error(f"查询表 `{selected_table}` 失败：{str(e)}")
+                    if records:
+                        st.info(f"📋 表 `{selected_table}` 共 {len(records)} 条记录")
+                        st.dataframe(records, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(f"表 `{selected_table}` 中暂无数据")
+                except Exception as e:
+                    st.error(f"查询表 `{selected_table}` 失败：{str(e)}")
     else:
         st.warning("未找到任何数据表，请检查数据库是否已初始化")
 

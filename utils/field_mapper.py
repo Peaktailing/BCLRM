@@ -56,6 +56,12 @@ class ReagentBottleField:
     BORROWABLE_CHECK = 'borrowable_check'  # 可借标记判断
     # ---- 过期状态（文本类型：正常/即将过期/已过期）----
     EXPIRED_FLAG = 'expired_flag'  # 过期状态
+    # ---- 试剂类型（文本类型，关联试剂类型表）----
+    REAGENT_TYPE = 'reagent_type'  # 试剂类型
+    # ---- 是否管控（0=否，1=是）----
+    IS_CONTROLLED = 'is_controlled'  # 是否管控
+    # ---- 存储要求（文本类型，关联存储要求表）----
+    STORAGE_REQUIREMENT = 'storage_requirement'  # 存储要求
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 

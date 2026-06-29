@@ -388,7 +388,37 @@ class ChemicalManageService:
                 error_code="DUPLICATE_CAS_NUMBER"
             )
 
-        # 4. 重新匹配管控试剂类型
+        # 4. 校验试剂类型是否存在（支持多个类型，逗号分隔）
+        if reagent_type and reagent_type.strip():
+            reagent_types = self.reagent_type_service.get_all_types()
+            type_names = [t.name for t in reagent_types if t.name]
+            selected_types = [t.strip() for t in reagent_type.split(",") if t.strip()]
+            for selected_type in selected_types:
+                if selected_type not in type_names:
+                    logger.warning(
+                        "试剂类型不存在",
+                        reagent_type=selected_type
+                    )
+                    return ServiceResult.fail(
+                        message=f"试剂类型 '{selected_type}' 不存在",
+                        error_code="INVALID_REAGENT_TYPE"
+                    )
+
+        # 5. 校验存储要求是否存在
+        if storage_requirement and storage_requirement.strip():
+            storage_reqs = self.storage_requirement_service.get_all_requirements()
+            req_names = [r.name for r in storage_reqs if r.name]
+            if storage_requirement not in req_names:
+                logger.warning(
+                    "存储要求不存在",
+                    storage_requirement=storage_requirement
+                )
+                return ServiceResult.fail(
+                    message=f"存储要求 '{storage_requirement}' 不存在",
+                    error_code="INVALID_STORAGE_REQUIREMENT"
+                )
+
+        # 6. 重新匹配管控试剂类型
         controlled_type = None
         if cas and cas.strip():
             match_result = self.match_controlled_type(cas)
@@ -401,7 +431,7 @@ class ChemicalManageService:
                     controlled_type=controlled_type
                 )
 
-        # 5. 构建更新数据字典
+        # 7. 构建更新数据字典（仅包含非 None 字段，避免覆盖已有值）
         chemical_data = {
             ChemicalInfoField.NAME: name.strip() if name else "",
             ChemicalInfoField.DISPLAY_NAME: display_name.strip() if display_name else "",
@@ -411,9 +441,12 @@ class ChemicalManageService:
             ChemicalInfoField.REAGENT_TYPE: reagent_type.strip() if reagent_type else "",
             ChemicalInfoField.STORAGE_REQUIREMENT: storage_requirement.strip() if storage_requirement else "",
             ChemicalInfoField.CONTROLLED_TYPE: controlled_type,
-            ChemicalInfoField.UNSEALED_SHELF_LIFE: unsealed_shelf_life,
-            ChemicalInfoField.SEALED_SHELF_LIFE: sealed_shelf_life,
         }
+        # 有效期字段仅在显式传入时才更新，避免意外清空
+        if unsealed_shelf_life is not None:
+            chemical_data[ChemicalInfoField.UNSEALED_SHELF_LIFE] = unsealed_shelf_life
+        if sealed_shelf_life is not None:
+            chemical_data[ChemicalInfoField.SEALED_SHELF_LIFE] = sealed_shelf_life
 
         logger.info(
             "尝试更新化学品记录",
@@ -571,6 +604,18 @@ class ChemicalManageService:
         Returns:
             ServiceResult: 更新结果
         """
+        # 参数校验：确保有效期值非负
+        if default_unsealed_shelf_life is not None and default_unsealed_shelf_life < 0:
+            return ServiceResult.fail(
+                message="未启封有效期不能为负数",
+                error_code="INVALID_UNSEALED_SHELF_LIFE"
+            )
+        if default_sealed_shelf_life is not None and default_sealed_shelf_life < 0:
+            return ServiceResult.fail(
+                message="启封有效期不能为负数",
+                error_code="INVALID_SEALED_SHELF_LIFE"
+            )
+
         reagent_type = self.reagent_type_service.get_by_name(type_name)
         if not reagent_type:
             return ServiceResult.fail(

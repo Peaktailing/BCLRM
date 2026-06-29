@@ -10,7 +10,7 @@
       * sealed_shelf_life（启封有效时长，天）
 """
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 
 from models.core.reagent_bottle import ReagentBottle
 from services.core.reagent_bottle_service import reagent_bottle_service
@@ -45,7 +45,7 @@ class ExpiryService:
     # 公开方法
     # ------------------------------------------------------------------
 
-    def check_bottle(self, bottle: ReagentBottle) -> str:
+    def check_bottle(self, bottle: ReagentBottle, chemical_cache: Optional[Dict[str, Any]] = None) -> str:
         """判断单个试剂瓶的过期状态（不写库）
 
         根据试剂的生产日期/启封日期以及化学品信息表中的有效时长
@@ -53,12 +53,13 @@ class ExpiryService:
 
         Args:
             bottle: 试剂瓶对象
+            chemical_cache: 可选的化学品信息缓存（用于批量查询优化）
 
         Returns:
             过期状态字符串："正常" / "即将过期" / "已过期"
         """
         # 查询化学品信息获取有效时长
-        shelf_life_days = self._get_shelf_life_for_bottle(bottle)
+        shelf_life_days = self._get_shelf_life_for_bottle(bottle, chemical_cache)
 
         # 根据是否启封选择判断逻辑
         if bottle.unseal_date:
@@ -68,31 +69,35 @@ class ExpiryService:
             # 未启封：基于生产日期 + 未启封有效时长
             return self._compute_by_date(bottle.production_date, shelf_life_days.unsealed)
 
-    def check_and_update(self, bottle: ReagentBottle) -> str:
+    def check_and_update(self, bottle: ReagentBottle, chemical_cache: Optional[Dict[str, Any]] = None) -> str:
         """判断并更新试剂瓶的过期状态（写库）
 
         计算当前过期状态，若与数据库中不一致则更新。
 
         Args:
             bottle: 试剂瓶对象
+            chemical_cache: 可选的化学品信息缓存（用于批量查询优化）
 
         Returns:
             过期状态字符串
         """
-        new_flag = self.check_bottle(bottle)
+        new_flag = self.check_bottle(bottle, chemical_cache)
 
         # 只在状态变化时写库
         if new_flag != bottle.expired_flag:
+            old_flag = bottle.expired_flag
             try:
                 self.bottle_service.update_by_field(
                     field_name=ReagentBottleField.BOTTLE_NUMBER,
-                    field_value=bottle.bottle_number,
-                    update_data={ReagentBottleField.EXPIRED_FLAG: new_flag},
+                    value=bottle.bottle_number,
+                    fields={ReagentBottleField.EXPIRED_FLAG: new_flag},
                 )
+                # 同步内存对象
+                bottle.expired_flag = new_flag
                 logger.info(
                     "过期状态已更新",
                     bottle_number=bottle.bottle_number,
-                    old=bottle.expired_flag,
+                    old=old_flag,
                     new=new_flag,
                 )
             except Exception as e:
@@ -121,8 +126,8 @@ class ExpiryService:
                 try:
                     self.bottle_service.update_by_field(
                         field_name=ReagentBottleField.BOTTLE_NUMBER,
-                        field_value=bottle.bottle_number,
-                        update_data={ReagentBottleField.EXPIRED_FLAG: new_flag},
+                        value=bottle.bottle_number,
+                        fields={ReagentBottleField.EXPIRED_FLAG: new_flag},
                     )
                     update_count += 1
                 except Exception as e:
@@ -183,7 +188,7 @@ class ExpiryService:
     # 内部方法
     # ------------------------------------------------------------------
 
-    def _get_shelf_life_for_bottle(self, bottle: ReagentBottle) -> '_ShelfLife':
+    def _get_shelf_life_for_bottle(self, bottle: ReagentBottle, chemical_cache: dict = None) -> '_ShelfLife':
         """获取试剂瓶对应的有效时长
 
         优先从化学品信息表（chemical_info）中按试剂名称或CAS号查找，
@@ -191,18 +196,24 @@ class ExpiryService:
 
         Args:
             bottle: 试剂瓶对象
+            chemical_cache: 可选的化学品信息缓存字典（key: name 或 cas_number）
 
         Returns:
             _ShelfLife 命名元组（unsealed, sealed）
         """
-        # 尝试通过试剂名称查找化学品信息
+        # 使用缓存避免重复查询
         chem_info = None
-        if bottle.reagent_name:
-            chem_info = self.chemical_service.get_by_name(bottle.reagent_name)
-
-        # 未匹配到名称，尝试 CAS 号
-        if not chem_info and bottle.cas_number:
-            chem_info = self.chemical_service.get_by_cas_number(bottle.cas_number)
+        if chemical_cache is not None:
+            if bottle.reagent_name:
+                chem_info = chemical_cache.get(f"name:{bottle.reagent_name}")
+            if not chem_info and bottle.cas_number:
+                chem_info = chemical_cache.get(f"cas:{bottle.cas_number}")
+        else:
+            # 无缓存时执行查询
+            if bottle.reagent_name:
+                chem_info = self.chemical_service.get_by_name(bottle.reagent_name)
+            if not chem_info and bottle.cas_number:
+                chem_info = self.chemical_service.get_by_cas_number(bottle.cas_number)
 
         if chem_info:
             unsealed = chem_info.unsealed_shelf_life
@@ -232,11 +243,21 @@ class ExpiryService:
             "正常" / "即将过期" / "已过期"
         """
         # 没有起始日期 → 无法判断，返回正常
-        if not date_str or not shelf_life_days:
+        if not date_str:
+            return "正常"
+
+        # shelf_life_days=0 表示立即过期
+        if shelf_life_days == 0:
+            return "已过期"
+
+        # shelf_life_days 为 None 或负数时返回正常
+        if shelf_life_days is None or shelf_life_days < 0:
             return "正常"
 
         try:
-            start_dt = datetime.strptime(date_str.strip()[:10], "%Y/%m/%d")
+            # 支持多种日期格式：YYYY/MM/DD, YYYY-MM-DD, YYYY.MM.DD
+            date_clean = date_str.strip()[:10].replace('-', '/').replace('.', '/')
+            start_dt = datetime.strptime(date_clean, "%Y/%m/%d")
         except (ValueError, IndexError):
             logger.warning("无法解析日期", date_str=date_str)
             return "正常"

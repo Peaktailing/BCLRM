@@ -51,8 +51,7 @@ def main():
     
     if not chemical_names:
         st.warning("⚠️ 化学品信息表为空，请先在【化学品信息管理】中添加化学品")
-        if st.button("跳转到化学品信息管理", type="primary"):
-            st.switch_page("pages/7_化学品信息管理.py")
+        st.page_link("pages/7_化学品信息管理.py", label="跳转到化学品信息管理", icon="🧪")
         st.stop()
 
     with st.form("inventory_form", clear_on_submit=True):
