@@ -120,6 +120,8 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     description TEXT,
+                    default_unsealed_shelf_life INTEGER,
+                    default_sealed_shelf_life INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -181,7 +183,6 @@ class Database:
                     sealed_shelf_life INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (reagent_type) REFERENCES reagent_type(name),
                     FOREIGN KEY (storage_requirement) REFERENCES storage_requirement(name)
                 )
             """)
@@ -345,9 +346,96 @@ class Database:
                 )
                 logger.info("迁移完成：chemical_info 表添加 sealed_shelf_life 字段")
 
+            # 迁移：reagent_type 表增加默认有效期字段
+            cursor.execute("PRAGMA table_info(reagent_type)")
+            rt_columns = {row[1] for row in cursor.fetchall()}
+            if "default_unsealed_shelf_life" not in rt_columns:
+                cursor.execute(
+                    "ALTER TABLE reagent_type ADD COLUMN default_unsealed_shelf_life INTEGER"
+                )
+                logger.info("迁移完成：reagent_type 表添加 default_unsealed_shelf_life 字段")
+            if "default_sealed_shelf_life" not in rt_columns:
+                cursor.execute(
+                    "ALTER TABLE reagent_type ADD COLUMN default_sealed_shelf_life INTEGER"
+                )
+                logger.info("迁移完成：reagent_type 表添加 default_sealed_shelf_life 字段")
+
             self.connection.commit()
+
+            # 迁移：移除 chemical_info 表的 reagent_type 外键约束（支持多类型标签存储）
+            self._migrate_chemical_info_drop_reagent_type_fk()
+
         except Exception as e:
             logger.warning(f"数据库迁移执行异常（可忽略）: {str(e)}")
+
+    def _migrate_chemical_info_drop_reagent_type_fk(self):
+        """迁移：移除 chemical_info 表的 reagent_type 外键约束
+
+        为了支持在 chemical_info.reagent_type 中存储多个试剂类型（逗号分隔），
+        需要移除该字段的外键约束。SQLite 不支持直接删除外键，需要重建表。
+        """
+        cursor = self.connection.cursor()
+
+        # 检查是否存在 reagent_type 外键
+        cursor.execute("PRAGMA foreign_key_list(chemical_info)")
+        fks = cursor.fetchall()
+        # fk 格式: (id, seq, table, from, to, on_update, on_delete, match)
+        has_reagent_type_fk = any(
+            fk[2] == 'reagent_type' and fk[3] == 'reagent_type'
+            for fk in fks
+        )
+
+        if not has_reagent_type_fk:
+            return  # 没有外键，无需迁移
+
+        logger.info("开始迁移：移除 chemical_info 表的 reagent_type 外键约束")
+
+        # 临时关闭外键约束
+        cursor.execute("PRAGMA foreign_keys = OFF")
+
+        # 创建新表（无 reagent_type 外键）
+        cursor.execute("""
+            CREATE TABLE chemical_info_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                display_name TEXT,
+                formula TEXT,
+                cas_number TEXT,
+                msds TEXT,
+                reagent_type TEXT,
+                storage_requirement TEXT,
+                controlled_type TEXT,
+                unsealed_shelf_life INTEGER,
+                sealed_shelf_life INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (storage_requirement) REFERENCES storage_requirement(name)
+            )
+        """)
+
+        # 复制数据
+        cursor.execute("""
+            INSERT INTO chemical_info_new
+            (id, name, display_name, formula, cas_number, msds,
+             reagent_type, storage_requirement, controlled_type,
+             unsealed_shelf_life, sealed_shelf_life, created_at, updated_at)
+            SELECT id, name, display_name, formula, cas_number, msds,
+                   reagent_type, storage_requirement, controlled_type,
+                   unsealed_shelf_life, sealed_shelf_life, created_at, updated_at
+            FROM chemical_info
+        """)
+
+        # 删除旧表
+        cursor.execute("DROP TABLE chemical_info")
+
+        # 重命名新表
+        cursor.execute("ALTER TABLE chemical_info_new RENAME TO chemical_info")
+
+        # 重新启用外键约束
+        cursor.execute("PRAGMA foreign_keys = ON")
+
+        self.connection.commit()
+        logger.info("迁移完成：chemical_info 表的 reagent_type 外键约束已移除")
 
     def execute_query(self, query: str, params: tuple = None) -> list:
         """执行查询语句

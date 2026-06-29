@@ -162,6 +162,10 @@ class ReagentTypeField:
     NAME = 'name'  # 试剂类型名称
     # ---- 描述（文本类型，备注说明）----
     DESCRIPTION = 'description'  # 描述
+    # ---- 默认未启封有效期（天）----
+    DEFAULT_UNSEALED_SHELF_LIFE = 'default_unsealed_shelf_life'  # 默认未启封有效期（天）
+    # ---- 默认启封有效期（天）----
+    DEFAULT_SEALED_SHELF_LIFE = 'default_sealed_shelf_life'  # 默认启封有效期（天）
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 
