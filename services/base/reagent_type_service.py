@@ -90,7 +90,9 @@ class ReagentTypeService(BaseService):
         return ReagentType(
             id=record.get('id'),
             name=record.get('name'),
-            description=record.get('description')
+            description=record.get('description'),
+            default_unsealed_shelf_life=record.get('default_unsealed_shelf_life'),
+            default_sealed_shelf_life=record.get('default_sealed_shelf_life'),
         )
 
 

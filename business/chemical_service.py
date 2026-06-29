@@ -9,7 +9,7 @@ from services.base.reagent_type_service import reagent_type_service
 from services.base.storage_requirement_service import storage_requirement_service
 from services.base.controlled_list_service import controlled_list_service
 from models.base.chemical import ChemicalInfo
-from utils.field_mapper import ChemicalInfoField
+from utils.field_mapper import ChemicalInfoField, ReagentTypeField
 from utils.error_handler import logger, ServiceResult, handle_exception
 from typing import Optional, List
 
@@ -124,18 +124,20 @@ class ChemicalManageService:
                 error_code="DUPLICATE_CAS_NUMBER"
             )
 
-        # 7. 检查试剂类型是否存在
+        # 7. 检查试剂类型是否存在（支持多个类型，逗号分隔）
         reagent_types = self.reagent_type_service.get_all_types()
         type_names = [t.name for t in reagent_types if t.name]
-        if reagent_type not in type_names:
-            logger.warning(
-                "试剂类型不存在",
-                reagent_type=reagent_type
-            )
-            return ServiceResult.fail(
-                message=f"试剂类型 '{reagent_type}' 不存在",
-                error_code="INVALID_REAGENT_TYPE"
-            )
+        selected_types = [t.strip() for t in reagent_type.split(",") if t.strip()]
+        for selected_type in selected_types:
+            if selected_type not in type_names:
+                logger.warning(
+                    "试剂类型不存在",
+                    reagent_type=selected_type
+                )
+                return ServiceResult.fail(
+                    message=f"试剂类型 '{selected_type}' 不存在",
+                    error_code="INVALID_REAGENT_TYPE"
+                )
 
         # 8. 检查存储要求是否存在
         storage_reqs = self.storage_requirement_service.get_all_requirements()
@@ -489,6 +491,103 @@ class ChemicalManageService:
             data=type_names,
             message=f"共 {len(type_names)} 种试剂类型"
         )
+
+    @handle_exception(context="获取所有试剂类型详情")
+    def get_all_reagent_types(self) -> ServiceResult:
+        """获取所有试剂类型详情（含默认有效期）
+
+        Returns:
+            ServiceResult: 查询结果，成功时 data 为 ReagentType 对象列表
+        """
+        types = self.reagent_type_service.get_all_types()
+        return ServiceResult.ok(
+            data=types,
+            message=f"共 {len(types)} 种试剂类型"
+        )
+
+    @handle_exception(context="根据试剂类型获取默认有效期")
+    def get_default_shelf_life_by_types(self, type_names: list) -> ServiceResult:
+        """根据试剂类型名称列表获取默认有效时长（取最短值）
+
+        当选择多个试剂类型时，未启封有效期和启封有效期分别取
+        所选类型中最短的值作为默认值。
+
+        Args:
+            type_names: 试剂类型名称列表
+
+        Returns:
+            ServiceResult: 成功时 data 为 dict，包含 unsealed 和 sealed 两个键
+        """
+        DEFAULT_UNSEALED = 730
+        DEFAULT_SEALED = 365
+
+        if not type_names:
+            return ServiceResult.ok(data={
+                "unsealed": DEFAULT_UNSEALED,
+                "sealed": DEFAULT_SEALED,
+            })
+
+        all_types = self.reagent_type_service.get_all_types()
+
+        unsealed_values = []
+        sealed_values = []
+
+        for t in all_types:
+            if t.name in type_names:
+                if t.default_unsealed_shelf_life is not None:
+                    unsealed_values.append(t.default_unsealed_shelf_life)
+                if t.default_sealed_shelf_life is not None:
+                    sealed_values.append(t.default_sealed_shelf_life)
+
+        result_unsealed = min(unsealed_values) if unsealed_values else DEFAULT_UNSEALED
+        result_sealed = min(sealed_values) if sealed_values else DEFAULT_SEALED
+
+        logger.info(
+            "获取默认有效期成功",
+            type_names=type_names,
+            unsealed=result_unsealed,
+            sealed=result_sealed
+        )
+
+        return ServiceResult.ok(data={
+            "unsealed": result_unsealed,
+            "sealed": result_sealed,
+        })
+
+    @handle_exception(context="更新试剂类型默认有效期")
+    def update_reagent_type_shelf_life(
+        self,
+        type_name: str,
+        default_unsealed_shelf_life: Optional[int],
+        default_sealed_shelf_life: Optional[int],
+    ) -> ServiceResult:
+        """更新试剂类型的默认有效期
+
+        Args:
+            type_name: 试剂类型名称
+            default_unsealed_shelf_life: 默认未启封有效期（天）
+            default_sealed_shelf_life: 默认启封有效期（天）
+
+        Returns:
+            ServiceResult: 更新结果
+        """
+        reagent_type = self.reagent_type_service.get_by_name(type_name)
+        if not reagent_type:
+            return ServiceResult.fail(
+                message=f"试剂类型 '{type_name}' 不存在",
+                error_code="REAGENT_TYPE_NOT_FOUND"
+            )
+
+        update_data = {
+            ReagentTypeField.DEFAULT_UNSEALED_SHELF_LIFE: default_unsealed_shelf_life,
+            ReagentTypeField.DEFAULT_SEALED_SHELF_LIFE: default_sealed_shelf_life,
+        }
+
+        success = self.reagent_type_service.update(reagent_type.id, update_data)
+        if success:
+            return ServiceResult.ok(message=f"试剂类型 '{type_name}' 默认有效期已更新")
+        else:
+            return ServiceResult.fail(message="更新失败", error_code="UPDATE_FAILED")
 
     @handle_exception(context="获取存储要求名称列表")
     def get_storage_requirement_names(self) -> ServiceResult:

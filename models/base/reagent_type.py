@@ -17,4 +17,6 @@ class ReagentType:
     """
     name: Optional[str] = None        # 试剂类型名称（文本类型）
     description: Optional[str] = None # 描述（文本类型）
+    default_unsealed_shelf_life: Optional[int] = None  # 默认未启封有效期（天）
+    default_sealed_shelf_life: Optional[int] = None    # 默认启封有效期（天）
     id: Optional[int] = None       # 自增主键
