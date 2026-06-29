@@ -115,6 +115,19 @@ class BorrowService:
                 error_code="BOTTLE_NOT_BORROWABLE"
             )
 
+        # 2.1 校验试剂是否已过期
+        expired_flag = getattr(bottle, ReagentBottleField.EXPIRED_FLAG, None)
+        if expired_flag == "已过期":
+            logger.warning(
+                "试剂已过期，禁止借出",
+                bottle_number=bottle_number,
+                expired_flag=expired_flag
+            )
+            return ServiceResult.fail(
+                message="该试剂已过期，禁止借出",
+                error_code="REAGENT_EXPIRED"
+            )
+
         # 3. 校验领用数量
         remaining_qty = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, None)
         if remaining_qty is None:

@@ -390,52 +390,67 @@ class Database:
 
         logger.info("开始迁移：移除 chemical_info 表的 reagent_type 外键约束")
 
-        # 临时关闭外键约束
-        cursor.execute("PRAGMA foreign_keys = OFF")
+        # 保存原始外键状态
+        cursor.execute("PRAGMA foreign_keys")
+        original_fk_state = cursor.fetchone()[0]
 
-        # 创建新表（无 reagent_type 外键）
-        cursor.execute("""
-            CREATE TABLE chemical_info_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                display_name TEXT,
-                formula TEXT,
-                cas_number TEXT,
-                msds TEXT,
-                reagent_type TEXT,
-                storage_requirement TEXT,
-                controlled_type TEXT,
-                unsealed_shelf_life INTEGER,
-                sealed_shelf_life INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (storage_requirement) REFERENCES storage_requirement(name)
-            )
-        """)
+        try:
+            # 临时关闭外键约束
+            cursor.execute("PRAGMA foreign_keys = OFF")
 
-        # 复制数据
-        cursor.execute("""
-            INSERT INTO chemical_info_new
-            (id, name, display_name, formula, cas_number, msds,
-             reagent_type, storage_requirement, controlled_type,
-             unsealed_shelf_life, sealed_shelf_life, created_at, updated_at)
-            SELECT id, name, display_name, formula, cas_number, msds,
-                   reagent_type, storage_requirement, controlled_type,
-                   unsealed_shelf_life, sealed_shelf_life, created_at, updated_at
-            FROM chemical_info
-        """)
+            # 创建新表（无 reagent_type 外键）
+            cursor.execute("""
+                CREATE TABLE chemical_info_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    display_name TEXT,
+                    formula TEXT,
+                    cas_number TEXT,
+                    msds TEXT,
+                    reagent_type TEXT,
+                    storage_requirement TEXT,
+                    controlled_type TEXT,
+                    unsealed_shelf_life INTEGER,
+                    sealed_shelf_life INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (storage_requirement) REFERENCES storage_requirement(name)
+                )
+            """)
 
-        # 删除旧表
-        cursor.execute("DROP TABLE chemical_info")
+            # 复制数据
+            cursor.execute("""
+                INSERT INTO chemical_info_new
+                (id, name, display_name, formula, cas_number, msds,
+                 reagent_type, storage_requirement, controlled_type,
+                 unsealed_shelf_life, sealed_shelf_life, created_at, updated_at)
+                SELECT id, name, display_name, formula, cas_number, msds,
+                       reagent_type, storage_requirement, controlled_type,
+                       unsealed_shelf_life, sealed_shelf_life, created_at, updated_at
+                FROM chemical_info
+            """)
 
-        # 重命名新表
-        cursor.execute("ALTER TABLE chemical_info_new RENAME TO chemical_info")
+            # 删除旧表
+            cursor.execute("DROP TABLE chemical_info")
 
-        # 重新启用外键约束
-        cursor.execute("PRAGMA foreign_keys = ON")
+            # 重命名新表
+            cursor.execute("ALTER TABLE chemical_info_new RENAME TO chemical_info")
 
-        self.connection.commit()
-        logger.info("迁移完成：chemical_info 表的 reagent_type 外键约束已移除")
+            # 重建索引（表重建后索引会丢失）
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_name ON chemical_info(name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_cas ON chemical_info(cas_number)")
+
+            # 恢复外键约束状态
+            cursor.execute(f"PRAGMA foreign_keys = {original_fk_state}")
+
+            self.connection.commit()
+            logger.info("迁移完成：chemical_info 表的 reagent_type 外键约束已移除，索引已重建")
+        except Exception as e:
+            # 迁移失败时恢复外键状态
+            cursor.execute(f"PRAGMA foreign_keys = {original_fk_state}")
+            self.connection.rollback()
+            logger.error(f"迁移失败：{str(e)}", exc_info=True)
+            raise
 
     def execute_query(self, query: str, params: tuple = None) -> list:
         """执行查询语句

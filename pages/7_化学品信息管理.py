@@ -111,13 +111,6 @@ def main():
     # 根据所选试剂类型计算默认有效期
     default_unsealed_add, default_sealed_add = _compute_default_shelf_life(selected_types_add)
 
-    # 当选择变化时，更新 number_input 的 session_state
-    prev_types_add = st.session_state.get("add_prev_types", [])
-    if selected_types_add != prev_types_add:
-        st.session_state["add_unsealed_life"] = default_unsealed_add
-        st.session_state["add_sealed_life"] = default_sealed_add
-        st.session_state["add_prev_types"] = selected_types_add
-
     # 存储要求下拉框（从业务层获取）
     _result = chemical_manage_service.get_storage_requirement_names()
     storage_requirement_names = _result.data if _result.is_success() else []
@@ -168,14 +161,12 @@ def main():
                 "未启封有效期（天）",
                 min_value=0,
                 value=default_unsealed_add,
-                key="add_unsealed_life",
                 help=f"试剂未启封时的有效期（天），已根据试剂类型自动填充（最短值），可手动修改。0表示永久有效"
             )
             sealed_life = st.number_input(
                 "启封有效期（天）",
                 min_value=0,
                 value=default_sealed_add,
-                key="add_sealed_life",
                 help=f"试剂启封后的有效期（天），已根据试剂类型自动填充（最短值），可手动修改。0表示启封后永久有效"
             )
 
@@ -247,19 +238,20 @@ def main():
             # 根据所选试剂类型计算默认有效期
             default_unsealed_edit, default_sealed_edit = _compute_default_shelf_life(selected_types_edit)
 
-            # 当选择变化时，更新 number_input 的 session_state
-            prev_types_edit = st.session_state.get("edit_prev_types", None)
-            if prev_types_edit is None:
-                # 首次加载：使用当前化学品的已有值
+            # 切换化学品时重置有效期输入框（使用动态 key 强制重建 widget）
+            chem_id = getattr(selected_chemical, 'id', 'new')
+            if st.session_state.get("edit_current_chem_id") != chem_id:
+                st.session_state["edit_current_chem_id"] = chem_id
+                # 首次加载使用化学品已有值，否则使用试剂类型默认值
                 current_unsealed = getattr(chem, 'unsealed_shelf_life', None) if chem else None
                 current_sealed = getattr(chem, 'sealed_shelf_life', None) if chem else None
-                st.session_state["edit_unsealed_life"] = current_unsealed or default_unsealed_edit
-                st.session_state["edit_sealed_life"] = current_sealed or default_sealed_edit
-                st.session_state["edit_prev_types"] = selected_types_edit
-            elif selected_types_edit != prev_types_edit:
-                st.session_state["edit_unsealed_life"] = default_unsealed_edit
-                st.session_state["edit_sealed_life"] = default_sealed_edit
-                st.session_state["edit_prev_types"] = selected_types_edit
+                st.session_state["edit_unsealed_default"] = current_unsealed if current_unsealed is not None else default_unsealed_edit
+                st.session_state["edit_sealed_default"] = current_sealed if current_sealed is not None else default_sealed_edit
+            # 试剂类型变化时更新默认值（写入独立的 session_state key，不与 widget key 冲突）
+            elif st.session_state.get("edit_prev_types") != selected_types_edit:
+                st.session_state["edit_unsealed_default"] = default_unsealed_edit
+                st.session_state["edit_sealed_default"] = default_sealed_edit
+            st.session_state["edit_prev_types"] = selected_types_edit
 
             # 自动选中对应的存储要求
             if chem and chem.storage_requirement in storage_requirement_names:
@@ -292,15 +284,15 @@ def main():
                     edit_unsealed_life = st.number_input(
                         "未启封有效期（天）",
                         min_value=0,
-                        value=default_unsealed_edit,
-                        key="edit_unsealed_life",
+                        value=st.session_state.get("edit_unsealed_default", default_unsealed_edit),
+                        key=f"edit_unsealed_life_{chem_id}",
                         help="试剂未启封时的有效期（天），已根据试剂类型自动填充（最短值），可手动修改"
                     )
                     edit_sealed_life = st.number_input(
                         "启封有效期（天）",
                         min_value=0,
-                        value=default_sealed_edit,
-                        key="edit_sealed_life",
+                        value=st.session_state.get("edit_sealed_default", default_sealed_edit),
+                        key=f"edit_sealed_life_{chem_id}",
                         help="试剂启封后的有效期（天），已根据试剂类型自动填充（最短值），可手动修改"
                     )
                     edit_msds = st.file_uploader(

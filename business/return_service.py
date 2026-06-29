@@ -44,7 +44,8 @@ class ReturnService:
         self,
         bottle_number: str,
         return_user: str,
-        remaining_qty: float
+        remaining_qty: float,
+        skip_expiry_check: bool = False
     ) -> ServiceResult:
         """试剂归还核心业务逻辑
 
@@ -55,6 +56,7 @@ class ReturnService:
             bottle_number: 试剂瓶编号（格式如：202606290001）
             return_user: 归还人姓名
             remaining_qty: 归还时的剩余量
+            skip_expiry_check: 是否跳过过期状态检查（用于批量归还时统一处理）
 
         Returns:
             ServiceResult: 归还结果，成功时 data 包含归还记录信息，
@@ -219,17 +221,18 @@ class ReturnService:
             borrowable_flag=borrowable_flag
         )
 
-        # 9. 同步过期状态
-        try:
-            updated_bottle = self.bottle_service.get_by_bottle_number(bottle_number)
-            if updated_bottle:
-                expiry_service.check_and_update(updated_bottle)
-        except Exception as e:
-            logger.warning(
-                "同步过期状态失败",
-                bottle_number=bottle_number,
-                exception=e,
-            )
+        # 9. 同步过期状态（批量归还时由 batch_return 统一处理）
+        if not skip_expiry_check:
+            try:
+                updated_bottle = self.bottle_service.get_by_bottle_number(bottle_number)
+                if updated_bottle:
+                    expiry_service.check_and_update(updated_bottle)
+            except Exception as e:
+                logger.warning(
+                    "同步过期状态失败",
+                    bottle_number=bottle_number,
+                    exception=e,
+                )
 
         # 10. 构造返回结果
         result_data = {
@@ -280,16 +283,21 @@ class ReturnService:
         success_count = 0
         fail_count = 0
         fail_details = []
+        returned_bottles = []  # 记录成功归还的试剂瓶，用于批量更新过期状态
 
         for item in return_list:
             bottle_number = item.get("bottle_number", "")
             return_user = item.get("return_user", "")
             remaining_qty = item.get("remaining_qty", 0.0)
 
-            result = self.reagent_return(bottle_number, return_user, remaining_qty)
+            result = self.reagent_return(bottle_number, return_user, remaining_qty, skip_expiry_check=True)
 
             if result.success:
                 success_count += 1
+                # 收集成功归还的试剂瓶
+                bottle = self.bottle_service.get_by_bottle_number(bottle_number)
+                if bottle:
+                    returned_bottles.append(bottle)
             else:
                 fail_count += 1
                 fail_details.append({
@@ -297,6 +305,18 @@ class ReturnService:
                     "error": result.message,
                     "error_code": result.error_code
                 })
+
+        # 批量更新过期状态（只调用一次，避免重复触发）
+        if returned_bottles:
+            try:
+                for bottle in returned_bottles:
+                    expiry_service.check_and_update(bottle)
+            except Exception as e:
+                logger.warning(
+                    "批量同步过期状态失败",
+                    count=len(returned_bottles),
+                    exception=e,
+                )
 
         result_data = {
             "success_count": success_count,
