@@ -12,6 +12,7 @@ import streamlit as st
 from config.settings import SYSTEM_NAME, VERSION
 from business.dashboard_service import dashboard_service
 from components.sidebar_nav import render_sidebar
+from datetime import date
 
 def main():
     """主函数：欢迎页面"""
@@ -104,7 +105,7 @@ def main():
     # 系统说明
     st.divider()
     st.markdown("---")
-    st.markdown(f"**版本**: {VERSION} | **更新日期**: 2026-05-20")
+    st.markdown(f"**版本**: {VERSION} | **更新日期**: {date.today().strftime('%Y-%m-%d')}")
     st.markdown("**系统功能**: 试剂入库、领用、归还、查询、统计")
 
 if __name__ == "__main__":

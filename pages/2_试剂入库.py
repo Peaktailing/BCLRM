@@ -89,7 +89,7 @@ def main():
                 min_value=0.001,
                 step=0.001,
                 value=500.0,
-                help="当前试剂瓶中的实际剩余量"
+                help="当前试剂瓶中的实际剩余量（新入库默认为满量，应等于规格）"
             )
             
             spec = st.number_input(
@@ -97,7 +97,7 @@ def main():
                 min_value=0.001,
                 step=0.001,
                 value=500.0,
-                help="试剂瓶的标称规格"
+                help="试剂瓶的标称规格（入库时默认满量）"
             )
 
         with col2:
