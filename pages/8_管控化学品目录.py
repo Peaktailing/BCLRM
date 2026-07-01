@@ -10,15 +10,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from business.query_service import query_service
-from components.sidebar_nav import render_sidebar
+from components.auth import init_auth, require_login, render_auth_sidebar
 
 def main():
     """主函数：管控化学品目录查看页面"""
     st.set_page_config(page_title="管控化学品目录", layout="wide")
     st.title("📋 管控化学品目录")
 
-    # 使用统一的侧边栏导航
-    render_sidebar(current_page="管控化学品目录")
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
 
     # 页面说明
     st.info("📋 本页面用于查看管控化学品名录，数据为只读。")

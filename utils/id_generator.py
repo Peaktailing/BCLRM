@@ -173,6 +173,16 @@ class IDGenerator:
             logger.error(f"[IDGenerator] 生成归还记录编号时发生错误: {e}", exception=e)
             return 0
 
+    def generate_short_id(self) -> str:
+        """生成短随机ID（用于工单号后缀）
+
+        Returns:
+            4位随机字母数字字符串
+        """
+        import random
+        import string
+        return ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+
 
 # 全局单例实例
 id_generator = IDGenerator()

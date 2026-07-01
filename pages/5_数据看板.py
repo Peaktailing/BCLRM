@@ -11,15 +11,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 import matplotlib.pyplot as plt
 from business.dashboard_service import dashboard_service
-from components.sidebar_nav import render_sidebar
+from components.auth import init_auth, require_login, render_auth_sidebar
 
 def main():
     """主函数：数据看板页面"""
     st.set_page_config(page_title="数据看板", layout="wide")
     st.title("📊 数据看板")
     
-    # 使用统一的侧边栏导航
-    render_sidebar(current_page="数据看板")
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
     
     # 获取统计数据
     _inv_result = dashboard_service.get_inventory_stats()

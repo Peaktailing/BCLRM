@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from business.inventory_service import inventory_service
-from components.sidebar_nav import render_sidebar
+from components.auth import init_auth, require_login, render_auth_sidebar, require_perm, can_add_reagent
 
 # 纯度选项（从业务需求定义）
 PURITY_OPTIONS = ["分析纯", "化学纯", "优级纯", "色谱纯", "光谱纯", "电子纯", "工业纯"]
@@ -17,8 +17,13 @@ def main():
     st.set_page_config(page_title="试剂入库", layout="wide")
     st.title("📦 试剂入库")
 
-    # 使用统一的侧边栏导航
-    render_sidebar(current_page="试剂入库")
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
+
+    if not require_perm(can_add_reagent, error_msg="您没有试剂入库的权限，请联系管理员"):
+        st.stop()
 
     # 获取下拉框数据源
     _result = inventory_service.get_available_chemical_names()

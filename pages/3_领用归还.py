@@ -12,7 +12,7 @@ import streamlit as st
 from business.borrow_service import borrow_service
 from business.return_service import return_service
 from business.query_service import query_service
-from components.sidebar_nav import render_sidebar
+from components.auth import init_auth, require_login, render_auth_sidebar, require_perm, can_borrow
 from utils.error_handler import logger
 
 def main():
@@ -20,9 +20,14 @@ def main():
     st.set_page_config(page_title="领用归还", layout="wide")
     st.title("📤 试剂领用/归还")
     
-    # 使用统一的侧边栏导航
-    render_sidebar(current_page="领用归还")
-    
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
+
+    if not require_perm(can_borrow, error_msg="您没有领用归还的权限，请联系管理员"):
+        st.stop()
+
     # 标签切换
     tab1, tab2 = st.tabs(["📥 试剂领用", "📤 试剂归还"])
     

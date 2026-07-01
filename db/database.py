@@ -76,19 +76,35 @@ class Database:
         根据试剂管理系统的需求创建所有必要的表结构。
         """
         cursor = self.connection.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
 
         try:
             # 1. 人员信息表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS person (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE,
                     name TEXT NOT NULL UNIQUE,
+                    password TEXT DEFAULT '123456',
                     role TEXT,
                     department TEXT,
                     phone TEXT,
                     student_or_work_id TEXT,
+                    display_name TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 1b. 用户-管理员关联表（多对多）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_admin (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    admin_id TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES person(user_id) ON DELETE CASCADE,
+                    FOREIGN KEY (admin_id) REFERENCES person(user_id) ON DELETE CASCADE,
+                    UNIQUE(user_id, admin_id)
                 )
             """)
 
@@ -273,6 +289,62 @@ class Database:
                 )
             """)
 
+            # 13. 借出工单表（教师提交，管理员审批）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS borrow_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_number TEXT NOT NULL UNIQUE,
+                    applicant_id TEXT NOT NULL,
+                    applicant_name TEXT NOT NULL,
+                    status TEXT DEFAULT '待审批',
+                    approver_id TEXT,
+                    approved_at TEXT,
+                    remark TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (applicant_id) REFERENCES person(user_id)
+                )
+            """)
+
+            # 14. 借出工单项明细表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS borrow_order_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL,
+                    bottle_number INTEGER NOT NULL,
+                    borrow_qty REAL NOT NULL,
+                    status TEXT DEFAULT '待审批',
+                    FOREIGN KEY (order_id) REFERENCES borrow_order(id) ON DELETE CASCADE
+                )
+            """)
+
+            # 15. 还入工单表（教师提交，管理员审批）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS return_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_number TEXT NOT NULL UNIQUE,
+                    applicant_id TEXT NOT NULL,
+                    applicant_name TEXT NOT NULL,
+                    status TEXT DEFAULT '待审批',
+                    approver_id TEXT,
+                    approved_at TEXT,
+                    remark TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (applicant_id) REFERENCES person(user_id)
+                )
+            """)
+
+            # 16. 还入工单项明细表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS return_order_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL,
+                    bottle_number INTEGER NOT NULL,
+                    return_qty REAL NOT NULL,
+                    status TEXT DEFAULT '待审批',
+                    FOREIGN KEY (order_id) REFERENCES return_order(id) ON DELETE CASCADE
+                )
+            """)
+
             # 创建索引以提高查询性能
             # 试剂瓶表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_number ON reagent_bottle(bottle_number)")
@@ -298,6 +370,12 @@ class Database:
             # 化学品信息表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_name ON chemical_info(name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_cas ON chemical_info(cas_number)")
+
+            # 工单表索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_borrow_order_applicant ON borrow_order(applicant_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_borrow_order_status ON borrow_order(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_return_order_applicant ON return_order(applicant_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_return_order_status ON return_order(status)")
 
             self.connection.commit()
             logger.info("数据库表初始化完成")

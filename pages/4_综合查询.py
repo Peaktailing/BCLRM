@@ -10,15 +10,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from business.query_service import query_service
-from components.sidebar_nav import render_sidebar
+from components.auth import init_auth, require_login, render_auth_sidebar
 
 def main():
     """主函数：综合查询页面"""
     st.set_page_config(page_title="综合查询", layout="wide")
     st.title("🔍 综合查询")
     
-    # 使用统一的侧边栏导航
-    render_sidebar(current_page="综合查询")
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
     
     # 标签切换
     tab1, tab2, tab3 = st.tabs(["🧪 试剂查询", "📥 领用历史", "📤 归还历史"])

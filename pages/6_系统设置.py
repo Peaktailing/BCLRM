@@ -9,15 +9,20 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from components.sidebar_nav import render_sidebar
+from components.auth import init_auth, require_login, render_auth_sidebar, require_perm, can_system_settings
 
 def main():
     """主函数：系统设置页面"""
     st.set_page_config(page_title="系统设置", layout="wide")
     st.title("⚙️ 系统设置")
 
-    # 使用统一的侧边栏导航
-    render_sidebar(current_page="系统设置")
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
+
+    if not require_perm(can_system_settings, error_msg="您没有系统设置的权限，请联系管理员"):
+        st.stop()
 
     # 添加用户功能
     st.subheader("添加用户")

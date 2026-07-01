@@ -10,15 +10,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from business.query_service import query_service
-from components.sidebar_nav import render_sidebar
+from components.auth import init_auth, require_login, render_auth_sidebar
 
 def main():
     """主函数：实时库存页面"""
     st.set_page_config(page_title="实时库存", layout="wide")
     st.title("📦 实时库存")
     
-    # 使用统一的侧边栏导航
-    render_sidebar(current_page="实时库存")
+    init_auth()
+    if not require_login():
+        st.stop()
+    render_auth_sidebar()
     
     # 获取所有试剂
     result = query_service.get_all_reagents()
