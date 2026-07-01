@@ -38,9 +38,12 @@
 - search_chemicals: 搜索化学品
 
 权限业务 (permission_service):
-- check_permission: 检查用户权限
-- can_borrow_controlled: 检查管控试剂领用权限
-- is_admin: 判断是否为管理员
+- 四层分级权限引擎（super_admin/admin/teacher/student）
+- can_view / can_add_reagent / can_edit_reagent / can_delete_reagent
+- can_borrow / can_approve / can_approve_bottle
+- can_manage_users / can_system_settings
+- PermissionService / permission_service 单例
+- 兼容旧接口: is_admin / can_borrow_controlled
 """
 # 入库业务
 from business.inventory_service import inventory_service
@@ -60,23 +63,28 @@ from business.dashboard_service import dashboard_service
 # 化学品管理业务
 from business.chemical_service import chemical_manage_service
 
-# 权限业务
+# 权限业务（四层分级权限引擎）
 from business.permission_service import (
     check_permission,
     can_borrow_controlled,
-    is_admin
+    is_admin,
+    # 新增四层权限导出
+    can_view, can_add_reagent, can_edit_reagent, can_delete_reagent,
+    can_borrow, can_approve, can_approve_bottle,
+    can_manage_users, can_system_settings,
+    get_role_level, get_role_label,
+    ROLE_LEVELS, ROLE_LABELS, PERMISSION_MATRIX,
+    PermissionService, permission_service,
 )
 
 __all__ = [
-    # 业务服务实例
-    'inventory_service',
-    'borrow_service',
-    'return_service',
-    'query_service',
-    'dashboard_service',
-    'chemical_manage_service',
-    # 权限业务（过程式函数）
-    'check_permission',
-    'can_borrow_controlled',
-    'is_admin',
+    'inventory_service', 'borrow_service', 'return_service',
+    'query_service', 'dashboard_service', 'chemical_manage_service',
+    'check_permission', 'can_borrow_controlled', 'is_admin',
+    'can_view', 'can_add_reagent', 'can_edit_reagent', 'can_delete_reagent',
+    'can_borrow', 'can_approve', 'can_approve_bottle',
+    'can_manage_users', 'can_system_settings',
+    'get_role_level', 'get_role_label',
+    'ROLE_LEVELS', 'ROLE_LABELS', 'PERMISSION_MATRIX',
+    'PermissionService', 'permission_service',
 ]

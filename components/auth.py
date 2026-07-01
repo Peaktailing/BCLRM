@@ -5,7 +5,13 @@
 - admin: 管理自己试剂瓶，审批借出，所有页面
 - teacher: 除系统设置外所有页面
 - student: 仅查看库存（无需登录，一键进入）
+
+安全措施：
+- PBKDF2-SHA256 加盐密码哈希
+- 登录失败次数限制（防暴力破解）
+- 生产环境隐藏测试账号表
 """
+import os
 import streamlit as st
 from services.base.person_service import person_service
 from business.permission_service import (
@@ -17,6 +23,12 @@ from business.permission_service import (
 
 SESSION_KEY_USER = "auth_user"
 SESSION_KEY_LOGGED_IN = "auth_logged_in"
+SESSION_KEY_LOGIN_FAILURES = "auth_login_failures"
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 300  # 5 分钟锁定
+
+# 是否为开发环境（显示测试账号）
+IS_DEV = os.environ.get("REAGENT_ENV", "dev").lower() in ("dev", "development", "test")
 
 
 def init_auth():
@@ -52,15 +64,55 @@ def do_login(user: dict):
 
 
 def do_student_login():
-    """学生快速登录（空用户）"""
-    st.session_state[SESSION_KEY_USER] = {"role": "student", "display_name": "访客", "name": "访客", "department": ""}
+    """学生快速登录"""
+    st.session_state[SESSION_KEY_USER] = {
+        "user_id": "student_guest",
+        "role": "student",
+        "display_name": "访客",
+        "name": "访客",
+        "department": "",
+    }
     st.session_state[SESSION_KEY_LOGGED_IN] = True
+
+
+def _check_login_lockout() -> bool:
+    """检查是否被锁定"""
+    import time
+    failures = st.session_state.get(SESSION_KEY_LOGIN_FAILURES, {})
+    now = time.time()
+    failures = {k: v for k, v in failures.items() if now - v.get("locked_until", 0) < 0}
+    return len(failures) >= MAX_LOGIN_ATTEMPTS
+
+
+def _record_login_failure():
+    """记录登录失败"""
+    import time
+    failures = st.session_state.get(SESSION_KEY_LOGIN_FAILURES, {})
+    now = time.time()
+    key = f"attempt_{now}"
+    failures[key] = {"locked_until": now + LOGIN_LOCKOUT_SECONDS}
+    # 只保留最近的 MAX_LOGIN_ATTEMPTS 条
+    if len(failures) > MAX_LOGIN_ATTEMPTS:
+        oldest = sorted(failures.keys())[0]
+        del failures[oldest]
+    st.session_state[SESSION_KEY_LOGIN_FAILURES] = failures
+
+
+def _reset_login_failures():
+    """登录成功后重置失败计数"""
+    st.session_state[SESSION_KEY_LOGIN_FAILURES] = {}
 
 
 def render_login_form():
     """渲染登录表单"""
     st.markdown("## 🧪 试剂库管理系统")
     st.markdown("### 系统登录")
+
+    # 检查是否被锁定
+    import time
+    if _check_login_lockout():
+        st.error(f"⛔ 登录失败次数过多，请 {LOGIN_LOCKOUT_SECONDS // 60} 分钟后再试")
+        return False
 
     # 学生快速入口
     col_s, col_l = st.columns([1, 2])
@@ -85,25 +137,29 @@ def render_login_form():
                     return False
                 user = person_service.authenticate(work_id.strip(), password)
                 if user:
+                    _reset_login_failures()
                     do_login(user)
                     st.rerun()
                 else:
-                    st.error("工号或密码错误")
+                    _record_login_failure()
+                    remaining = MAX_LOGIN_ATTEMPTS - len(st.session_state.get(SESSION_KEY_LOGIN_FAILURES, {}))
+                    st.error(f"工号或密码错误（剩余尝试次数: {remaining}）")
                     return False
 
-    # 测试账号
-    with st.expander("💡 测试账号"):
-        st.markdown("""
-        | 角色 | 工号 | 密码 |
-        |------|------|------|
-        | 超级管理员 | root | SysAdmin@2024 |
-        | 管理员(张) | zhang | Zhang@1234 |
-        | 管理员(李) | li | LiManager@12 |
-        | 教师(王教授) | wang | Wang@1234 |
-        | 教师(赵教授) | zhao | Zhao@1234 |
-        | 学生(小学生) | stu1 | Student@12 |
-        | 学生(中学生) | stu2 | Student@12 |
-        """)
+    # 测试账号（仅开发环境显示）
+    if IS_DEV:
+        with st.expander("💡 测试账号"):
+            st.markdown("""
+            | 角色 | 工号 | 密码 |
+            |------|------|------|
+            | 超级管理员 | root | SysAdmin@2024 |
+            | 管理员(张) | zhang | Zhang@1234 |
+            | 管理员(李) | li | LiManager@12 |
+            | 教师(王教授) | wang | Wang@1234 |
+            | 教师(赵教授) | zhao | Zhao@1234 |
+            | 学生(小学生) | stu1 | Student@12 |
+            | 学生(中学生) | stu2 | Student@12 |
+            """)
     return False
 
 

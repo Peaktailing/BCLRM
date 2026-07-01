@@ -31,10 +31,13 @@ class Database:
         """初始化数据库连接
 
         Args:
-            db_path: 数据库文件路径，默认为 'db/reagent.db'
+            db_path: 数据库文件路径，默认从 config/settings.py 读取 DB_PATH
         """
         if db_path is None:
-            db_path = os.path.join(os.path.dirname(__file__), 'reagent.db')
+            from config.settings import DB_PATH
+            # 确保路径相对于项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            db_path = os.path.join(project_root, DB_PATH) if not os.path.isabs(DB_PATH) else DB_PATH
 
         self.db_path = db_path
         self._ensure_db_directory()
