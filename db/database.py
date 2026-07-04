@@ -9,6 +9,25 @@ from pathlib import Path
 from utils.error_handler import logger
 
 
+def _redact_params(params: Optional[tuple]) -> str:
+    """脱敏 SQL 参数，防止敏感数据写入日志
+
+    仅记录参数数量和类型，不记录实际参数值，
+    避免 PII（个人可识别信息）在错误日志中泄露。
+
+    Args:
+        params: SQL 参数元组，或 None
+
+    Returns:
+        脱敏后的参数字符串，如 "3 params" 或 "None"
+    """
+    if params is None:
+        return "None"
+    count = len(params)
+    types = [type(p).__name__ for p in params]
+    return f"{count} params (types: {types})"
+
+
 class Database:
     """SQLite 数据库管理类
 
@@ -470,7 +489,7 @@ class Database:
                 cursor.execute(query)
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
-            logger.error(f"查询执行失败: {str(e)}\nSQL: {query}\n参数: {params}", exception=e)
+            logger.error(f"查询执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 
     def execute_update(self, query: str, params: tuple = None) -> int:
@@ -493,7 +512,7 @@ class Database:
             return cursor.rowcount
         except Exception as e:
             self.connection.rollback()
-            logger.error(f"更新执行失败: {str(e)}\nSQL: {query}\n参数: {params}", exception=e)
+            logger.error(f"更新执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 
     def execute_insert(self, query: str, params: tuple = None) -> int:
@@ -516,7 +535,7 @@ class Database:
             return cursor.lastrowid
         except Exception as e:
             self.connection.rollback()
-            logger.error(f"插入执行失败: {str(e)}\nSQL: {query}\n参数: {params}", exception=e)
+            logger.error(f"插入执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 
     def table_exists(self, table_name: str) -> bool:

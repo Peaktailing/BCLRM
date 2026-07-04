@@ -13,11 +13,16 @@ import matplotlib.pyplot as plt
 from business.dashboard_service import dashboard_service
 from business.expiry_service import expiry_service
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth
 
 def main():
     """主函数：数据看板页面"""
     st.set_page_config(page_title="数据看板", layout="wide")
     st.title("📊 数据看板")
+    
+    # 认证检查
+    if not require_auth():
+        st.stop()
     
     # 使用统一的侧边栏导航
     render_sidebar()

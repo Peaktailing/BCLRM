@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 from business.chemical_service import chemical_manage_service
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth
 from utils.formula_utils import format_formula
 
 MSDS_FILE_TYPES = ["jpg", "jpeg", "png", "pdf", "doc", "docx", "txt"]
@@ -65,6 +66,10 @@ def _parse_reagent_type_str(type_str):
 def main():
     st.set_page_config(page_title="化学品信息管理", layout="wide")
     st.title("🧪 化学品信息管理")
+
+    # 认证检查
+    if not require_auth():
+        st.stop()
 
     # 使用统一的侧边栏导航
     render_sidebar()
