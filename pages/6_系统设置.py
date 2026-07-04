@@ -13,6 +13,7 @@ import streamlit as st
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth, require_admin
 from db.database import db
+from utils.error_handler import logger
 
 # 表名安全校验正则：仅允许字母、数字、下划线
 _TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_]+$')
@@ -88,7 +89,8 @@ def main():
         )
         all_tables = [row["name"] for row in rows if row.get("name")]
     except Exception as e:
-        st.error(f"获取数据表列表失败：{str(e)}")
+        logger.error(f"获取数据表列表失败: {str(e)}", exception=e)
+        st.error("获取数据表列表失败，请检查数据库连接。")
 
     if all_tables:
         selected_table = st.selectbox(
@@ -114,7 +116,8 @@ def main():
                     else:
                         st.warning(f"表 `{selected_table}` 中暂无数据")
                 except Exception as e:
-                    st.error(f"查询表 `{selected_table}` 失败：{str(e)}")
+                    logger.error(f"查询表 {selected_table} 失败: {str(e)}", exception=e)
+                    st.error("查询数据表失败，请稍后重试。")
     else:
         st.warning("未找到任何数据表，请检查数据库是否已初始化")
 
