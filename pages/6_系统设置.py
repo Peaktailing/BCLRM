@@ -4,6 +4,7 @@
 """
 import sys
 import os
+import re
 
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,6 +12,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 from components.sidebar_nav import render_sidebar
 from db.database import db
+
+# 表名安全校验正则：仅允许字母、数字、下划线
+_TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_]+$')
 
 
 def main():
@@ -85,11 +89,14 @@ def main():
         )
 
         if selected_table:
-            # 白名单验证：确保表名来自 sqlite_master
+            # 安全校验：表名必须来自 sqlite_master 白名单，且通过正则验证
             if selected_table not in all_tables:
                 st.error("无效的表名")
+            elif not _TABLE_NAME_PATTERN.match(selected_table):
+                st.error("表名包含非法字符")
             else:
                 try:
+                    # 表名已通过白名单+正则双重校验，安全拼接
                     records = db.execute_query(f"SELECT * FROM {selected_table}")
 
                     if records:
