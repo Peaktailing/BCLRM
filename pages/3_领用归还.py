@@ -13,12 +13,17 @@ from business.borrow_service import borrow_service
 from business.return_service import return_service
 from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth
 from utils.error_handler import logger
 
 def main():
     """主函数：领用归还页面"""
     st.set_page_config(page_title="领用归还", layout="wide")
     st.title("📤 试剂领用/归还")
+    
+    # 认证检查
+    if not require_auth():
+        st.stop()
     
     # 使用统一的侧边栏导航
     render_sidebar()

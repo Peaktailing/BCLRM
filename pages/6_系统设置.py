@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth, require_admin
 from db.database import db
 
 # 表名安全校验正则：仅允许字母、数字、下划线
@@ -21,6 +22,10 @@ def main():
     """主函数：系统设置页面"""
     st.set_page_config(page_title="系统设置", layout="wide")
     st.title("⚙️ 系统设置")
+
+    # 认证检查
+    if not require_auth():
+        st.stop()
 
     # 使用统一的侧边栏导航
     render_sidebar()
@@ -69,7 +74,11 @@ def main():
     # ========== 数据库数据查看 ==========
     st.divider()
     st.subheader("🗄️ 数据库数据查看")
-    st.caption("选择数据表查看其中的所有记录。")
+    st.caption("选择数据表查看其中的所有记录。此功能仅限管理员使用。")
+
+    # 管理员权限检查
+    if not require_admin():
+        st.stop()
 
     # 获取数据库中所有用户表
     all_tables = []

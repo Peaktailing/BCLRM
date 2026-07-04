@@ -15,10 +15,10 @@ class PermissionService:
     - 用户权限验证
     - 管控试剂领用权限检查
     - 管理员身份判断
-    """
 
-    # 预设的管理员用户列表
-    _ADMIN_USERS = ["admin", "管理员", "潘汉", "Admin", "ADMIN"]
+    管理员角色通过数据库 person.role 字段判定，不再使用硬编码列表。
+    首次部署时，需手动在 person 表中将管理员用户的 role 字段设为 "admin"。
+    """
 
     def __init__(self):
         """初始化权限服务"""
@@ -46,11 +46,8 @@ class PermissionService:
             # 人员表未配置时，拒绝访问（fail-closed 原则）
             return False, "用户验证失败：用户名不存在或人员表未配置，请联系管理员"
 
-        # 管理员权限 - 需要特殊配置
+        # 管理员权限 - 通过数据库 person.role 字段判定
         if required_role == "admin":
-            if user_name in self._ADMIN_USERS:
-                return True, f"管理员 {user_name} 验证通过"
-            # 也可以从数据库查询管理员角色
             person = self.person_service.get_by_name(user_name)
             if person and person.role == "admin":
                 return True, f"管理员 {user_name} 验证通过"
