@@ -2,9 +2,15 @@
 
 该模块提供数据库 CRUD 操作的基础封装。
 """
+import re
 from typing import List, Dict, Optional, Any
 from db.database import Database
 from utils.error_handler import logger
+
+# SQL 标识符安全校验正则：仅允许 字母/数字/下划线，必须以字母或下划线开头
+_FIELD_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+# ORDER BY 安全校验：字段名 + 可选 ASC/DESC
+_ORDER_BY_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*(\s+(ASC|DESC))?$', re.IGNORECASE)
 
 
 class BaseService:
@@ -20,8 +26,22 @@ class BaseService:
             table_name: 数据表名称
             db: 数据库实例，默认使用全局实例
         """
+        if not _FIELD_NAME_PATTERN.match(table_name):
+            raise ValueError(f"非法表名: {table_name}")
         self.table_name = table_name
         self.db = db or Database()
+
+    @staticmethod
+    def _validate_field_name(field_name: str) -> None:
+        """校验字段名安全，防止 SQL 注入"""
+        if not _FIELD_NAME_PATTERN.match(field_name):
+            raise ValueError(f"非法字段名: {field_name}")
+
+    @staticmethod
+    def _validate_order_by(order_by: str) -> None:
+        """校验 ORDER BY 子句安全，防止 SQL 注入"""
+        if not _ORDER_BY_PATTERN.match(order_by):
+            raise ValueError(f"非法排序表达式: {order_by}")
 
     def get_all(self, order_by: str = None, limit: int = None) -> List[Dict]:
         """获取所有记录
@@ -33,6 +53,9 @@ class BaseService:
         Returns:
             记录列表
         """
+        if order_by:
+            self._validate_order_by(order_by)
+
         query = f"SELECT * FROM {self.table_name}"
 
         if order_by:
@@ -74,6 +97,7 @@ class BaseService:
         Returns:
             记录字典或 None
         """
+        self._validate_field_name(field_name)
         query = f"SELECT * FROM {self.table_name} WHERE {field_name} = ? LIMIT 1"
         try:
             results = self.db.execute_query(query, (value,))
@@ -93,6 +117,10 @@ class BaseService:
         Returns:
             记录列表
         """
+        self._validate_field_name(field_name)
+        if order_by:
+            self._validate_order_by(order_by)
+
         query = f"SELECT * FROM {self.table_name} WHERE {field_name} = ?"
 
         if order_by:
@@ -116,6 +144,10 @@ class BaseService:
         if not fields:
             logger.warning(f"创建记录失败 [{self.table_name}]: 字段为空")
             return None
+
+        # 校验所有字段名安全
+        for key in fields.keys():
+            self._validate_field_name(key)
 
         # 构建插入语句
         columns = ', '.join(fields.keys())
@@ -143,6 +175,10 @@ class BaseService:
         if not fields:
             logger.warning(f"更新记录失败 [{self.table_name}]: 字段为空")
             return False
+
+        # 校验所有字段名安全
+        for key in fields.keys():
+            self._validate_field_name(key)
 
         # 构建更新语句
         set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
@@ -176,6 +212,8 @@ class BaseService:
         if not fields:
             logger.warning(f"更新记录失败 [{self.table_name}]: 字段为空")
             return False
+
+        self._validate_field_name(field_name)
 
         set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
         query = f"UPDATE {self.table_name} SET {set_clause} WHERE {field_name} = ?"
@@ -222,6 +260,7 @@ class BaseService:
         Returns:
             是否成功
         """
+        self._validate_field_name(field_name)
         query = f"DELETE FROM {self.table_name} WHERE {field_name} = ?"
 
         try:
@@ -255,6 +294,7 @@ class BaseService:
         Returns:
             记录数
         """
+        self._validate_field_name(field_name)
         query = f"SELECT COUNT(*) as count FROM {self.table_name} WHERE {field_name} = ?"
         try:
             result = self.db.execute_query(query, (value,))
@@ -276,6 +316,13 @@ class BaseService:
         """
         if not keyword or not fields:
             return []
+
+        # 校验所有搜索字段名安全
+        for field in fields:
+            self._validate_field_name(field)
+
+        if order_by:
+            self._validate_order_by(order_by)
 
         # 构建 LIKE 搜索条件
         conditions = ' OR '.join([f"{field} LIKE ?" for field in fields])
@@ -321,6 +368,9 @@ class BaseService:
         Returns:
             匹配的记录列表
         """
+        if order_by:
+            self._validate_order_by(order_by)
+
         if not conditions:
             return self.get_all(order_by=order_by, limit=limit)
 
@@ -335,6 +385,8 @@ class BaseService:
             if value is None or value == "":
                 continue
 
+            self._validate_field_name(field)
+
             if match_type == "exact":
                 where_clauses.append(f"{field} = ?")
                 params.append(value)
@@ -345,6 +397,8 @@ class BaseService:
                 keyword = str(value)
                 keyword_fields = cond.get("keyword_fields", [field])
                 if keyword_fields:
+                    for kf in keyword_fields:
+                        self._validate_field_name(kf)
                     keyword_clauses = " OR ".join([f"{kf} LIKE ?" for kf in keyword_fields])
                     where_clauses.append(f"({keyword_clauses})")
                     params.extend([f"%{keyword}%" for _ in keyword_fields])
@@ -390,6 +444,7 @@ class BaseService:
         Returns:
             不同值列表
         """
+        self._validate_field_name(field_name)
         query = f"SELECT DISTINCT {field_name} FROM {self.table_name} WHERE {field_name} IS NOT NULL"
         try:
             result = self.db.execute_query(query)

@@ -12,6 +12,7 @@ from business.chemical_service import chemical_manage_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from utils.formula_utils import format_formula
+from utils.error_handler import logger
 
 MSDS_FILE_TYPES = ["jpg", "jpeg", "png", "pdf", "doc", "docx", "txt"]
 MSDS_MAX_SIZE_MB = 10
@@ -84,7 +85,8 @@ def main():
         _result = chemical_manage_service.get_all_chemicals()
         chemicals = _result.data if _result.is_success() else []
     except Exception as e:
-        st.error(f"无法加载化学品列表，请检查数据库连接。错误原因：{str(e)}")
+        logger.error(f"加载化学品列表失败: {str(e)}", exception=e)
+        st.error("无法加载化学品列表，请检查数据库连接。")
         st.info("可能的原因：1. 数据库服务不可用 2. 表结构未初始化")
 
     if search_query and chemicals:
@@ -92,7 +94,8 @@ def main():
             _result = chemical_manage_service.search_chemicals(search_query)
             filtered_chemicals = _result.data if _result.is_success() else []
         except Exception as e:
-            st.error(f"搜索失败：{str(e)}")
+            logger.error(f"搜索化学品失败: {str(e)}", exception=e)
+            st.error("搜索失败，请稍后重试。")
             filtered_chemicals = chemicals
     else:
         filtered_chemicals = chemicals
@@ -235,7 +238,8 @@ def main():
         chemicals_for_edit = _result.data if _result.is_success() else []
     except Exception as e:
         chemicals_for_edit = []
-        st.error(f"获取化学品列表失败：{str(e)}")
+        logger.error(f"获取化学品列表失败: {str(e)}", exception=e)
+        st.error("获取化学品列表失败，请检查数据库连接。")
 
     if chemicals_for_edit:
         chemical_options = {getattr(c, 'name', ''): c for c in chemicals_for_edit if getattr(c, 'name', '')}
