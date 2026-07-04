@@ -43,8 +43,8 @@ class PermissionService:
             person = self.person_service.get_by_name(user_name)
             if person:
                 return True, f"用户 {user_name} 验证通过"
-            # 如果人员表未配置，默认允许访问
-            return True, "用户验证通过（人员表未配置）"
+            # 人员表未配置时，拒绝访问（fail-closed 原则）
+            return False, "用户验证失败：用户名不存在或人员表未配置，请联系管理员"
 
         # 管理员权限 - 需要特殊配置
         if required_role == "admin":

@@ -20,6 +20,31 @@ FALLBACK_UNSEALED = 730
 FALLBACK_SEALED = 365
 
 
+def _safe_filename(uploaded_file) -> str or None:
+    """安全处理上传文件名，防止路径遍历攻击
+
+    使用 os.path.basename() 剥离所有路径组件，仅保留文件名。
+    同时校验扩展名是否在允许列表中。
+
+    Args:
+        uploaded_file: Streamlit UploadedFile 对象，或 None
+
+    Returns:
+        安全的文件名，或 None
+    """
+    if uploaded_file is None:
+        return None
+    raw_name = uploaded_file.name or ""
+    # 剥离路径组件，仅保留文件名
+    safe_name = os.path.basename(raw_name)
+    # 校验扩展名
+    if safe_name:
+        ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+        if ext not in MSDS_FILE_TYPES:
+            return None
+    return safe_name or None
+
+
 def _compute_default_shelf_life(type_names_list):
     """根据试剂类型列表计算默认有效期（取最短值）"""
     if not type_names_list:
@@ -177,7 +202,7 @@ def main():
                 st.error("请至少选择一个试剂类型")
             else:
                 reagent_type_str = ", ".join(selected_types_add)
-                msds_value = msds.name if msds else None
+                msds_value = _safe_filename(msds)
                 _result = chemical_manage_service.create_chemical(
                     name=name,
                     display_name=display_name,
@@ -308,7 +333,7 @@ def main():
                         st.error("请至少选择一个试剂类型")
                     else:
                         reagent_type_str = ", ".join(selected_types_edit)
-                        edit_msds_value = edit_msds.name if edit_msds else getattr(selected_chemical, 'msds', None)
+                        edit_msds_value = _safe_filename(edit_msds) if edit_msds else getattr(selected_chemical, 'msds', None)
                         _result = chemical_manage_service.update_chemical(
                             record_id=getattr(selected_chemical, 'id', ''),
                             name=edit_name,
