@@ -30,10 +30,10 @@ def render_login_form():
             if has_permission:
                 st.session_state["logged_in"] = True
                 st.session_state["user_name"] = user_name
-                # 检查是否为管理员
+                user_role = permission_service.get_user_role(user_name)
                 is_admin = permission_service.is_admin(user_name)
                 st.session_state["is_admin"] = is_admin
-                st.session_state["user_role"] = "admin" if is_admin else "user"
+                st.session_state["user_role"] = user_role
                 st.success(f"欢迎，{user_name}！")
                 st.rerun()
             else:
@@ -64,7 +64,13 @@ def require_auth():
         st.divider()
         user_name = st.session_state.get("user_name", "未知")
         user_role = st.session_state.get("user_role", "user")
-        role_label = "管理员" if user_role == "admin" else "普通用户"
+        role_labels = {
+            "super_admin": "超级管理员",
+            "admin": "管理员",
+            "teacher": "教师",
+            "user": "普通用户"
+        }
+        role_label = role_labels.get(user_role, "普通用户")
         st.caption(f"当前用户：{user_name}（{role_label}）")
         if st.button("登出", use_container_width=True):
             st.session_state["logged_in"] = False
@@ -77,7 +83,7 @@ def require_auth():
 
 
 def require_admin():
-    """要求管理员权限
+    """要求管理员权限（包含超级管理员）
 
     在需要管理员权限的页面/功能中调用。
     必须在 require_auth() 之后调用。
@@ -91,6 +97,46 @@ def require_admin():
     is_admin = st.session_state.get("is_admin", False)
     if not is_admin:
         st.error("权限不足：此功能仅限管理员使用")
+        return False
+
+    return True
+
+
+def require_super_admin():
+    """要求超级管理员权限
+
+    在需要超级管理员权限的页面/功能中调用。
+    必须在 require_auth() 之后调用。
+
+    Returns:
+        bool: 当前用户是否为超级管理员
+    """
+    if not st.session_state.get("logged_in", False):
+        return False
+
+    user_role = st.session_state.get("user_role", "user")
+    if user_role != "super_admin":
+        st.error("权限不足：此功能仅限超级管理员使用")
+        return False
+
+    return True
+
+
+def require_teacher():
+    """要求教师及以上权限（教师、管理员、超级管理员）
+
+    在需要教师权限的页面/功能中调用。
+    必须在 require_auth() 之后调用。
+
+    Returns:
+        bool: 当前用户是否为教师及以上角色
+    """
+    if not st.session_state.get("logged_in", False):
+        return False
+
+    user_role = st.session_state.get("user_role", "user")
+    if user_role not in {"super_admin", "admin", "teacher"}:
+        st.error("权限不足：此功能仅限教师及以上角色使用")
         return False
 
     return True
