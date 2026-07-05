@@ -159,7 +159,7 @@ class ReagentBottleService(BaseService):
                 "field": "reagent_name",
                 "value": keyword,
                 "match_type": "keyword",
-                "keyword_fields": ["reagent_name", "cas_number", "CAST(bottle_number AS TEXT)"]
+                "keyword_fields": ["reagent_name", "cas_number", "bottle_number"]
             })
 
         records = super().search_multi_condition(conditions, order_by=order_by)

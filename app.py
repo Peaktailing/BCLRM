@@ -3,6 +3,7 @@
 使用 Streamlit 原生多页面应用（MPA）方案：
 - 本文件为系统首页，启动命令：streamlit run app.py
 - pages/ 目录下的文件由 Streamlit 自动生成侧边栏导航
+- 登录认证：所有页面需要登录后才能访问
 """
 import sys
 import os
@@ -14,6 +15,7 @@ import streamlit as st
 from config.settings import SYSTEM_NAME, VERSION
 from business.dashboard_service import dashboard_service
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth
 from datetime import date
 
 st.set_page_config(
@@ -21,6 +23,10 @@ st.set_page_config(
     page_icon="🧪",
     layout="wide"
 )
+
+# 认证检查：未登录用户显示登录表单，已登录用户显示首页内容
+if not require_auth():
+    st.stop()
 
 # 侧边栏系统信息（导航由 Streamlit 自动生成）
 render_sidebar()

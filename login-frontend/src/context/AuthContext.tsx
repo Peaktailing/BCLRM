@@ -12,8 +12,8 @@ interface AuthContextValue {
 }
 
 const PERMISSIONS: Record<Role, string[]> = {
-  super_admin: ["view", "manage_users", "system_settings", "edit_all", "delete_all"],
-  admin: ["view", "add_reagent", "edit_own", "delete_own", "borrow", "approve_own"],
+  super_admin: ["view", "manage_users", "system_settings", "edit_all", "delete_all", "inventory_manage", "borrow"],
+  admin: ["view", "add_reagent", "edit_own", "delete_own", "borrow", "approve_own", "inventory_manage"],
   teacher: ["view", "borrow"],
   student: ["view"],
 };

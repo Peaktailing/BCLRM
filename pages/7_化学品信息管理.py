@@ -10,7 +10,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 from business.chemical_service import chemical_manage_service
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth
 from utils.formula_utils import format_formula
+from utils.error_handler import logger
 
 MSDS_FILE_TYPES = ["jpg", "jpeg", "png", "pdf", "doc", "docx", "txt"]
 MSDS_MAX_SIZE_MB = 10
@@ -18,6 +20,31 @@ MSDS_MAX_SIZE_MB = 10
 # 系统兜底默认值
 FALLBACK_UNSEALED = 730
 FALLBACK_SEALED = 365
+
+
+def _safe_filename(uploaded_file) -> str or None:
+    """安全处理上传文件名，防止路径遍历攻击
+
+    使用 os.path.basename() 剥离所有路径组件，仅保留文件名。
+    同时校验扩展名是否在允许列表中。
+
+    Args:
+        uploaded_file: Streamlit UploadedFile 对象，或 None
+
+    Returns:
+        安全的文件名，或 None
+    """
+    if uploaded_file is None:
+        return None
+    raw_name = uploaded_file.name or ""
+    # 剥离路径组件，仅保留文件名
+    safe_name = os.path.basename(raw_name)
+    # 校验扩展名
+    if safe_name:
+        ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+        if ext not in MSDS_FILE_TYPES:
+            return None
+    return safe_name or None
 
 
 def _compute_default_shelf_life(type_names_list):
@@ -41,6 +68,10 @@ def main():
     st.set_page_config(page_title="化学品信息管理", layout="wide")
     st.title("🧪 化学品信息管理")
 
+    # 认证检查
+    if not require_auth():
+        st.stop()
+
     # 使用统一的侧边栏导航
     render_sidebar()
 
@@ -54,7 +85,8 @@ def main():
         _result = chemical_manage_service.get_all_chemicals()
         chemicals = _result.data if _result.is_success() else []
     except Exception as e:
-        st.error(f"无法加载化学品列表，请检查数据库连接。错误原因：{str(e)}")
+        logger.error(f"加载化学品列表失败: {str(e)}", exception=e)
+        st.error("无法加载化学品列表，请检查数据库连接。")
         st.info("可能的原因：1. 数据库服务不可用 2. 表结构未初始化")
 
     if search_query and chemicals:
@@ -62,7 +94,8 @@ def main():
             _result = chemical_manage_service.search_chemicals(search_query)
             filtered_chemicals = _result.data if _result.is_success() else []
         except Exception as e:
-            st.error(f"搜索失败：{str(e)}")
+            logger.error(f"搜索化学品失败: {str(e)}", exception=e)
+            st.error("搜索失败，请稍后重试。")
             filtered_chemicals = chemicals
     else:
         filtered_chemicals = chemicals
@@ -177,7 +210,7 @@ def main():
                 st.error("请至少选择一个试剂类型")
             else:
                 reagent_type_str = ", ".join(selected_types_add)
-                msds_value = msds.name if msds else None
+                msds_value = _safe_filename(msds)
                 _result = chemical_manage_service.create_chemical(
                     name=name,
                     display_name=display_name,
@@ -205,7 +238,8 @@ def main():
         chemicals_for_edit = _result.data if _result.is_success() else []
     except Exception as e:
         chemicals_for_edit = []
-        st.error(f"获取化学品列表失败：{str(e)}")
+        logger.error(f"获取化学品列表失败: {str(e)}", exception=e)
+        st.error("获取化学品列表失败，请检查数据库连接。")
 
     if chemicals_for_edit:
         chemical_options = {getattr(c, 'name', ''): c for c in chemicals_for_edit if getattr(c, 'name', '')}
@@ -308,7 +342,7 @@ def main():
                         st.error("请至少选择一个试剂类型")
                     else:
                         reagent_type_str = ", ".join(selected_types_edit)
-                        edit_msds_value = edit_msds.name if edit_msds else getattr(selected_chemical, 'msds', None)
+                        edit_msds_value = _safe_filename(edit_msds) if edit_msds else getattr(selected_chemical, 'msds', None)
                         _result = chemical_manage_service.update_chemical(
                             record_id=getattr(selected_chemical, 'id', ''),
                             name=edit_name,

@@ -4,19 +4,29 @@
 """
 import sys
 import os
+import re
 
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth, require_admin
 from db.database import db
+from utils.error_handler import logger
+
+# 表名安全校验正则：仅允许字母、数字、下划线
+_TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_]+$')
 
 
 def main():
     """主函数：系统设置页面"""
     st.set_page_config(page_title="系统设置", layout="wide")
     st.title("⚙️ 系统设置")
+
+    # 认证检查
+    if not require_auth():
+        st.stop()
 
     # 使用统一的侧边栏导航
     render_sidebar()
@@ -65,7 +75,11 @@ def main():
     # ========== 数据库数据查看 ==========
     st.divider()
     st.subheader("🗄️ 数据库数据查看")
-    st.caption("选择数据表查看其中的所有记录。")
+    st.caption("选择数据表查看其中的所有记录。此功能仅限管理员使用。")
+
+    # 管理员权限检查
+    if not require_admin():
+        st.stop()
 
     # 获取数据库中所有用户表
     all_tables = []
@@ -75,7 +89,8 @@ def main():
         )
         all_tables = [row["name"] for row in rows if row.get("name")]
     except Exception as e:
-        st.error(f"获取数据表列表失败：{str(e)}")
+        logger.error(f"获取数据表列表失败: {str(e)}", exception=e)
+        st.error("获取数据表列表失败，请检查数据库连接。")
 
     if all_tables:
         selected_table = st.selectbox(
@@ -85,11 +100,14 @@ def main():
         )
 
         if selected_table:
-            # 白名单验证：确保表名来自 sqlite_master
+            # 安全校验：表名必须来自 sqlite_master 白名单，且通过正则验证
             if selected_table not in all_tables:
                 st.error("无效的表名")
+            elif not _TABLE_NAME_PATTERN.match(selected_table):
+                st.error("表名包含非法字符")
             else:
                 try:
+                    # 表名已通过白名单+正则双重校验，安全拼接
                     records = db.execute_query(f"SELECT * FROM {selected_table}")
 
                     if records:
@@ -98,7 +116,8 @@ def main():
                     else:
                         st.warning(f"表 `{selected_table}` 中暂无数据")
                 except Exception as e:
-                    st.error(f"查询表 `{selected_table}` 失败：{str(e)}")
+                    logger.error(f"查询表 {selected_table} 失败: {str(e)}", exception=e)
+                    st.error("查询数据表失败，请稍后重试。")
     else:
         st.warning("未找到任何数据表，请检查数据库是否已初始化")
 
