@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-import matplotlib.pyplot as plt
+import pandas as pd
 from business.dashboard_service import dashboard_service
 from business.expiry_service import expiry_service
 from components.sidebar_nav import render_sidebar
@@ -81,43 +81,24 @@ def main():
     st.subheader("领用排行（按人员）")
     if borrow_stats.get("user_stats"):
         top_users = sorted(borrow_stats["user_stats"].items(), key=lambda x: x[1], reverse=True)[:5]
-        users, counts = zip(*top_users) if top_users else ([], [])
-        
-        fig, ax = plt.subplots(figsize=(8, 4))
-        ax.bar(users, counts, color='#4CAF50')
-        ax.set_xlabel('领用人')
-        ax.set_ylabel('领用次数')
-        ax.set_title('领用次数排行')
-        plt.xticks(rotation=45)
-        st.pyplot(fig)
+        df_users = pd.DataFrame(top_users, columns=['领用人', '领用次数'])
+        st.bar_chart(df_users, x='领用人', y='领用次数', color='#4CAF50', use_container_width=True)
     else:
         st.info("暂无领用数据")
     
     # 供应商统计
     st.subheader("试剂分布（按供应商）")
     if supplier_stats:
-        suppliers = list(supplier_stats.keys())
-        counts = list(supplier_stats.values())
-        
-        fig, ax = plt.subplots(figsize=(8, 4))
-        ax.pie(counts, labels=suppliers, autopct='%1.1f%%', startangle=90)
-        ax.axis('equal')
-        st.pyplot(fig)
+        df_suppliers = pd.DataFrame(list(supplier_stats.items()), columns=['供应商', '数量'])
+        st.bar_chart(df_suppliers, x='供应商', y='数量', color='#FF9800', use_container_width=True)
     else:
         st.info("暂无供应商数据")
     
     # 存储位置统计
     st.subheader("存储位置分布")
     if location_stats:
-        locations = list(location_stats.keys())
-        counts = list(location_stats.values())
-        
-        fig, ax = plt.subplots(figsize=(8, 4))
-        ax.barh(locations, counts, color='#2196F3')
-        ax.set_xlabel('试剂瓶数量')
-        ax.set_ylabel('存储位置')
-        ax.set_title('各位置试剂瓶数量')
-        st.pyplot(fig)
+        df_locations = pd.DataFrame(list(location_stats.items()), columns=['存储位置', '数量'])
+        st.bar_chart(df_locations, x='存储位置', y='数量', color='#2196F3', use_container_width=True)
     else:
         st.info("暂无存储位置数据")
 
