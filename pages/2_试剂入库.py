@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 from business.inventory_service import inventory_service
 from components.sidebar_nav import render_sidebar
+from components.auth import require_auth
 
 # 纯度选项（从业务需求定义）
 PURITY_OPTIONS = ["分析纯", "化学纯", "优级纯", "色谱纯", "光谱纯", "电子纯", "工业纯"]
@@ -16,6 +17,10 @@ PURITY_OPTIONS = ["分析纯", "化学纯", "优级纯", "色谱纯", "光谱纯
 def main():
     st.set_page_config(page_title="试剂入库", layout="wide")
     st.title("📦 试剂入库")
+
+    # 认证检查
+    if not require_auth():
+        st.stop()
 
     # 使用统一的侧边栏导航
     render_sidebar()

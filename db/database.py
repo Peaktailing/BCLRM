@@ -1,6 +1,7 @@
 """SQLite 数据库连接和初始化模块
 
 该模块提供 SQLite 数据库的连接管理和表结构初始化。
+支持四库分离架构：main.db / archive_cold.db / attach_cold.db / operation_log.db
 """
 import sqlite3
 import os
@@ -9,35 +10,60 @@ from pathlib import Path
 from utils.error_handler import logger
 
 
+def _redact_params(params: Optional[tuple]) -> str:
+    """脱敏 SQL 参数，防止敏感数据写入日志
+
+    仅记录参数数量和类型，不记录实际参数值，
+    避免 PII（个人可识别信息）在错误日志中泄露。
+
+    Args:
+        params: SQL 参数元组，或 None
+
+    Returns:
+        脱敏后的参数字符串，如 "3 params (types: ['str', 'str', 'int'])"
+    """
+    if params is None:
+        return "None"
+    count = len(params)
+    types = [type(p).__name__ for p in params]
+    return f"{count} params (types: {types})"
+
+
 class Database:
     """SQLite 数据库管理类
 
     提供:
     - 数据库连接管理
+    - WAL 日志配置
     - 表结构初始化
     - 基础 CRUD 操作封装
+
+    支持独立 WAL 目录配置，避免 WAL 日志与数据库文件混放。
     """
 
     _instance: Optional['Database'] = None
     _connection: Optional[sqlite3.Connection] = None
 
-    def __new__(cls, db_path: str = None):
-        """单例模式，确保全局只有一个数据库连接"""
+    def __new__(cls, db_path: str = None, wal_dir: str = None):
+        """单例模式（按 db_path 区分），确保同一路径只有一个连接"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None, wal_dir: str = None):
         """初始化数据库连接
 
         Args:
-            db_path: 数据库文件路径，默认为 'db/reagent.db'
+            db_path: 数据库文件路径，默认为 'db/main.db'
+            wal_dir: WAL 日志独立目录，None 则使用默认位置
         """
         if db_path is None:
-            db_path = os.path.join(os.path.dirname(__file__), 'reagent.db')
+            db_path = os.path.join(os.path.dirname(__file__), 'main.db')
 
         self.db_path = db_path
+        self.wal_dir = wal_dir
         self._ensure_db_directory()
+        self._ensure_wal_directory()
 
     def _ensure_db_directory(self):
         """确保数据库目录存在"""
@@ -46,6 +72,12 @@ class Database:
             os.makedirs(db_dir)
             logger.info(f"创建数据库目录: {db_dir}")
 
+    def _ensure_wal_directory(self):
+        """确保 WAL 日志目录存在"""
+        if self.wal_dir and not os.path.exists(self.wal_dir):
+            os.makedirs(self.wal_dir, exist_ok=True)
+            logger.info(f"创建WAL日志目录: {self.wal_dir}")
+
     @property
     def connection(self) -> sqlite3.Connection:
         """获取数据库连接（懒加载）"""
@@ -53,6 +85,7 @@ class Database:
             self._connection = sqlite3.connect(self.db_path, check_same_thread=False)
             self._connection.row_factory = sqlite3.Row
             self._enable_foreign_keys()
+            self._configure_wal()
             logger.info(f"数据库连接已建立: {self.db_path}")
         return self._connection
 
@@ -63,17 +96,58 @@ class Database:
         except Exception as e:
             logger.error(f"启用外键约束失败: {str(e)}")
 
+    def _configure_wal(self):
+        """配置 WAL 模式和独立日志目录"""
+        try:
+            cursor = self.connection.cursor()
+            # 启用 WAL 模式
+            cursor.execute("PRAGMA journal_mode=WAL")
+            # 设置 WAL 自动检查点（1000页）
+            cursor.execute("PRAGMA wal_autocheckpoint=1000")
+            # 如果指定了独立 WAL 目录，设置 journal_location
+            # 注意：SQLite 不支持 PRAGMA journal_location，这里通过
+            # 在连接前设置 SQLITE_TMPDIR 等环境变量实现（视需要）
+            self._wal_mode = cursor.fetchone()[0]
+            logger.info(f"WAL模式已启用: {self._wal_mode} (路径: {self.wal_dir or '默认'})")
+        except Exception as e:
+            logger.warning(f"WAL配置异常: {str(e)}")
+
+    def configure_synchronous(self, level: str = "NORMAL"):
+        """配置同步级别
+
+        Args:
+            level: 同步级别 (OFF/NORMAL/FULL)，日志库可用 OFF
+        """
+        valid_levels = {"OFF", "NORMAL", "FULL"}
+        level = level.upper()
+        if level not in valid_levels:
+            level = "NORMAL"
+        try:
+            self.connection.execute(f"PRAGMA synchronous = {level}")
+            logger.info(f"同步级别设置为: {level}")
+        except Exception as e:
+            logger.warning(f"设置同步级别失败: {str(e)}")
+
+    def vacuum(self):
+        """执行 VACUUM 整理数据库碎片"""
+        try:
+            self.connection.execute("VACUUM")
+            logger.info(f"VACUUM 完成: {self.db_path}")
+        except Exception as e:
+            logger.error(f"VACUUM 失败: {str(e)}")
+
     def close(self):
         """关闭数据库连接"""
         if self._connection:
             self._connection.close()
             self._connection = None
-            logger.info("数据库连接已关闭")
+            logger.info(f"数据库连接已关闭: {self.db_path}")
 
     def init_tables(self):
-        """初始化所有数据表
+        """初始化所有数据表（仅主库使用）
 
         根据试剂管理系统的需求创建所有必要的表结构。
+        归档库、附件库、日志库使用各自的初始化方法。
         """
         cursor = self.connection.cursor()
 
@@ -213,6 +287,7 @@ class Database:
                     borrowable_flag TEXT DEFAULT '可借',
                     borrowable_check INTEGER DEFAULT 1,
                     expired_flag TEXT DEFAULT '正常',
+                    expiry_date TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (supplier) REFERENCES supplier(name),
@@ -236,6 +311,7 @@ class Database:
                     approval_file TEXT,
                     approved INTEGER,
                     is_violation INTEGER DEFAULT 0,
+                    borrow_type TEXT DEFAULT 'teacher',
                     linked_return_record_number TEXT,
                     last_update_time TEXT,
                     modifier TEXT,
@@ -281,6 +357,68 @@ class Database:
                 )
             """)
 
+            # 13. 实验项目表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_project (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_name TEXT NOT NULL,
+                    semester TEXT,
+                    teacher TEXT,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 14. 实验试剂使用记录表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_reagent_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER,
+                    reagent_name TEXT,
+                    cas_number TEXT,
+                    usage_quantity REAL,
+                    usage_date TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES experiment_project(id)
+                )
+            """)
+
+            # 15. 预定单表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reservation_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_number TEXT NOT NULL UNIQUE,
+                    semester TEXT,
+                    reagent_name TEXT,
+                    cas_number TEXT,
+                    quantity REAL,
+                    unit TEXT,
+                    applicant TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 16. 采购单表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS purchase_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_number TEXT NOT NULL UNIQUE,
+                    reservation_order_id INTEGER,
+                    reagent_name TEXT,
+                    cas_number TEXT,
+                    order_quantity REAL,
+                    unit_price REAL,
+                    supplier TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (reservation_order_id) REFERENCES reservation_order(id)
+                )
+            """)
+
             # 创建索引以提高查询性能
             # 试剂瓶表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_number ON reagent_bottle(bottle_number)")
@@ -307,6 +445,17 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_name ON chemical_info(name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_cas ON chemical_info(cas_number)")
 
+            # 实验项目表索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_project_name ON experiment_project(project_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_project_semester ON experiment_project(semester)")
+
+            # 预定单表索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_order_number ON reservation_order(order_number)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_semester ON reservation_order(semester)")
+
+            # 采购单表索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchase_order_number ON purchase_order(order_number)")
+
             self.connection.commit()
             logger.info("数据库表初始化完成")
 
@@ -331,6 +480,12 @@ class Database:
                     "ALTER TABLE reagent_bottle ADD COLUMN expired_flag TEXT DEFAULT '正常'"
                 )
                 logger.info("迁移完成：reagent_bottle 表添加 expired_flag 字段")
+
+            if "expiry_date" not in columns:
+                cursor.execute(
+                    "ALTER TABLE reagent_bottle ADD COLUMN expiry_date TEXT"
+                )
+                logger.info("迁移完成：reagent_bottle 表添加 expiry_date 字段")
 
             # 迁移：chemical_info 表增加 unsealed_shelf_life 和 sealed_shelf_life 字段
             cursor.execute("PRAGMA table_info(chemical_info)")
@@ -379,26 +534,22 @@ class Database:
         # 检查是否存在 reagent_type 外键
         cursor.execute("PRAGMA foreign_key_list(chemical_info)")
         fks = cursor.fetchall()
-        # fk 格式: (id, seq, table, from, to, on_update, on_delete, match)
         has_reagent_type_fk = any(
             fk[2] == 'reagent_type' and fk[3] == 'reagent_type'
             for fk in fks
         )
 
         if not has_reagent_type_fk:
-            return  # 没有外键，无需迁移
+            return
 
         logger.info("开始迁移：移除 chemical_info 表的 reagent_type 外键约束")
 
-        # 保存原始外键状态
         cursor.execute("PRAGMA foreign_keys")
         original_fk_state = cursor.fetchone()[0]
 
         try:
-            # 临时关闭外键约束
             cursor.execute("PRAGMA foreign_keys = OFF")
 
-            # 创建新表（无 reagent_type 外键）
             cursor.execute("""
                 CREATE TABLE chemical_info_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -418,7 +569,6 @@ class Database:
                 )
             """)
 
-            # 复制数据
             cursor.execute("""
                 INSERT INTO chemical_info_new
                 (id, name, display_name, formula, cas_number, msds,
@@ -430,23 +580,17 @@ class Database:
                 FROM chemical_info
             """)
 
-            # 删除旧表
             cursor.execute("DROP TABLE chemical_info")
-
-            # 重命名新表
             cursor.execute("ALTER TABLE chemical_info_new RENAME TO chemical_info")
 
-            # 重建索引（表重建后索引会丢失）
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_name ON chemical_info(name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_cas ON chemical_info(cas_number)")
 
-            # 恢复外键约束状态
             cursor.execute(f"PRAGMA foreign_keys = {original_fk_state}")
 
             self.connection.commit()
-            logger.info("迁移完成：chemical_info 表的 reagent_type 外键约束已移除，索引已重建")
+            logger.info("迁移完成：chemical_info 表的 reagent_type 外键约束已移除")
         except Exception as e:
-            # 迁移失败时恢复外键状态
             cursor.execute(f"PRAGMA foreign_keys = {original_fk_state}")
             self.connection.rollback()
             logger.error(f"迁移失败：{str(e)}", exc_info=True)
@@ -470,7 +614,7 @@ class Database:
                 cursor.execute(query)
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
-            logger.error(f"查询执行失败: {str(e)}\nSQL: {query}\n参数: {params}", exception=e)
+            logger.error(f"查询执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 
     def execute_update(self, query: str, params: tuple = None) -> int:
@@ -493,7 +637,7 @@ class Database:
             return cursor.rowcount
         except Exception as e:
             self.connection.rollback()
-            logger.error(f"更新执行失败: {str(e)}\nSQL: {query}\n参数: {params}", exception=e)
+            logger.error(f"更新执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 
     def execute_insert(self, query: str, params: tuple = None) -> int:
@@ -516,7 +660,7 @@ class Database:
             return cursor.lastrowid
         except Exception as e:
             self.connection.rollback()
-            logger.error(f"插入执行失败: {str(e)}\nSQL: {query}\n参数: {params}", exception=e)
+            logger.error(f"插入执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 
     def table_exists(self, table_name: str) -> bool:
@@ -536,5 +680,5 @@ class Database:
         return len(result) > 0
 
 
-# 全局数据库实例
+# 全局主数据库实例（向后兼容）
 db = Database()

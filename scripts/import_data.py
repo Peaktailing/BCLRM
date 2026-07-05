@@ -279,7 +279,7 @@ def import_controlled_list(db, df):
         try:
             query = """
                 INSERT OR IGNORE INTO controlled_list
-                (chemical_name, alias, cas, dangerous_type)
+                (chemical_name, alias, cas_number, dangerous_type)
                 VALUES (?, ?, ?, ?)
             """
             db.execute_insert(query, tuple(fields.values()))
