@@ -161,6 +161,7 @@ class Database:
                     department TEXT,
                     phone TEXT,
                     student_or_work_id TEXT,
+                    password_hash TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -471,6 +472,15 @@ class Database:
         """执行数据库迁移（为已有表补充新字段）"""
         try:
             cursor = self.connection.cursor()
+
+            # 迁移：person 表增加 password_hash 字段
+            cursor.execute("PRAGMA table_info(person)")
+            person_columns = {row[1] for row in cursor.fetchall()}
+            if "password_hash" not in person_columns:
+                cursor.execute(
+                    "ALTER TABLE person ADD COLUMN password_hash TEXT"
+                )
+                logger.info("迁移完成：person 表添加 password_hash 字段")
 
             # 迁移：reagent_bottle 表增加 expired_flag 字段
             cursor.execute("PRAGMA table_info(reagent_bottle)")

@@ -5,6 +5,7 @@
 """
 import streamlit as st
 from business.permission_service import permission_service
+from services.base.person_service import person_service
 
 
 def render_login_form():
@@ -17,6 +18,7 @@ def render_login_form():
 
     with st.form("login_form", clear_on_submit=False):
         user_name = st.text_input("用户名", placeholder="请输入您的姓名", key="login_user_name")
+        password = st.text_input("密码", type="password", placeholder="请输入密码", key="login_password")
         submitted = st.form_submit_button("登录", type="primary", use_container_width=True)
 
         if submitted:
@@ -24,21 +26,30 @@ def render_login_form():
                 st.error("请输入用户名")
                 return False
 
-            user_name = user_name.strip()
-            has_permission, msg = permission_service.check_permission(user_name, "user")
+            if not password:
+                st.error("请输入密码")
+                return False
 
-            if has_permission:
-                st.session_state["logged_in"] = True
-                st.session_state["user_name"] = user_name
-                user_role = permission_service.get_user_role(user_name)
-                is_admin = permission_service.is_admin(user_name)
-                st.session_state["is_admin"] = is_admin
-                st.session_state["user_role"] = user_role
-                st.success(f"欢迎，{user_name}！")
-                st.rerun()
-            else:
+            user_name = user_name.strip()
+
+            has_permission, msg = permission_service.check_permission(user_name, "user")
+            if not has_permission:
                 st.error(msg)
                 return False
+
+            password_ok = person_service.verify_user_password(user_name, password)
+            if not password_ok:
+                st.error("密码错误，请重试")
+                return False
+
+            st.session_state["logged_in"] = True
+            st.session_state["user_name"] = user_name
+            user_role = permission_service.get_user_role(user_name)
+            is_admin = permission_service.is_admin(user_name)
+            st.session_state["is_admin"] = is_admin
+            st.session_state["user_role"] = user_role
+            st.success(f"欢迎，{user_name}！")
+            st.rerun()
 
     return False
 

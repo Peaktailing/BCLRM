@@ -8,6 +8,7 @@
 - 部门 -> department
 - 电话 -> phone
 - 学号/工号 -> student_or_work_id
+- 密码哈希 -> password_hash
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -23,4 +24,5 @@ class Person:
     department: Optional[str] = None     # 部门（文本类型）
     phone: Optional[str] = None          # 电话（文本类型）
     student_or_work_id: Optional[str] = None  # 学号/工号（文本类型）
+    password_hash: Optional[str] = None  # 密码哈希（PBKDF2 格式）
     id: Optional[int] = None             # 自增主键

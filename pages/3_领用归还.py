@@ -13,7 +13,7 @@ from business.borrow_service import borrow_service
 from business.return_service import return_service
 from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
-from components.auth import require_auth
+from components.auth import require_auth, get_current_user
 from utils.error_handler import logger
 
 def main():
@@ -27,6 +27,9 @@ def main():
     
     # 使用统一的侧边栏导航
     render_sidebar()
+    
+    # 当前登录用户
+    current_user = get_current_user()
     
     # 标签切换
     tab1, tab2 = st.tabs(["📥 试剂领用", "📤 试剂归还"])
@@ -156,49 +159,37 @@ def main():
             
             st.markdown("---")
             
-            # 领用人下拉选择（从业务层获取）
-            _result = borrow_service.get_all_borrow_users()
-            user_list = _result.data if _result.is_success() else []
+            # 显示领用人信息（使用当前登录用户，不可修改）
+            st.info(f"👤 领用人：**{current_user}**")
             
-            col_user, col_submit = st.columns([2, 1])
-            with col_user:
-                user = st.selectbox(
-                    "领用人*",
-                    options=[""] + user_list,
-                    placeholder="选择或输入领用人",
-                    key="borrow_user_select"
-                )
-            
-            with col_submit:
-                # 确认领用按钮 - 直接提交，不需要二次确认
-                if st.button("确认领用", type="primary", use_container_width=True):
-                    if not user:
-                        st.error("请选择或输入领用人")
-                    else:
-                        logger.info(f"[页面] 确认领用按钮被点击，购物车数量: {len(st.session_state.borrow_cart)}")
-                        success_count = 0
-                        fail_messages = []
-                        
-                        for item in st.session_state.borrow_cart:
-                            logger.debug(f"[页面] 正在领用试剂瓶: {item['bottle_number']}")
-                            _result = borrow_service.reagent_borrow(
-                                bottle_number=item["bottle_number"],
-                                user=user,
-                                borrow_qty=item["remaining_quantity"] or 0.1
-                            )
-                            logger.debug(f"[页面] 领用结果: {_result.success}, {_result.message}")
-                            if _result.is_success():
-                                success_count += 1
-                            else:
-                                fail_messages.append(f"{item['bottle_number']}: {_result.message}")
-                        
-                        if success_count == len(st.session_state.borrow_cart):
-                            st.success(f"✅ 全部领用成功！共领用 {success_count} 瓶试剂")
-                            st.session_state.borrow_cart = []
+            if st.button("确认领用", type="primary", use_container_width=True):
+                if not current_user:
+                    st.error("无法获取当前登录用户信息，请重新登录")
+                else:
+                    logger.info(f"[页面] 确认领用按钮被点击，购物车数量: {len(st.session_state.borrow_cart)}")
+                    success_count = 0
+                    fail_messages = []
+                    
+                    for item in st.session_state.borrow_cart:
+                        logger.debug(f"[页面] 正在领用试剂瓶: {item['bottle_number']}")
+                        _result = borrow_service.reagent_borrow(
+                            bottle_number=item["bottle_number"],
+                            user=current_user,
+                            borrow_qty=item["remaining_quantity"] or 0.1
+                        )
+                        logger.debug(f"[页面] 领用结果: {_result.success}, {_result.message}")
+                        if _result.is_success():
+                            success_count += 1
                         else:
-                            st.warning(f"⚠️ 部分领用成功：{success_count}/{len(st.session_state.borrow_cart)}")
-                            for msg in fail_messages:
-                                st.error(msg)
+                            fail_messages.append(f"{item['bottle_number']}: {_result.message}")
+                    
+                    if success_count == len(st.session_state.borrow_cart):
+                        st.success(f"✅ 全部领用成功！共领用 {success_count} 瓶试剂")
+                        st.session_state.borrow_cart = []
+                    else:
+                        st.warning(f"⚠️ 部分领用成功：{success_count}/{len(st.session_state.borrow_cart)}")
+                        for msg in fail_messages:
+                            st.error(msg)
         
         else:
             st.markdown("---")
@@ -227,16 +218,9 @@ def main():
             # 获取最近的借出记录（从业务层获取）
             _result = borrow_service.get_latest_borrow_record(selected_reagent.bottle_number)
             latest_record = _result.data if _result.is_success() else None
-            default_borrow_user = ""
-            if latest_record:
-                default_borrow_user = latest_record.user or ""
             
-            # 归还人（默认是借出人，但可修改）
-            return_user = st.text_input(
-                "归还人*", 
-                value=default_borrow_user,
-                help="默认是借出人，可修改"
-            )
+            # 显示归还人信息（使用当前登录用户，不可修改）
+            st.info(f"👤 归还人：**{current_user}**")
             
             # 剩余量滑块输入
             st.markdown("#### 归还时剩余量")
@@ -264,12 +248,12 @@ def main():
             
             # 确认归还按钮
             if st.button("确认归还", type="primary", use_container_width=True):
-                if not return_user:
-                    st.error("请填写归还人")
+                if not current_user:
+                    st.error("无法获取当前登录用户信息，请重新登录")
                 else:
                     result = return_service.reagent_return(
                         bottle_number=selected_reagent.bottle_number,
-                        return_user=return_user,
+                        return_user=current_user,
                         remaining_qty=remaining_qty
                     )
                     if result.is_success():

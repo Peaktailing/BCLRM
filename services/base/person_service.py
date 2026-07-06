@@ -7,6 +7,7 @@
 from db.base_service import BaseService
 from models.base.person import Person
 from utils.error_handler import logger
+from utils.password_utils import hash_password, verify_password
 from typing import List, Optional
 
 
@@ -69,6 +70,70 @@ class PersonService(BaseService):
         records = self.get_all()
         return [self._parse_record(record) for record in records]
 
+    def create_with_password(self, name: str, password: str, role: str = "user",
+                             department: str = None, phone: str = None,
+                             student_or_work_id: str = None) -> Optional[int]:
+        """创建带密码的用户
+
+        Args:
+            name: 用户名
+            password: 明文密码
+            role: 用户角色
+            department: 部门
+            phone: 电话
+            student_or_work_id: 学号/工号
+
+        Returns:
+            新记录的ID，失败返回None
+        """
+        password_h = hash_password(password)
+        fields = {
+            "name": name,
+            "password_hash": password_h,
+            "role": role
+        }
+        if department:
+            fields["department"] = department
+        if phone:
+            fields["phone"] = phone
+        if student_or_work_id:
+            fields["student_or_work_id"] = student_or_work_id
+
+        return self.create(fields)
+
+    def verify_user_password(self, name: str, password: str) -> bool:
+        """验证用户密码
+
+        Args:
+            name: 用户名
+            password: 明文密码
+
+        Returns:
+            True 表示验证通过
+        """
+        person = self.get_by_name(name)
+        if not person:
+            return False
+        if not person.password_hash:
+            return False
+        return verify_password(password, person.password_hash)
+
+    def update_password(self, name: str, new_password: str) -> bool:
+        """更新用户密码
+
+        Args:
+            name: 用户名
+            new_password: 新密码
+
+        Returns:
+            True 表示更新成功
+        """
+        person = self.get_by_name(name)
+        if not person:
+            return False
+        password_h = hash_password(new_password)
+        return self.update(person.id, {"password_hash": password_h})
+
     def _parse_record(self, record: dict) -> Person:
         """将数据库记录解析为Person对象
 
@@ -84,7 +149,8 @@ class PersonService(BaseService):
             role=record.get('role'),
             department=record.get('department'),
             phone=record.get('phone'),
-            student_or_work_id=record.get('student_or_work_id')
+            student_or_work_id=record.get('student_or_work_id'),
+            password_hash=record.get('password_hash')
         )
 
 
