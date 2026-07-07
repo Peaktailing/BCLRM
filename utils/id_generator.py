@@ -2,6 +2,9 @@
 
 提供统一的ID生成管理，使用单例模式集中管理所有编号生成逻辑，
 包括试剂瓶编号、条码、领用记录编号、归还记录编号等。
+
+优化：使用 MAX() 聚合查询替代全表扫描，在数据库层完成计数，
+避免加载全部记录到内存中过滤。
 """
 from datetime import datetime
 from utils.field_mapper import ReagentBottleField, BorrowRecordField, ReturnRecordField
@@ -21,6 +24,8 @@ class IDGenerator:
         - 试剂瓶条码：日期 + 4位序号（如 202605210001）
         - 领用记录编号：日期 + 4位序号（如 202606290001）
         - 归还记录编号：日期 + 4位序号（如 202606290001）
+
+    优化：使用 MAX() 聚合查询，O(log n) 查询 vs 原来的 O(n) 全表扫描。
     """
 
     _instance = None
@@ -36,6 +41,23 @@ class IDGenerator:
             return
         self._initialized = True
 
+    @staticmethod
+    def _next_seq_from_max(max_val: str, prefix: str) -> int:
+        """从最大值中提取序号并 +1
+
+        Args:
+            max_val: 当前最大值，如 "202606290005"
+            prefix: 前缀，如 "20260629"
+
+        Returns:
+            下一个序号
+        """
+        try:
+            current_seq = int(max_val[len(prefix):])
+            return current_seq + 1
+        except (ValueError, TypeError):
+            return 1
+
     # ------------------------------------------------------------------
     # 1. 试剂瓶编号生成（日期+四位自增）
     # ------------------------------------------------------------------
@@ -45,24 +67,16 @@ class IDGenerator:
         格式：YYYYMMDD + 4位自增数字（例：202606290001）
         同一日期内从 0001 开始自增，次日重置为 0001。
 
+        性能优化：使用 MAX(bottle_number) 聚合查询，避免全表扫描。
+
         Returns:
             试剂瓶编号字符串，失败返回当天 0001
-
-        Examples:
-            >>> generator = IDGenerator()
-            >>> generator.generate_bottle_number()
-            '202606290003'
         """
         today = datetime.now().strftime("%Y%m%d")
         try:
             from services.core.reagent_bottle_service import reagent_bottle_service
-            bottles = reagent_bottle_service.get_all_parsed()
-            today_count = sum(
-                1 for bottle in bottles
-                if bottle.bottle_number and str(bottle.bottle_number).startswith(today)
-            )
-
-            seq_num = today_count + 1
+            max_val = reagent_bottle_service.get_max_value_by_prefix("bottle_number", today)
+            seq_num = self._next_seq_from_max(max_val, today) if max_val else 1
             return f"{today}{seq_num:04d}"
         except Exception as e:
             logger.error(f"[IDGenerator] 生成试剂瓶编号时发生错误: {e}", exception=e)
@@ -76,24 +90,16 @@ class IDGenerator:
 
         格式：YYYYMMDD + 4位自增数字（例：202605210001）
 
+        性能优化：使用 MAX(barcode) 聚合查询，避免全表扫描。
+
         Returns:
             生成的条码字符串，失败返回当天 0001 条码
-
-        Examples:
-            >>> generator = IDGenerator()
-            >>> generator.generate_barcode()
-            '202605210003'
         """
         today = datetime.now().strftime("%Y%m%d")
         try:
             from services.core.reagent_bottle_service import reagent_bottle_service
-            bottles = reagent_bottle_service.get_all_parsed()
-            today_count = sum(
-                1 for bottle in bottles
-                if bottle.barcode and str(bottle.barcode).startswith(today)
-            )
-
-            seq_num = today_count + 1
+            max_val = reagent_bottle_service.get_max_value_by_prefix("barcode", today)
+            seq_num = self._next_seq_from_max(max_val, today) if max_val else 1
             return f"{today}{seq_num:04d}"
         except Exception as e:
             logger.error(f"[IDGenerator] 生成条码时发生错误: {e}", exception=e)
@@ -106,26 +112,17 @@ class IDGenerator:
         """生成领用记录编号
 
         格式：YYYYMMDD + 4位自增数字（例：202606290001）
-        同一日期内从 0001 开始自增，次日重置。
+
+        性能优化：使用 MAX(record_number) 聚合查询，避免全表扫描。
 
         Returns:
             领用记录编号字符串
-
-        Examples:
-            >>> generator = IDGenerator()
-            >>> generator.generate_borrow_record_number()
-            '202606290003'
         """
         today = datetime.now().strftime("%Y%m%d")
         try:
             from services.core.borrow_record_service import borrow_record_service
-            existing = borrow_record_service.get_all_parsed()
-            today_count = sum(
-                1 for rec in existing
-                if rec.record_number and str(rec.record_number).startswith(today)
-            )
-
-            seq_num = today_count + 1
+            max_val = borrow_record_service.get_max_value_by_prefix("record_number", today)
+            seq_num = self._next_seq_from_max(max_val, today) if max_val else 1
             return f"{today}{seq_num:04d}"
         except Exception as e:
             logger.error(f"[IDGenerator] 生成领用记录编号时发生错误: {e}", exception=e)
@@ -138,26 +135,17 @@ class IDGenerator:
         """生成归还记录编号
 
         格式：YYYYMMDD + 4位自增数字（例：202606290001）
-        同一日期内从 0001 开始自增，次日重置。
+
+        性能优化：使用 MAX(return_number) 聚合查询，避免全表扫描。
 
         Returns:
             归还记录编号字符串，失败返回当天 0001
-
-        Examples:
-            >>> generator = IDGenerator()
-            >>> generator.generate_return_record_number()
-            '202606290002'
         """
         today = datetime.now().strftime("%Y%m%d")
         try:
             from services.core.return_record_service import return_record_service
-            existing = return_record_service.get_all_parsed()
-            today_count = sum(
-                1 for rec in existing
-                if rec.return_number and str(rec.return_number).startswith(today)
-            )
-
-            seq_num = today_count + 1
+            max_val = return_record_service.get_max_value_by_prefix("return_number", today)
+            seq_num = self._next_seq_from_max(max_val, today) if max_val else 1
             return f"{today}{seq_num:04d}"
         except Exception as e:
             logger.error(f"[IDGenerator] 生成归还记录编号时发生错误: {e}", exception=e)
