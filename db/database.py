@@ -41,14 +41,24 @@ class Database:
     支持独立 WAL 目录配置，避免 WAL 日志与数据库文件混放。
     """
 
-    _instance: Optional['Database'] = None
+    _instances: dict = {}  # 按 db_path 缓存实例，支持多数据库独立连接
     _connection: Optional[sqlite3.Connection] = None
 
     def __new__(cls, db_path: str = None, wal_dir: str = None):
-        """单例模式（按 db_path 区分），确保同一路径只有一个连接"""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+        """单例模式（按 db_path 区分），确保同一路径只有一个连接
+
+        修复：之前忽略 db_path 参数导致四库分离架构失效，
+        现在按 db_path 分别缓存实例，每个数据库路径独立管理连接。
+        """
+        if db_path is None:
+            db_path = os.path.join(os.path.dirname(__file__), 'main.db')
+        # 规范化路径避免因相对/绝对路径差异导致重复实例
+        normalized = os.path.abspath(db_path)
+        if normalized not in cls._instances:
+            instance = super().__new__(cls)
+            instance._initialized = False
+            cls._instances[normalized] = instance
+        return cls._instances[normalized]
 
     def __init__(self, db_path: str = None, wal_dir: str = None):
         """初始化数据库连接
@@ -57,11 +67,16 @@ class Database:
             db_path: 数据库文件路径，默认为 'db/main.db'
             wal_dir: WAL 日志独立目录，None 则使用默认位置
         """
+        # 避免重复初始化（__init__ 在 __new__ 之后总会调用）
+        if hasattr(self, '_initialized') and self._initialized:
+            return
+
         if db_path is None:
             db_path = os.path.join(os.path.dirname(__file__), 'main.db')
 
-        self.db_path = db_path
+        self.db_path = os.path.abspath(db_path)
         self.wal_dir = wal_dir
+        self._initialized = True
         self._ensure_db_directory()
         self._ensure_wal_directory()
 
@@ -519,6 +534,15 @@ class Database:
 
             # 迁移：移除 chemical_info 表的 reagent_type 外键约束（支持多类型标签存储）
             self._migrate_chemical_info_drop_reagent_type_fk()
+
+            # 迁移：person 表添加 password_hash 字段（密码认证）
+            cursor.execute("PRAGMA table_info(person)")
+            person_columns = {row[1] for row in cursor.fetchall()}
+            if "password_hash" not in person_columns:
+                cursor.execute(
+                    "ALTER TABLE person ADD COLUMN password_hash TEXT"
+                )
+                logger.info("迁移完成：person 表添加 password_hash 字段")
 
         except Exception as e:
             logger.warning(f"数据库迁移执行异常（可忽略）: {str(e)}")
