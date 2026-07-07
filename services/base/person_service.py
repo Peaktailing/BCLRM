@@ -6,8 +6,9 @@
 """
 from db.base_service import BaseService
 from models.base.person import Person
-from utils.error_handler import logger
-from typing import List, Optional
+from utils.error_handler import logger, ServiceResult
+from utils.password_utils import hash_password, verify_password, is_password_hash_set
+from typing import List, Optional, Tuple
 
 
 class PersonService(BaseService):
