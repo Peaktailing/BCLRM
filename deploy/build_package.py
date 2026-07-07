@@ -98,6 +98,14 @@ def build_zip_package():
             arcname = f"ReagentManager-v{VERSION}/{relpath}"
             zf.write(fpath, arcname)
 
+        # 将 install.bat 和 install.sh 也放到根目录（方便用户双击运行）
+        install_bat = os.path.join(PROJECT_ROOT, 'deploy', 'install.bat')
+        install_sh = os.path.join(PROJECT_ROOT, 'deploy', 'install.sh')
+        if os.path.isfile(install_bat):
+            zf.write(install_bat, f"ReagentManager-v{VERSION}/install.bat")
+        if os.path.isfile(install_sh):
+            zf.write(install_sh, f"ReagentManager-v{VERSION}/install.sh")
+
     zip_size = os.path.getsize(zip_path) / (1024 * 1024)
     print(f"   安装包大小: {zip_size:.1f} MB")
 
@@ -110,25 +118,28 @@ def build_zip_package():
 
 ### Windows 用户
 1. 解压此 zip 文件到任意目录
-2. 双击运行 install.bat（自动安装依赖）
-3. 双击 "启动试剂库管理系统.bat" 启动服务
-4. 浏览器打开 http://localhost:8501
+2. 双击运行 install.bat（自动安装依赖 + 初始化数据库 + 创建管理员）
+3. 安装完成后双击 run.bat 启动系统
+4. 输入端口号（默认 8501），浏览器打开 http://localhost:端口号
 
 ### Linux/macOS 用户
 1. 解压: unzip ReagentManager-v{VERSION}.zip
 2. 进入目录: cd ReagentManager-v{VERSION}
 3. 运行安装: bash install.sh
-4. 启动服务: ./启动试剂库管理系统.sh
-5. 浏览器打开 http://localhost:8501
+4. 启动服务: ./run.sh（输入端口号即可）
+5. 浏览器打开 http://localhost:端口号
 
-## 首次使用
-1. 运行初始化数据库脚本
-2. 可选: 运行添加测试用户脚本
+## 首次安装流程
+install.bat / install.sh 会自动完成：
+1. 创建 Python 虚拟环境
+2. 安装所有依赖包
+3. 初始化数据库（四库分离架构）
+4. 提示输入超级管理员用户名和密码
+5. 生成 run.bat / run.sh 启动脚本
 
-## 默认测试账号
-- 超级管理员: 潘汉 / admin123
-- 管理员: 潘汉2 / admin123
-- 教师: 潘汉3 / teacher123
+## 日常使用
+- Windows: 双击 run.bat → 输入端口号 → 自动启动
+- Linux:   ./run.sh → 输入端口号 → 自动启动
 
 ## 系统要求
 - Python 3.10+
@@ -136,7 +147,7 @@ def build_zip_package():
 - 现代浏览器（Chrome/Firefox/Edge）
 
 ## 构建可执行文件
-如需构建 .exe 文件:
+如需构建 .exe 文件（在目标平台上运行）:
     pip install pyinstaller
     python deploy/build_exe.py
 """
