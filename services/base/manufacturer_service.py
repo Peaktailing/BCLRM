@@ -16,8 +16,8 @@ class ManufacturerService(BaseService):
     继承BaseService，提供生产商数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("manufacturer")
+    def __init__(self, db=None):
+        super().__init__("manufacturer", db=db)
         logger.info("生产商服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[Manufacturer]:
@@ -58,21 +58,8 @@ class ManufacturerService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> Manufacturer:
-        """将数据库记录解析为Manufacturer对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            Manufacturer对象
-        """
-        return Manufacturer(
-            id=record.get('id'),
-            name=record.get('name'),
-            contact=record.get('contact'),
-            phone=record.get('phone'),
-            address=record.get('address')
-        )
+        """将数据库记录解析为Manufacturer对象（Pydantic 自动校验）"""
+        return Manufacturer(**record)
 
 
 # 全局实例

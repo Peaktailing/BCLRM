@@ -1,20 +1,16 @@
 """存储要求表数据模型
 
 对应 SQLite 表：storage_requirement
-
-字段映射说明：
-- 名称 -> name
-- 描述 -> description
 """
-from dataclasses import dataclass
+from pydantic import BaseModel
 from typing import Optional
 
-@dataclass
-class StorageRequirement:
+
+class StorageRequirement(BaseModel):
     """存储要求数据模型
-    
+
     存储试剂的存储条件要求，如：冷藏、避光、常温等。
     """
-    name: Optional[str] = None        # 存储要求名称（文本类型）
-    description: Optional[str] = None # 描述（文本类型）
-    id: Optional[int] = None       # 自增主键
+    name: Optional[str] = None
+    description: Optional[str] = None
+    id: Optional[int] = None

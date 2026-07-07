@@ -16,8 +16,8 @@ class ReturnRecordService(BaseService):
     继承BaseService，提供归还记录数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("return_record")
+    def __init__(self, db=None):
+        super().__init__("return_record", db=db)
         logger.info("归还记录服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[ReturnRecord]:
@@ -103,24 +103,8 @@ class ReturnRecordService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> ReturnRecord:
-        """将数据库记录解析为ReturnRecord对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            ReturnRecord对象
-        """
-        return ReturnRecord(
-            id=record.get('id'),
-            return_number=record.get('return_number', ''),
-            bottle_number=record.get('bottle_number', ''),
-            return_user=record.get('return_user', ""),
-            return_time=record.get('return_time'),
-            remaining_quantity=record.get('remaining_quantity', 0.0),
-            last_update_time=record.get('last_update_time'),
-            modifier=record.get('modifier')
-        )
+        """将数据库记录解析为ReturnRecord对象（Pydantic 自动校验）"""
+        return ReturnRecord(**record)
 
 # 全局实例
 return_record_service = ReturnRecordService()

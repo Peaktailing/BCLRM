@@ -17,8 +17,8 @@ class PersonService(BaseService):
     继承BaseService，提供人员信息数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("person")
+    def __init__(self, db=None):
+        super().__init__("person", db=db)
         logger.info("人员服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[Person]:
@@ -71,23 +71,8 @@ class PersonService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> Person:
-        """将数据库记录解析为Person对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            Person对象
-        """
-        return Person(
-            id=record.get('id'),
-            name=record.get('name'),
-            role=record.get('role'),
-            department=record.get('department'),
-            phone=record.get('phone'),
-            student_or_work_id=record.get('student_or_work_id'),
-            password_hash=record.get('password_hash'),
-        )
+        """将数据库记录解析为Person对象（Pydantic 自动校验）"""
+        return Person(**record)
 
     # ------------------------------------------------------------------
     # 密码认证相关方法

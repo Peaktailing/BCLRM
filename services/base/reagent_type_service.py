@@ -16,8 +16,8 @@ class ReagentTypeService(BaseService):
     继承BaseService，提供试剂类型数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("reagent_type")
+    def __init__(self, db=None):
+        super().__init__("reagent_type", db=db)
         logger.info("试剂类型服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[ReagentType]:
@@ -79,21 +79,8 @@ class ReagentTypeService(BaseService):
         ]
 
     def _parse_record(self, record: dict) -> ReagentType:
-        """将数据库记录解析为ReagentType对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            ReagentType对象
-        """
-        return ReagentType(
-            id=record.get('id'),
-            name=record.get('name'),
-            description=record.get('description'),
-            default_unsealed_shelf_life=record.get('default_unsealed_shelf_life'),
-            default_sealed_shelf_life=record.get('default_sealed_shelf_life'),
-        )
+        """将数据库记录解析为ReagentType对象（Pydantic 自动校验）"""
+        return ReagentType(**record)
 
 
 # 全局实例

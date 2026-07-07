@@ -16,8 +16,8 @@ class SupplierService(BaseService):
     继承BaseService，提供供应商数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("supplier")
+    def __init__(self, db=None):
+        super().__init__("supplier", db=db)
         logger.info("供应商服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[Supplier]:
@@ -58,21 +58,8 @@ class SupplierService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> Supplier:
-        """将数据库记录解析为Supplier对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            Supplier对象
-        """
-        return Supplier(
-            id=record.get('id'),
-            name=record.get('name'),
-            contact=record.get('contact'),
-            phone=record.get('phone'),
-            address=record.get('address')
-        )
+        """将数据库记录解析为Supplier对象（Pydantic 自动校验）"""
+        return Supplier(**record)
 
 
 # 全局实例

@@ -16,8 +16,8 @@ class ChemicalService(BaseService):
     继承BaseService，提供化学品信息数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("chemical_info")
+    def __init__(self, db=None):
+        super().__init__("chemical_info", db=db)
         logger.info("化学品服务初始化完成")
     def get_by_id(self, record_id: int) -> Optional[ChemicalInfo]:
         """通过记录ID查询化学品信息
@@ -100,27 +100,8 @@ class ChemicalService(BaseService):
         return parsed_list
 
     def _parse_record(self, record: dict) -> ChemicalInfo:
-        """将数据库记录解析为ChemicalInfo对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            ChemicalInfo对象
-        """
-        return ChemicalInfo(
-            id=record.get('id'),
-            name=record.get('name'),
-            display_name=record.get('display_name'),
-            formula=record.get('formula'),
-            cas_number=record.get('cas_number'),
-            msds=record.get('msds'),
-            reagent_type=record.get('reagent_type'),
-            storage_requirement=record.get('storage_requirement'),
-            controlled_type=record.get('controlled_type'),
-            unsealed_shelf_life=record.get('unsealed_shelf_life'),
-            sealed_shelf_life=record.get('sealed_shelf_life'),
-        )
+        """将数据库记录解析为ChemicalInfo对象（Pydantic 自动校验）"""
+        return ChemicalInfo(**record)
 
 
 # 全局实例
