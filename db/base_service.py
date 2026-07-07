@@ -452,3 +452,26 @@ class BaseService:
         except Exception as e:
             logger.error(f"获取不同值失败 [{self.table_name}]: {str(e)}", exception=e)
             return []
+
+    def get_max_value_by_prefix(self, field_name: str, prefix: str) -> Optional[str]:
+        """获取指定字段以 prefix 开头的最大值（用于编号自增）
+
+        使用 MAX() 聚合查询替代全表扫描，性能远优于加载全部记录后 Python 过滤。
+
+        Args:
+            field_name: 字段名
+            prefix: 前缀字符串
+
+        Returns:
+            最大值字符串，无匹配记录时返回 None
+        """
+        self._validate_field_name(field_name)
+        query = f"SELECT MAX({field_name}) as max_val FROM {self.table_name} WHERE {field_name} LIKE ?"
+        try:
+            result = self.db.execute_query(query, (f"{prefix}%",))
+            if result and result[0].get('max_val'):
+                return result[0]['max_val']
+            return None
+        except Exception as e:
+            logger.error(f"获取最大值失败 [{self.table_name}.{field_name}]: {str(e)}", exception=e)
+            return None

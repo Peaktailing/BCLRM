@@ -2,9 +2,12 @@
 
 提供统一的登录认证和权限检查功能。
 所有页面通过此模块进行用户身份验证和权限控制。
+
+安全性：使用 PBKDF2-HMAC-SHA256 密码哈希，密码从不以明文存储。
 """
 import streamlit as st
 from business.permission_service import permission_service
+from services.base.person_service import person_service
 
 
 def render_login_form():
@@ -12,11 +15,17 @@ def render_login_form():
 
     在 app.py 和所有页面中调用，当用户未登录时显示登录界面。
     登录成功后设置 st.session_state 中的用户信息。
+
+    登录流程：
+    1. 验证用户存在于 person 表中
+    2. 验证密码（PBKDF2-HMAC-SHA256 哈希比对）
+    3. 验证用户角色权限
     """
     st.markdown("## 登录")
 
     with st.form("login_form", clear_on_submit=False):
         user_name = st.text_input("用户名", placeholder="请输入您的姓名", key="login_user_name")
+        password = st.text_input("密码", type="password", placeholder="请输入密码", key="login_password")
         submitted = st.form_submit_button("登录", type="primary", use_container_width=True)
 
         if submitted:
@@ -24,21 +33,33 @@ def render_login_form():
                 st.error("请输入用户名")
                 return False
 
-            user_name = user_name.strip()
-            has_permission, msg = permission_service.check_permission(user_name, "user")
+            if not password:
+                st.error("请输入密码")
+                return False
 
-            if has_permission:
-                st.session_state["logged_in"] = True
-                st.session_state["user_name"] = user_name
-                user_role = permission_service.get_user_role(user_name)
-                is_admin = permission_service.is_admin(user_name)
-                st.session_state["is_admin"] = is_admin
-                st.session_state["user_role"] = user_role
-                st.success(f"欢迎，{user_name}！")
-                st.rerun()
-            else:
+            user_name = user_name.strip()
+
+            # 1. 验证密码
+            auth_result = person_service.authenticate(user_name, password)
+            if auth_result.is_failure():
+                st.error(auth_result.message)
+                return False
+
+            # 2. 验证权限
+            has_permission, msg = permission_service.check_permission(user_name, "user")
+            if not has_permission:
                 st.error(msg)
                 return False
+
+            # 3. 登录成功
+            st.session_state["logged_in"] = True
+            st.session_state["user_name"] = user_name
+            user_role = permission_service.get_user_role(user_name)
+            is_admin = permission_service.is_admin(user_name)
+            st.session_state["is_admin"] = is_admin
+            st.session_state["user_role"] = user_role
+            st.success(f"欢迎，{user_name}！")
+            st.rerun()
 
     return False
 

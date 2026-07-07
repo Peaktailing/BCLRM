@@ -18,6 +18,10 @@ from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from datetime import date
 
+# 初始化四库分离架构（主库 + 归档冷库 + 附件索引库 + 审计日志库）
+from db.multi_database import db_manager
+db_manager.init_all_databases()
+
 st.set_page_config(
     page_title=f"{SYSTEM_NAME} - 首页",
     page_icon="🧪",

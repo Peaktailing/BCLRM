@@ -85,8 +85,93 @@ class PersonService(BaseService):
             role=record.get('role'),
             department=record.get('department'),
             phone=record.get('phone'),
-            student_or_work_id=record.get('student_or_work_id')
+            student_or_work_id=record.get('student_or_work_id'),
+            password_hash=record.get('password_hash'),
         )
+
+    # ------------------------------------------------------------------
+    # 密码认证相关方法
+    # ------------------------------------------------------------------
+
+    def set_password(self, user_name: str, password: str) -> ServiceResult[bool]:
+        """为用户设置密码
+
+        Args:
+            user_name: 用户名
+            password: 明文密码
+
+        Returns:
+            ServiceResult[bool] - 成功返回 True
+        """
+        if not password or len(password) < 6:
+            return ServiceResult.fail(
+                message="密码长度不能少于6位",
+                error_code="WEAK_PASSWORD",
+            )
+
+        person = self.get_by_name(user_name)
+        if not person:
+            return ServiceResult.fail(
+                message=f"用户 {user_name} 不存在",
+                error_code="USER_NOT_FOUND",
+            )
+
+        password_hash = hash_password(password)
+        success = self.update_by_field("name", user_name, {"password_hash": password_hash})
+        if success:
+            logger.info(f"用户 {user_name} 密码已设置")
+            return ServiceResult.ok(data=True, message="密码设置成功")
+        return ServiceResult.fail(
+            message="密码设置失败",
+            error_code="PASSWORD_UPDATE_FAILED",
+        )
+
+    def authenticate(self, user_name: str, password: str) -> ServiceResult[Person]:
+        """验证用户登录凭据
+
+        Args:
+            user_name: 用户名
+            password: 明文密码
+
+        Returns:
+            ServiceResult[Person] - 成功返回 Person 对象
+        """
+        person = self.get_by_name(user_name)
+        if not person:
+            return ServiceResult.fail(
+                message="用户名不存在",
+                error_code="USER_NOT_FOUND",
+            )
+
+        # 如果用户未设置密码，拒绝登录
+        if not is_password_hash_set(person.password_hash or ""):
+            return ServiceResult.fail(
+                message="该用户尚未设置密码，请联系管理员",
+                error_code="PASSWORD_NOT_SET",
+            )
+
+        if not verify_password(password, person.password_hash):
+            return ServiceResult.fail(
+                message="密码错误",
+                error_code="WRONG_PASSWORD",
+            )
+
+        logger.info(f"用户 {user_name} 登录验证成功")
+        return ServiceResult.ok(data=person, message="验证通过")
+
+    def has_password(self, user_name: str) -> bool:
+        """检查用户是否已设置密码
+
+        Args:
+            user_name: 用户名
+
+        Returns:
+            True 表示已设置密码
+        """
+        person = self.get_by_name(user_name)
+        if not person:
+            return False
+        return is_password_hash_set(person.password_hash or "")
 
 
 # 全局实例
