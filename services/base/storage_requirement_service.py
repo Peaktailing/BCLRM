@@ -16,8 +16,8 @@ class StorageRequirementService(BaseService):
     继承BaseService，提供存储要求数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("storage_requirement")
+    def __init__(self, db=None):
+        super().__init__("storage_requirement", db=db)
         logger.info("存储要求服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[StorageRequirement]:
@@ -79,19 +79,8 @@ class StorageRequirementService(BaseService):
         ]
 
     def _parse_record(self, record: dict) -> StorageRequirement:
-        """将数据库记录解析为StorageRequirement对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            StorageRequirement对象
-        """
-        return StorageRequirement(
-            id=record.get('id'),
-            name=record.get('name'),
-            description=record.get('description')
-        )
+        """将数据库记录解析为StorageRequirement对象（Pydantic 自动校验）"""
+        return StorageRequirement(**record)
 
 
 # 全局实例

@@ -1,30 +1,21 @@
 """归还记录表数据模型
 
 对应 SQLite 表：return_record
-
-字段映射说明：
-- 归还记录 编号 -> return_number
-- 试剂瓶编号 -> bottle_number
-- 归还人 -> return_user
-- 归还时间 -> return_time
-- 归还时余量 -> remaining_quantity
-- 最后更新时间 -> last_update_time
-- 修改人 -> modifier
 """
-from dataclasses import dataclass
+from pydantic import BaseModel
 from typing import Optional
 
-@dataclass
-class ReturnRecord:
+
+class ReturnRecord(BaseModel):
     """归还记录数据模型
-    
+
     记录所有试剂归还操作，更新试剂瓶的剩余量状态。
     """
-    return_number: Optional[str] = None   # 归还记录编号（TEXT类型，格式：YYYYMMDD+NNNN，如202606290001）
-    bottle_number: Optional[str] = None   # 试剂瓶编号（TEXT类型，关联试剂瓶表）
-    return_user: Optional[str] = None     # 归还人（文本类型）
-    return_time: Optional[str] = None     # 归还时间（文本格式：YYYY/MM/DD HH:MM）
-    remaining_quantity: Optional[float] = None # 归还时余量（数字类型）
-    last_update_time: Optional[str] = None    # 最后更新时间（文本格式）
-    modifier: Optional[str] = None        # 修改人（文本类型）
-    id: Optional[int] = None       # 自增主键
+    return_number: Optional[str] = None
+    bottle_number: Optional[str] = None
+    return_user: Optional[str] = None
+    return_time: Optional[str] = None
+    remaining_quantity: Optional[float] = None
+    last_update_time: Optional[str] = None
+    modifier: Optional[str] = None
+    id: Optional[int] = None

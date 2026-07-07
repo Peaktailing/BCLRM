@@ -16,8 +16,8 @@ class StorageLocationService(BaseService):
     继承BaseService，提供存储位置数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("storage_location")
+    def __init__(self, db=None):
+        super().__init__("storage_location", db=db)
         logger.info("存储位置服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[StorageLocation]:
@@ -58,19 +58,8 @@ class StorageLocationService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> StorageLocation:
-        """将数据库记录解析为StorageLocation对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            StorageLocation对象
-        """
-        return StorageLocation(
-            id=record.get('id'),
-            name=record.get('name'),
-            description=record.get('description')
-        )
+        """将数据库记录解析为StorageLocation对象（Pydantic 自动校验）"""
+        return StorageLocation(**record)
 
 
 # 全局实例

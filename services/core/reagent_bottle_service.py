@@ -16,8 +16,8 @@ class ReagentBottleService(BaseService):
     继承BaseService，提供试剂瓶数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("reagent_bottle")
+    def __init__(self, db=None):
+        super().__init__("reagent_bottle", db=db)
         logger.info("试剂瓶服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[ReagentBottle]:
@@ -175,39 +175,8 @@ class ReagentBottleService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> ReagentBottle:
-        """将数据库记录解析为ReagentBottle对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            ReagentBottle对象
-        """
-        return ReagentBottle(
-            id=record.get('id'),
-            bottle_number=record.get('bottle_number', ''),
-            barcode=record.get('barcode'),
-            reagent_name=record.get('reagent_name'),
-            cas_number=record.get('cas_number'),
-            remaining_quantity=record.get('remaining_quantity'),
-            specification=record.get('specification'),
-            purity=record.get('purity'),
-            unit_price=record.get('unit_price'),
-            supplier=record.get('supplier'),
-            production_date=record.get('production_date'),
-            inbound_date=record.get('inbound_date'),
-            unseal_date=record.get('unseal_date'),
-            last_borrow_time=record.get('last_borrow_time'),
-            last_return_time=record.get('last_return_time'),
-            last_return_record_no=record.get('last_return_record_no'),
-            storage_location=record.get('storage_location'),
-            borrowable_flag=record.get('borrowable_flag'),
-            borrowable_check=bool(record.get('borrowable_check')) if record.get('borrowable_check') is not None else None,
-            expired_flag=record.get('expired_flag'),
-            reagent_type=record.get('reagent_type'),
-            is_controlled=record.get('is_controlled'),
-            storage_requirement=record.get('storage_requirement'),
-        )
+        """将数据库记录解析为ReagentBottle对象（Pydantic 自动校验）"""
+        return ReagentBottle(**record)
 
 # 全局实例
 reagent_bottle_service = ReagentBottleService()

@@ -1,20 +1,16 @@
 """存储位置表数据模型
 
 对应 SQLite 表：storage_location
-
-字段映射说明：
-- 名称 -> name
-- 描述 -> description
 """
-from dataclasses import dataclass
+from pydantic import BaseModel
 from typing import Optional
 
-@dataclass
-class StorageLocation:
+
+class StorageLocation(BaseModel):
     """存储位置数据模型
-    
+
     存储试剂存放位置信息，如：A栋301室1号柜、危化品存储柜1等。
     """
-    name: Optional[str] = None        # 存储位置名称（文本类型）
-    description: Optional[str] = None # 描述（文本类型）
-    id: Optional[int] = None       # 自增主键
+    name: Optional[str] = None
+    description: Optional[str] = None
+    id: Optional[int] = None

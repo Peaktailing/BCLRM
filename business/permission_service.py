@@ -33,9 +33,14 @@ class PermissionService:
     ADMIN_ROLES = {"super_admin", "admin"}
     TEACHER_ROLES = {"super_admin", "admin", "teacher"}
 
-    def __init__(self):
-        """初始化权限服务"""
-        self.person_service = person_service
+    def __init__(self, person_service=None):
+        """初始化权限服务
+
+        Args:
+            person_service: PersonService 实例，None 则使用全局单例
+        """
+        from services.base.person_service import person_service as module_person_service
+        self.person_service = person_service or module_person_service
 
     def check_permission(self, user_name: str, required_role: str = "user") -> tuple:
         """检查用户权限

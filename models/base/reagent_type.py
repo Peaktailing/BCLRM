@@ -1,22 +1,18 @@
 """试剂类型表数据模型
 
 对应 SQLite 表：reagent_type
-
-字段映射说明：
-- 名称 -> name
-- 描述 -> description
 """
-from dataclasses import dataclass
+from pydantic import BaseModel
 from typing import Optional
 
-@dataclass
-class ReagentType:
+
+class ReagentType(BaseModel):
     """试剂类型数据模型
-    
+
     存储试剂类型信息，如：分析纯、化学纯、优级纯等。
     """
-    name: Optional[str] = None        # 试剂类型名称（文本类型）
-    description: Optional[str] = None # 描述（文本类型）
-    default_unsealed_shelf_life: Optional[int] = None  # 默认未启封有效期（天）
-    default_sealed_shelf_life: Optional[int] = None    # 默认启封有效期（天）
-    id: Optional[int] = None       # 自增主键
+    name: Optional[str] = None
+    description: Optional[str] = None
+    default_unsealed_shelf_life: Optional[int] = None
+    default_sealed_shelf_life: Optional[int] = None
+    id: Optional[int] = None

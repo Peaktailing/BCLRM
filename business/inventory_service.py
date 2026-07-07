@@ -29,17 +29,35 @@ class InventoryService:
     所有方法返回 ServiceResult 对象，统一成功/失败处理。
     """
 
-    def __init__(self):
+    def __init__(self, chemical_service=None, supplier_service=None,
+                 storage_location_service=None, reagent_type_service=None,
+                 controlled_list_service=None, reagent_bottle_service=None):
         """初始化入库服务
 
         注入所有依赖的服务实例，便于测试和维护。
+        各参数为 None 时使用模块级全局单例。
+
+        Args:
+            chemical_service: ChemicalService 实例
+            supplier_service: SupplierService 实例
+            storage_location_service: StorageLocationService 实例
+            reagent_type_service: ReagentTypeService 实例
+            controlled_list_service: ControlledListService 实例
+            reagent_bottle_service: ReagentBottleService 实例
         """
-        self.reagent_bottle_service = reagent_bottle_service
-        self.chemical_service = chemical_service
-        self.controlled_list_service = controlled_list_service
-        self.supplier_service = supplier_service
-        self.storage_location_service = storage_location_service
-        self.reagent_type_service = reagent_type_service
+        from services.core.reagent_bottle_service import reagent_bottle_service as rbs
+        from services.base.chemical_service import chemical_service as cs
+        from services.base.controlled_list_service import controlled_list_service as cls
+        from services.base.supplier_service import supplier_service as ss
+        from services.base.storage_location_service import storage_location_service as sls
+        from services.base.reagent_type_service import reagent_type_service as rts
+
+        self.reagent_bottle_service = reagent_bottle_service or rbs
+        self.chemical_service = chemical_service or cs
+        self.controlled_list_service = controlled_list_service or cls
+        self.supplier_service = supplier_service or ss
+        self.storage_location_service = storage_location_service or sls
+        self.reagent_type_service = reagent_type_service or rts
         self.id_generator = id_generator
         logger.info("InventoryService 初始化完成")
 

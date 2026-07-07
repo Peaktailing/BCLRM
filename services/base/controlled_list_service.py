@@ -17,8 +17,8 @@ class ControlledListService(BaseService):
     主要用于领用审批时判断试剂是否为管控试剂。
     """
 
-    def __init__(self):
-        super().__init__("controlled_list")
+    def __init__(self, db=None):
+        super().__init__("controlled_list", db=db)
         logger.info("管控化学品名录服务初始化完成")
     def get_by_id(self, record_id: int) -> Optional[ControlledList]:
         """通过记录ID查询管控化学品
@@ -83,21 +83,8 @@ class ControlledListService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> ControlledList:
-        """将数据库记录解析为ControlledList对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            ControlledList对象
-        """
-        return ControlledList(
-            id=record.get('id'),
-            chemical_name=record.get('chemical_name'),
-            alias=record.get('alias'),
-            cas_number=record.get('cas_number'),
-            dangerous_type=record.get('dangerous_type')
-        )
+        """将数据库记录解析为ControlledList对象（Pydantic 自动校验）"""
+        return ControlledList(**record)
 
 
 # 全局实例

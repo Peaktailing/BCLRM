@@ -16,8 +16,8 @@ class BorrowRecordService(BaseService):
     继承BaseService，提供领用记录数据的增删改查操作。
     """
 
-    def __init__(self):
-        super().__init__("borrow_record")
+    def __init__(self, db=None):
+        super().__init__("borrow_record", db=db)
         logger.info("领用记录服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[BorrowRecord]:
@@ -127,27 +127,8 @@ class BorrowRecordService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> BorrowRecord:
-        """将数据库记录解析为BorrowRecord对象
-
-        Args:
-            record: 数据库记录字典
-
-        Returns:
-            BorrowRecord对象
-        """
-        return BorrowRecord(
-            id=record.get('id'),
-            record_number=record.get('record_number', ""),
-            bottle_number=record.get('bottle_number', ''),
-            reagent_name=record.get('reagent_name'),
-            user=record.get('user', ""),
-            cas_number=record.get('cas_number'),
-            production_date=record.get('production_date'),
-            borrow_time=record.get('borrow_time'),
-            approver=record.get('approver'),
-            approval_file=record.get('approval_file'),
-            approved=record.get('approved')
-        )
+        """将数据库记录解析为BorrowRecord对象（Pydantic 自动校验）"""
+        return BorrowRecord(**record)
 
 # 全局实例
 borrow_record_service = BorrowRecordService()
