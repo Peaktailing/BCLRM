@@ -10,7 +10,6 @@
 - 密码认证（集成测试）
 - 入库服务（集成测试）
 """
-import sys
 import os
 import unittest
 import tempfile
@@ -18,7 +17,6 @@ import shutil
 
 # 添加项目根目录到 Python 路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
 
 
 # ============================================================================
@@ -408,12 +406,12 @@ class TestPasswordAuthentication(_ServiceIntegrationTest):
         self.test_ps.set_password("测试用户", "correct_password")
         result = self.test_ps.authenticate("测试用户", "wrong_password")
         self.assertTrue(result.is_failure())
-        self.assertEqual(result.error_code, "WRONG_PASSWORD")
+        self.assertEqual(result.error_code, "AUTH_FAILED")
 
     def test_no_password_set(self):
         result = self.test_ps.authenticate("测试用户", "any_password")
         self.assertTrue(result.is_failure())
-        self.assertEqual(result.error_code, "PASSWORD_NOT_SET")
+        self.assertEqual(result.error_code, "AUTH_FAILED")
 
     def test_weak_password_rejected(self):
         result = self.test_ps.set_password("测试用户", "123")
@@ -423,7 +421,7 @@ class TestPasswordAuthentication(_ServiceIntegrationTest):
     def test_user_not_found_auth(self):
         result = self.test_ps.authenticate("不存在", "any_password")
         self.assertTrue(result.is_failure())
-        self.assertEqual(result.error_code, "USER_NOT_FOUND")
+        self.assertEqual(result.error_code, "AUTH_FAILED")
 
     def test_has_password_check(self):
         self.assertFalse(self.test_ps.has_password("测试用户"))

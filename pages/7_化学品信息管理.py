@@ -3,9 +3,7 @@
 化学品信息管理的UI页面，仅负责展示和用户交互，不包含任何业务逻辑。
 所有业务逻辑调用 business/chemical_service.py 中的函数。
 """
-import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from business.chemical_service import chemical_manage_service

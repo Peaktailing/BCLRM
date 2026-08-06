@@ -2,12 +2,6 @@
 
 专门用于查看管控化学品名录的页面，显示所有管控化学品数据。
 """
-import sys
-import os
-
-# 添加项目根目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import streamlit as st
 from business.query_service import query_service
 from components.sidebar_nav import render_sidebar

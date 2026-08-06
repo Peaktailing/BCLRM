@@ -444,12 +444,20 @@ class QueryService:
                 reagent_name=reagent_name,
                 status=None
             )
-            # Python 层过滤状态
+            # Python 层过滤状态（使用 borrowable_check + remaining_quantity 派生）
             effective_status_list = status
-            filtered_results = [
-                bottle for bottle in results
-                if getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, "") in effective_status_list
-            ]
+            filtered_results = []
+            for bottle in results:
+                bc = getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None)
+                rq = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0)
+                if bc:
+                    derived = "可借"
+                elif rq == 0:
+                    derived = "耗尽"
+                else:
+                    derived = "已借出"
+                if derived in effective_status_list:
+                    filtered_results.append(bottle)
         else:
             # 单状态或无状态：直接数据库层过滤
             filtered_results = self.bottle_service.search_multi_condition(

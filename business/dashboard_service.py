@@ -75,18 +75,21 @@ class DashboardService:
             total_quantity = 0.0
 
             for bottle in bottles:
-                status = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, "")
-                qty = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
+                bc = getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None)
+                rq = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
+                ef = getattr(bottle, ReagentBottleField.EXPIRED_FLAG, "")
 
-                if status == "可借":
+                if ef == "已过期":
+                    pass  # 过期试剂不计入可用统计
+                elif bc:
                     borrowable += 1
-                elif status == "耗尽":
+                elif rq == 0:
                     exhausted += 1
-                elif status == "已借出":
+                else:
                     borrowed += 1
 
-                if qty:
-                    total_quantity += qty
+                if rq:
+                    total_quantity += rq
 
             stats = {
                 "total_bottles": total,

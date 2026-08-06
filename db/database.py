@@ -5,6 +5,8 @@
 """
 import sqlite3
 import os
+import threading
+from contextlib import contextmanager
 from typing import Optional
 from pathlib import Path
 from utils.error_handler import logger
@@ -37,14 +39,11 @@ class Database:
     - WAL 日志配置
     - 表结构初始化
     - 基础 CRUD 操作封装
-
-    支持独立 WAL 目录配置，避免 WAL 日志与数据库文件混放。
     """
 
     _instances: dict = {}  # 按 db_path 缓存实例，支持多数据库独立连接
-    _connection: Optional[sqlite3.Connection] = None
 
-    def __new__(cls, db_path: str = None, wal_dir: str = None):
+    def __new__(cls, db_path: str = None):
         """单例模式（按 db_path 区分），确保同一路径只有一个连接
 
         修复：之前忽略 db_path 参数导致四库分离架构失效，
@@ -57,15 +56,16 @@ class Database:
         if normalized not in cls._instances:
             instance = super().__new__(cls)
             instance._initialized = False
+            instance._connection = None  # 每个实例独立连接实例
+            instance._lock = threading.RLock()  # 可重入锁，避免同一线程重复获取时死锁
             cls._instances[normalized] = instance
         return cls._instances[normalized]
 
-    def __init__(self, db_path: str = None, wal_dir: str = None):
+    def __init__(self, db_path: str = None):
         """初始化数据库连接
 
         Args:
             db_path: 数据库文件路径，默认为 'db/main.db'
-            wal_dir: WAL 日志独立目录，None 则使用默认位置
         """
         # 避免重复初始化（__init__ 在 __new__ 之后总会调用）
         if hasattr(self, '_initialized') and self._initialized:
@@ -75,10 +75,8 @@ class Database:
             db_path = os.path.join(os.path.dirname(__file__), 'main.db')
 
         self.db_path = os.path.abspath(db_path)
-        self.wal_dir = wal_dir
         self._initialized = True
         self._ensure_db_directory()
-        self._ensure_wal_directory()
 
     def _ensure_db_directory(self):
         """确保数据库目录存在"""
@@ -87,22 +85,17 @@ class Database:
             os.makedirs(db_dir)
             logger.info(f"创建数据库目录: {db_dir}")
 
-    def _ensure_wal_directory(self):
-        """确保 WAL 日志目录存在"""
-        if self.wal_dir and not os.path.exists(self.wal_dir):
-            os.makedirs(self.wal_dir, exist_ok=True)
-            logger.info(f"创建WAL日志目录: {self.wal_dir}")
-
     @property
     def connection(self) -> sqlite3.Connection:
         """获取数据库连接（懒加载）"""
-        if self._connection is None:
-            self._connection = sqlite3.connect(self.db_path, check_same_thread=False)
-            self._connection.row_factory = sqlite3.Row
-            self._enable_foreign_keys()
-            self._configure_wal()
-            logger.info(f"数据库连接已建立: {self.db_path}")
-        return self._connection
+        with self._lock:
+            if self._connection is None:
+                self._connection = sqlite3.connect(self.db_path, check_same_thread=False)
+                self._connection.row_factory = sqlite3.Row
+                self._enable_foreign_keys()
+                self._configure_wal()
+                logger.info(f"数据库连接已建立: {self.db_path}")
+            return self._connection
 
     def _enable_foreign_keys(self):
         """启用外键约束"""
@@ -112,18 +105,15 @@ class Database:
             logger.error(f"启用外键约束失败: {str(e)}")
 
     def _configure_wal(self):
-        """配置 WAL 模式和独立日志目录"""
+        """配置 WAL 模式"""
         try:
             cursor = self.connection.cursor()
             # 启用 WAL 模式
             cursor.execute("PRAGMA journal_mode=WAL")
             # 设置 WAL 自动检查点（1000页）
             cursor.execute("PRAGMA wal_autocheckpoint=1000")
-            # 如果指定了独立 WAL 目录，设置 journal_location
-            # 注意：SQLite 不支持 PRAGMA journal_location，这里通过
-            # 在连接前设置 SQLITE_TMPDIR 等环境变量实现（视需要）
             self._wal_mode = cursor.fetchone()[0]
-            logger.info(f"WAL模式已启用: {self._wal_mode} (路径: {self.wal_dir or '默认'})")
+            logger.info(f"WAL模式已启用: {self._wal_mode}")
         except Exception as e:
             logger.warning(f"WAL配置异常: {str(e)}")
 
@@ -157,6 +147,24 @@ class Database:
             self._connection.close()
             self._connection = None
             logger.info(f"数据库连接已关闭: {self.db_path}")
+
+    @contextmanager
+    def transaction(self):
+        """跨表事务上下文管理器
+
+        使用方式:
+            with db.transaction():
+                db.execute_update(...)
+                db.execute_insert(...)
+
+        事务中所有操作成功则自动 commit，任一失败则 rollback 并抛出异常。
+        """
+        try:
+            yield
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def init_tables(self):
         """初始化所有数据表（仅主库使用）
@@ -299,8 +307,8 @@ class Database:
                     last_return_time TEXT,
                     last_return_record_no INTEGER,
                     storage_location TEXT,
-                    borrowable_flag TEXT DEFAULT '可借',
-                    borrowable_check INTEGER DEFAULT 1,
+                    borrowable_flag TEXT DEFAULT '可借',  -- 注意：此字段已废弃，仅用于显示兼容。请使用 borrowable_check 进行业务判断
+                    borrowable_check INTEGER DEFAULT 1,  -- borrowable_check: 1=可借, 0=不可借
                     expired_flag TEXT DEFAULT '正常',
                     expiry_date TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -434,12 +442,43 @@ class Database:
                 )
             """)
 
+            # 17. 化学品-试剂类型关联表（替代 chemical_info.reagent_type CSV 字段）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chemical_reagent_type (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chemical_id INTEGER NOT NULL,
+                    type_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (chemical_id) REFERENCES chemical_info(id) ON DELETE CASCADE,
+                    FOREIGN KEY (type_id) REFERENCES reagent_type(id) ON DELETE CASCADE,
+                    UNIQUE(chemical_id, type_id)
+                )
+            """)
+
+            # 为所有含 updated_at 字段的表创建 AFTER UPDATE 触发器
+            _trigger_tables = [
+                "person", "storage_location", "storage_requirement",
+                "reagent_type", "supplier", "manufacturer", "controlled_list",
+                "chemical_info", "reagent_bottle", "borrow_record",
+                "return_record", "consumable", "experiment_project",
+                "reservation_order", "purchase_order",
+            ]
+            for _tbl in _trigger_tables:
+                cursor.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS trg_{_tbl}_updated_at
+                    AFTER UPDATE ON {_tbl}
+                    FOR EACH ROW
+                    BEGIN
+                        UPDATE {_tbl} SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                    END;
+                """)
+
             # 创建索引以提高查询性能
             # 试剂瓶表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_number ON reagent_bottle(bottle_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_reagent_name ON reagent_bottle(reagent_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_cas ON reagent_bottle(cas_number)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_borrowable ON reagent_bottle(borrowable_flag)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_borrowable_check ON reagent_bottle(borrowable_check)")
 
             # 领用记录表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_borrow_record_number ON borrow_record(record_number)")
@@ -544,6 +583,28 @@ class Database:
                 )
                 logger.info("迁移完成：person 表添加 password_hash 字段")
 
+            # 迁移：将 chemical_info.reagent_type 的 CSV 数据迁移到 chemical_reagent_type 关联表
+            cursor.execute("PRAGMA table_info(chemical_reagent_type)")
+            has_junction_table = len(cursor.fetchall()) > 0
+            if has_junction_table:
+                cursor.execute("SELECT COUNT(*) FROM chemical_reagent_type")
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute(
+                        "SELECT id, reagent_type FROM chemical_info WHERE reagent_type IS NOT NULL AND reagent_type != ''"
+                    )
+                    chem_rows = cursor.fetchall()
+                    for chem_id, types_str in chem_rows:
+                        type_names = [t.strip() for t in types_str.split(',') if t.strip()]
+                        for type_name in type_names:
+                            cursor.execute("SELECT id FROM reagent_type WHERE name = ?", (type_name,))
+                            type_row = cursor.fetchone()
+                            if type_row:
+                                cursor.execute(
+                                    "INSERT OR IGNORE INTO chemical_reagent_type (chemical_id, type_id) VALUES (?, ?)",
+                                    (chem_id, type_row[0])
+                                )
+                    logger.info("迁移完成：chemical_reagent_type 关联表数据已从 CSV 填充")
+
         except Exception as e:
             logger.warning(f"数据库迁移执行异常（可忽略）: {str(e)}")
 
@@ -631,12 +692,13 @@ class Database:
             查询结果列表
         """
         try:
-            cursor = self.connection.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            return [dict(row) for row in cursor.fetchall()]
+            with self._lock:
+                cursor = self.connection.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"查询执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
@@ -652,12 +714,14 @@ class Database:
             受影响的行数
         """
         try:
-            cursor = self.connection.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            self.connection.commit()
+            with self._lock:
+                cursor = self.connection.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                # 自动提交单次操作。跨表事务请使用 transaction() 上下文管理器
+                self.connection.commit()
             return cursor.rowcount
         except Exception as e:
             self.connection.rollback()
@@ -675,12 +739,14 @@ class Database:
             插入记录的 ID
         """
         try:
-            cursor = self.connection.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            self.connection.commit()
+            with self._lock:
+                cursor = self.connection.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                # 自动提交单次操作。跨表事务请使用 transaction() 上下文管理器
+                self.connection.commit()
             return cursor.lastrowid
         except Exception as e:
             self.connection.rollback()

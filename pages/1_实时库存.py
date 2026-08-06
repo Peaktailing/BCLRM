@@ -2,16 +2,21 @@
 
 显示当前试剂库存状态，支持快速查看和筛选。
 """
-import sys
-import os
-
-# 添加项目根目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import streamlit as st
 from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
+
+def _derive_bottle_status(bottle):
+    """从 borrowable_check 和其他字段派生显示状态"""
+    if getattr(bottle, 'expired_flag', None) == '已过期':
+        return '已过期'
+    if not getattr(bottle, 'borrowable_check', True):
+        if getattr(bottle, 'remaining_quantity', 0) == 0:
+            return '耗尽'
+        return '已借出'
+    return '可借'
+
 
 def main():
     """主函数：实时库存页面"""
@@ -29,10 +34,10 @@ def main():
     result = query_service.get_all_reagents()
     reagents = result.data if result.is_success() else []
     
-    # 统计信息
+    # 统计信息（基于 borrowable_check 派生）
     total_count = len(reagents)
-    borrowable_count = sum(1 for r in reagents if r.borrowable_flag == "可借")
-    exhausted_count = sum(1 for r in reagents if r.borrowable_flag == "耗尽")
+    borrowable_count = sum(1 for r in reagents if getattr(r, 'borrowable_check', False))
+    exhausted_count = sum(1 for r in reagents if not getattr(r, 'borrowable_check', True) and getattr(r, 'remaining_quantity', 0) == 0)
     
     # 统计卡片
     col1, col2, col3 = st.columns(3)
@@ -77,11 +82,13 @@ def main():
         # 准备表格数据
         table_data = []
         for reagent in filtered_reagents:
+            status = _derive_bottle_status(reagent)
             status_color = {
                 "可借": "🟢",
                 "已借出": "🔵",
-                "耗尽": "🔴"
-            }.get(reagent.borrowable_flag, "⚪")
+                "耗尽": "🔴",
+                "已过期": "⚫"
+            }.get(status, "⚪")
             
             table_data.append({
                 "编号": reagent.bottle_number,
@@ -92,7 +99,7 @@ def main():
                 "纯度": reagent.purity or "-",
                 "启封日期": reagent.unseal_date or "-",
                 "过期状态": reagent.expired_flag or "正常",
-                "状态": f"{status_color} {reagent.borrowable_flag}" if reagent.borrowable_flag else "-",
+                "状态": f"{status_color} {status}",
                 "存储位置": reagent.storage_location or "-"
             })
         

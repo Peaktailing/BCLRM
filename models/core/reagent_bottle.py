@@ -27,10 +27,11 @@ class ReagentBottle(BaseModel):
     last_return_time: Optional[str] = None
     last_return_record_no: Optional[int] = None
     storage_location: Optional[str] = None
-    borrowable_flag: Optional[str] = None
+    borrowable_flag: Optional[str] = None  # 废弃，仅用于显示兼容，请使用 borrowable_check
     reagent_type: Optional[str] = None
     is_controlled: Optional[int] = None
     storage_requirement: Optional[str] = None
     borrowable_check: Optional[bool] = None
     expired_flag: Optional[str] = None
+    bottle_status: Optional[str] = None  # 派生状态: 可借/已借出/耗尽/已过期，由业务层计算
     id: Optional[int] = None

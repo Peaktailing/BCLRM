@@ -7,12 +7,10 @@
 """
 import pandas as pd
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
 from db.database import Database
 from services.base.chemical_service import chemical_service

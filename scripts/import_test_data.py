@@ -12,13 +12,11 @@
 import openpyxl
 import re
 import os
-import sys
 from pathlib import Path
 from datetime import datetime
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
 from db.database import Database
 from utils.error_handler import logger
@@ -332,13 +330,13 @@ def main():
     total = cursor.fetchone()[0]
     print(f"  试剂瓶总数: {total}")
 
-    cursor.execute("SELECT COUNT(*) FROM reagent_bottle WHERE borrowable_flag = '可借'")
+    cursor.execute("SELECT COUNT(*) FROM reagent_bottle WHERE borrowable_check = 1")
     active = cursor.fetchone()[0]
     print(f"  可借数量: {active}")
 
-    cursor.execute("SELECT COUNT(*) FROM reagent_bottle WHERE borrowable_flag = '耗尽'")
+    cursor.execute("SELECT COUNT(*) FROM reagent_bottle WHERE borrowable_check = 0")
     exhausted = cursor.fetchone()[0]
-    print(f"  耗尽数量: {exhausted}")
+    print(f"  不可借数量: {exhausted}")
 
     print("\n" + "=" * 60)
     print("数据导入完成！")

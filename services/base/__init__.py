@@ -1,4 +1,5 @@
 from services.base.chemical_service import ChemicalService, chemical_service
+from services.base.chemical_reagent_type_service import ChemicalReagentTypeService, chemical_reagent_type_service
 from services.base.controlled_list_service import ControlledListService, controlled_list_service
 from services.base.reagent_type_service import ReagentTypeService, reagent_type_service
 from services.base.storage_requirement_service import StorageRequirementService, storage_requirement_service
@@ -9,6 +10,7 @@ from services.base.storage_location_service import StorageLocationService, stora
 
 __all__ = [
     'ChemicalService', 'chemical_service',
+    'ChemicalReagentTypeService', 'chemical_reagent_type_service',
     'ControlledListService', 'controlled_list_service',
     'ReagentTypeService', 'reagent_type_service',
     'StorageRequirementService', 'storage_requirement_service',

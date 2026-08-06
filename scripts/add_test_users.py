@@ -1,8 +1,3 @@
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from services.base.person_service import person_service
 from db.database import Database
 from utils.password_utils import hash_password

@@ -2,12 +2,7 @@
 
 提供用户管理功能。
 """
-import sys
-import os
 import re
-
-# 添加项目根目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from components.sidebar_nav import render_sidebar
