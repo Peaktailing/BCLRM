@@ -4,13 +4,11 @@
 """
 import pandas as pd
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
 from db.database import Database
 from utils.error_handler import logger
@@ -329,6 +327,7 @@ def import_reagent_bottle(db, df):
             'last_return_record_no': int(row.get('最后归还记录号', 0)) if not pd.isna(row.get('最后归还记录号')) else None,
             'storage_location': str(row.get('存储位置', '')) if not pd.isna(row.get('存储位置')) else None,
             'borrowable_flag': str(row.get('可借标记', '可借')),
+            'borrowable_check': 1 if str(row.get('可借标记', '可借')) == '可借' else 0,
             'barcode': str(row.get('条码', '')) if not pd.isna(row.get('条码')) else None,
         }
 

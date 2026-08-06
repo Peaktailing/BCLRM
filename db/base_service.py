@@ -68,7 +68,7 @@ class BaseService:
             return self.db.execute_query(query)
         except Exception as e:
             logger.error(f"获取所有记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return []
+            raise
 
     def get_by_id(self, record_id: int) -> Optional[Dict]:
         """根据 ID 获取记录
@@ -85,7 +85,7 @@ class BaseService:
             return results[0] if results else None
         except Exception as e:
             logger.error(f"根据ID获取记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return None
+            raise
 
     def get_by_field(self, field_name: str, value: Any) -> Optional[Dict]:
         """根据字段值获取单条记录
@@ -104,7 +104,7 @@ class BaseService:
             return results[0] if results else None
         except Exception as e:
             logger.error(f"根据字段获取记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return None
+            raise
 
     def get_all_by_field(self, field_name: str, value: Any, order_by: str = None) -> List[Dict]:
         """根据字段值获取所有匹配记录
@@ -130,7 +130,7 @@ class BaseService:
             return self.db.execute_query(query, (value,))
         except Exception as e:
             logger.error(f"根据字段获取所有记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return []
+            raise
 
     def create(self, fields: Dict) -> Optional[int]:
         """创建记录
@@ -160,7 +160,7 @@ class BaseService:
             return record_id
         except Exception as e:
             logger.error(f"创建记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return None
+            raise
 
     def update(self, record_id: int, fields: Dict) -> bool:
         """更新记录
@@ -196,7 +196,7 @@ class BaseService:
             return success
         except Exception as e:
             logger.error(f"更新记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return False
+            raise
 
     def update_by_field(self, field_name: str, value: Any, fields: Dict) -> bool:
         """根据字段值更新记录
@@ -225,7 +225,7 @@ class BaseService:
             return affected_rows > 0
         except Exception as e:
             logger.error(f"根据字段更新记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return False
+            raise
 
     def delete(self, record_id: int) -> bool:
         """删除记录
@@ -248,7 +248,7 @@ class BaseService:
             return success
         except Exception as e:
             logger.error(f"删除记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return False
+            raise
 
     def delete_by_field(self, field_name: str, value: Any) -> bool:
         """根据字段值删除记录
@@ -268,7 +268,7 @@ class BaseService:
             return affected_rows > 0
         except Exception as e:
             logger.error(f"根据字段删除记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return False
+            raise
 
     def count(self) -> int:
         """统计记录总数
@@ -282,7 +282,7 @@ class BaseService:
             return result[0]['count'] if result else 0
         except Exception as e:
             logger.error(f"统计记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return 0
+            raise
 
     def count_by_field(self, field_name: str, value: Any) -> int:
         """根据字段值统计记录数
@@ -301,7 +301,7 @@ class BaseService:
             return result[0]['count'] if result else 0
         except Exception as e:
             logger.error(f"统计记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return 0
+            raise
 
     def search(self, keyword: str, fields: List[str], order_by: str = None) -> List[Dict]:
         """多字段模糊搜索
@@ -338,7 +338,7 @@ class BaseService:
             return self.db.execute_query(query, params)
         except Exception as e:
             logger.error(f"搜索记录失败 [{self.table_name}]: {str(e)}", exception=e)
-            return []
+            raise
 
     def search_multi_condition(
         self,
@@ -421,7 +421,7 @@ class BaseService:
                 f"多条件查询失败 [{self.table_name}]: {str(e)}",
                 exception=e
             )
-            return []
+            raise
 
     def exists(self, field_name: str, value: Any) -> bool:
         """检查记录是否存在
@@ -451,7 +451,7 @@ class BaseService:
             return [row[field_name] for row in result]
         except Exception as e:
             logger.error(f"获取不同值失败 [{self.table_name}]: {str(e)}", exception=e)
-            return []
+            raise
 
     def get_max_value_by_prefix(self, field_name: str, prefix: str) -> Optional[str]:
         """获取指定字段以 prefix 开头的最大值（用于编号自增）
@@ -474,4 +474,4 @@ class BaseService:
             return None
         except Exception as e:
             logger.error(f"获取最大值失败 [{self.table_name}.{field_name}]: {str(e)}", exception=e)
-            return None
+            raise

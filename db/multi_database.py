@@ -54,8 +54,7 @@ class MultiDatabaseManager:
         """获取主业务库连接"""
         if self.main_db is None:
             self.main_db = Database(
-                db_path=self._resolve_path("db/main.db"),
-                wal_dir=self._resolve_path("db_wal/main")
+                db_path=self._resolve_path("db/main.db")
             )
         return self.main_db
 
@@ -63,8 +62,7 @@ class MultiDatabaseManager:
         """获取归档冷库连接"""
         if self.archive_db is None:
             self.archive_db = Database(
-                db_path=self._resolve_path("db/archive_cold.db"),
-                wal_dir=self._resolve_path("db_wal/archive")
+                db_path=self._resolve_path("db/archive_cold.db")
             )
         return self.archive_db
 
@@ -72,8 +70,7 @@ class MultiDatabaseManager:
         """获取附件索引库连接"""
         if self.attach_db is None:
             self.attach_db = Database(
-                db_path=self._resolve_path("db/attach_cold.db"),
-                wal_dir=self._resolve_path("db_wal/attach")
+                db_path=self._resolve_path("db/attach_cold.db")
             )
         return self.attach_db
 
@@ -81,8 +78,7 @@ class MultiDatabaseManager:
         """获取审计日志库连接"""
         if self.log_db is None:
             self.log_db = Database(
-                db_path=self._resolve_path("db/operation_log.db"),
-                wal_dir=self._resolve_path("db_wal/logdb")
+                db_path=self._resolve_path("db/operation_log.db")
             )
             # 日志库特殊优化：只有 INSERT，调低同步等级
             self.log_db.configure_synchronous("OFF")

@@ -51,9 +51,10 @@ class ReagentBottleField:
     # ---- 存储位置（文本类型，如：危化品存储柜1）----
     STORAGE_LOCATION = 'storage_location'  # 存储位置
     # ---- 可借标记（文本类型：可借/已借出/耗尽）----
-    BORROWABLE_FLAG = 'borrowable_flag'  # 可借标记
-    # ---- 可借标记判断（复选框类型）----
-    BORROWABLE_CHECK = 'borrowable_check'  # 可借标记判断
+    # 注意：BORROWABLE_FLAG 已废弃，仅用于显示兼容，请使用 BORROWABLE_CHECK 进行业务判断
+    BORROWABLE_FLAG = 'borrowable_flag'  # 可借标记（废弃，仅用于显示兼容）
+    # ---- 可借标记判断（布尔类型：1=可借, 0=不可借）----
+    BORROWABLE_CHECK = 'borrowable_check'  # 可借标记判断（业务判断请使用此字段）
     # ---- 过期状态（文本类型：正常/即将过期/已过期）----
     EXPIRED_FLAG = 'expired_flag'  # 过期状态
     # ---- 试剂类型（文本类型，关联试剂类型表）----

@@ -2,12 +2,6 @@
 
 实现试剂领用和归还功能，包含必填字段和可选字段，显示成功或失败提示。
 """
-import sys
-import os
-
-# 添加项目根目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import streamlit as st
 from business.borrow_service import borrow_service
 from business.return_service import return_service
@@ -15,6 +9,17 @@ from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from utils.error_handler import logger
+
+def _derive_bottle_status(bottle):
+    """从 borrowable_check 和其他字段派生显示状态"""
+    if getattr(bottle, 'expired_flag', None) == '已过期':
+        return '已过期'
+    if not getattr(bottle, 'borrowable_check', True):
+        if getattr(bottle, 'remaining_quantity', 0) == 0:
+            return '耗尽'
+        return '已借出'
+    return '可借'
+
 
 def main():
     """主函数：领用归还页面"""
@@ -59,7 +64,8 @@ def main():
             table_data = []
             for reagent in display_reagents:
                 is_in_cart = reagent.bottle_number in cart_bottle_numbers
-                status_color = "🟢" if reagent.borrowable_flag == "可借" else "🔵" if reagent.borrowable_flag == "已借出" else "🔴"
+                status = _derive_bottle_status(reagent)
+                status_color = "🟢" if status == "可借" else "🔵" if status == "已借出" else "🔴"
                 table_data.append({
                     "选择": is_in_cart,
                     "编号": reagent.bottle_number,
@@ -70,7 +76,7 @@ def main():
                     "纯度": reagent.purity or "-",
                     "启封日期": reagent.unseal_date or "-",
                     "过期状态": reagent.expired_flag or "正常",
-                    "状态": f"{status_color} {reagent.borrowable_flag}" if reagent.borrowable_flag else "-",
+                    "状态": f"{status_color} {status}",
                     "存储位置": reagent.storage_location or "-",
                     "_bottle_number": reagent.bottle_number
                 })
@@ -214,13 +220,13 @@ def main():
         
         if borrowed_reagents:
             # 选择试剂瓶
-            reagent_options = [(f"{r.bottle_number} - {r.reagent_name or '未知'} ({r.borrowable_flag})", r) 
+            reagent_options = [(f"{r.bottle_number} - {r.reagent_name or '未知'} ({_derive_bottle_status(r)})", r) 
                               for r in borrowed_reagents]
             
             selected_reagent = st.selectbox(
                 "选择已借出的试剂瓶*", 
                 options=[opt[1] for opt in reagent_options],
-                format_func=lambda x: f"{x.bottle_number} - {x.reagent_name or '未知'} ({x.borrowable_flag})",
+                format_func=lambda x: f"{x.bottle_number} - {x.reagent_name or '未知'} ({_derive_bottle_status(x)})",
                 key="return_reagent_select"
             )
             

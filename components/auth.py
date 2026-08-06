@@ -5,6 +5,8 @@
 
 安全性：使用 PBKDF2-HMAC-SHA256 密码哈希，密码从不以明文存储。
 """
+import datetime
+
 import streamlit as st
 from business.permission_service import permission_service
 from services.base.person_service import person_service
@@ -22,6 +24,24 @@ def render_login_form():
     3. 验证用户角色权限
     """
     st.markdown("## 登录")
+
+    # 初始化登录失败计数
+    if "login_attempts" not in st.session_state:
+        st.session_state["login_attempts"] = 0
+    if "login_locked_until" not in st.session_state:
+        st.session_state["login_locked_until"] = None
+
+    # 检查是否被锁定
+    if st.session_state["login_locked_until"] is not None:
+        now = datetime.datetime.now()
+        if now < st.session_state["login_locked_until"]:
+            remaining_minutes = int((st.session_state["login_locked_until"] - now).total_seconds() / 60) + 1
+            st.error(f"账户已被临时锁定，请{remaining_minutes}分钟后再试")
+            return False
+        else:
+            # 锁定时间已过，重置计数
+            st.session_state["login_attempts"] = 0
+            st.session_state["login_locked_until"] = None
 
     with st.form("login_form", clear_on_submit=False):
         user_name = st.text_input("用户名", placeholder="请输入您的姓名", key="login_user_name")
@@ -42,16 +62,30 @@ def render_login_form():
             # 1. 验证密码
             auth_result = person_service.authenticate(user_name, password)
             if auth_result.is_failure():
-                st.error(auth_result.message)
+                st.session_state["login_attempts"] += 1
+                # 连续失败 5 次后锁定 15 分钟
+                if st.session_state["login_attempts"] >= 5:
+                    st.session_state["login_locked_until"] = datetime.datetime.now() + datetime.timedelta(minutes=15)
+                    st.error("账户已被临时锁定，请15分钟后再试")
+                else:
+                    remaining = 5 - st.session_state["login_attempts"]
+                    st.error(f"用户名或密码错误，还剩{remaining}次尝试机会")
                 return False
 
             # 2. 验证权限
             has_permission, msg = permission_service.check_permission(user_name, "user")
             if not has_permission:
-                st.error(msg)
+                st.session_state["login_attempts"] += 1
+                if st.session_state["login_attempts"] >= 5:
+                    st.session_state["login_locked_until"] = datetime.datetime.now() + datetime.timedelta(minutes=15)
+                    st.error("账户已被临时锁定，请15分钟后再试")
+                else:
+                    st.error(msg)
                 return False
 
-            # 3. 登录成功
+            # 3. 登录成功 - 重置计数
+            st.session_state["login_attempts"] = 0
+            st.session_state["login_locked_until"] = None
             st.session_state["logged_in"] = True
             st.session_state["user_name"] = user_name
             user_role = permission_service.get_user_role(user_name)

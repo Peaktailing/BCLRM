@@ -2,10 +2,6 @@
 
 试剂入库功能的UI页面，仅负责用户交互和数据展示，所有业务逻辑调用business/inventory_service.py中的函数。
 """
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import streamlit as st
 from business.inventory_service import inventory_service
 from components.sidebar_nav import render_sidebar

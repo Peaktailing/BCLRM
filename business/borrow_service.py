@@ -102,13 +102,15 @@ class BorrowService:
                 error_code="BOTTLE_NOT_FOUND"
             )
 
-        # 2. 校验试剂瓶状态
-        borrowable_flag = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None)
-        if borrowable_flag != "可借":
+        # 2. 校验试剂瓶状态（使用 borrowable_check 布尔字段）
+        borrowable_check = getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None)
+        if not borrowable_check:
+            borrowable_flag = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, "不可借")
             logger.warning(
                 "试剂瓶不可借出",
                 bottle_number=bottle_number,
-                status=borrowable_flag
+                borrowable_check=borrowable_check,
+                borrowable_flag=borrowable_flag
             )
             return ServiceResult.fail(
                 message=f"该试剂当前状态为「{borrowable_flag}」，不可借出",
@@ -171,11 +173,13 @@ class BorrowService:
         # 5. 创建领用记录前再次检查状态（防止并发问题）
         bottle_refresh = self.bottle_service.get_by_bottle_number(bottle_number)
         if bottle_refresh:
-            refresh_flag = getattr(bottle_refresh, ReagentBottleField.BORROWABLE_FLAG, None)
-            if refresh_flag != "可借":
+            refresh_check = getattr(bottle_refresh, ReagentBottleField.BORROWABLE_CHECK, None)
+            if not refresh_check:
+                refresh_flag = getattr(bottle_refresh, ReagentBottleField.BORROWABLE_FLAG, "不可借")
                 logger.warning(
                     "试剂已被其他用户领用",
                     bottle_number=bottle_number,
+                    borrowable_check=refresh_check,
                     status=refresh_flag
                 )
                 return ServiceResult.fail(

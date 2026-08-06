@@ -81,7 +81,7 @@ class ReagentBottleService(BaseService):
         Returns:
             ReagentBottle对象列表
         """
-        records = super().get_all_by_field('borrowable_flag', '可借')
+        records = super().get_all_by_field('borrowable_check', 1)
         return [self._parse_record(record) for record in records]
 
     def search_multi_condition(
@@ -148,9 +148,11 @@ class ReagentBottleService(BaseService):
             })
 
         if status:
+            # 将中文状态映射为 borrowable_check 布尔值
+            status_value = 1 if status in ("可借", "1", 1) else 0
             conditions.append({
-                "field": "borrowable_flag",
-                "value": status,
+                "field": "borrowable_check",
+                "value": status_value,
                 "match_type": "exact"
             })
 

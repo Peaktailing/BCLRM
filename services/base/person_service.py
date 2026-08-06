@@ -124,21 +124,21 @@ class PersonService(BaseService):
         person = self.get_by_name(user_name)
         if not person:
             return ServiceResult.fail(
-                message="用户名不存在",
-                error_code="USER_NOT_FOUND",
+                message="用户名或密码错误",
+                error_code="AUTH_FAILED",
             )
 
         # 如果用户未设置密码，拒绝登录
         if not is_password_hash_set(person.password_hash or ""):
             return ServiceResult.fail(
-                message="该用户尚未设置密码，请联系管理员",
-                error_code="PASSWORD_NOT_SET",
+                message="用户名或密码错误",
+                error_code="AUTH_FAILED",
             )
 
         if not verify_password(password, person.password_hash):
             return ServiceResult.fail(
-                message="密码错误",
-                error_code="WRONG_PASSWORD",
+                message="用户名或密码错误",
+                error_code="AUTH_FAILED",
             )
 
         logger.info(f"用户 {user_name} 登录验证成功")
