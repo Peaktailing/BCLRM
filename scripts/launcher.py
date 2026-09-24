@@ -15,12 +15,10 @@ import getpass
 
 
 def init_database():
-    """初始化所有数据库"""
+    """初始化数据库（建表 + 迁移，幂等）"""
     from db.database import Database
     db = Database()
     db.init_tables()
-    from db.multi_database import db_manager
-    db_manager.init_all_databases()
     print("✓ 数据库初始化完成")
 
 

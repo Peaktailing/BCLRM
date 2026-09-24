@@ -14,10 +14,6 @@ from config.settings import SYSTEM_NAME
 from components.auth import is_logged_in, render_login_form
 from db.database import db
 
-# 初始化四库分离架构（主库 + 归档冷库 + 附件索引库 + 审计日志库）
-from db.multi_database import db_manager
-db_manager.init_all_databases()
-
 st.set_page_config(
     page_title=SYSTEM_NAME,
     page_icon="🧪",
