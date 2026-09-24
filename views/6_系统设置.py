@@ -20,6 +20,7 @@ from components.sidebar_nav import render_sidebar
 from components.auth import require_auth, require_super_admin, require_admin
 from config.settings import DEFAULT_INITIAL_PASSWORD
 from services.base.person_service import person_service
+from services.base.operation_log_service import operation_log_service
 from services.core.borrow_record_service import borrow_record_service
 from services.core.return_record_service import return_record_service
 from db.database import db
@@ -256,6 +257,47 @@ def main():
                     st.error("查询数据表失败，请稍后重试。")
     else:
         st.warning("未找到任何数据表，请检查数据库是否已初始化")
+
+    # ---------- 📜 审计日志 ----------
+    st.divider()
+    st.subheader("📜 审计日志")
+    st.caption("记录关键操作（登录/领用/归还/审批等）留痕；最多展示最近 200 条，按时间倒序。")
+
+    _log_action = st.selectbox(
+        "操作类型",
+        options=[
+            "全部", "登录", "领用", "归还", "发起工单", "提交审批",
+            "审批通过", "驳回工单", "工单归还", "修改密码",
+        ],
+        key="audit_action_filter",
+    )
+    _log_operator = st.text_input(
+        "操作人（留空查看全部）", key="audit_operator_filter"
+    )
+
+    _logs = operation_log_service.list_logs(
+        action=None if _log_action == "全部" else _log_action,
+        operator=_log_operator.strip() or None,
+        limit=200,
+    )
+    if _logs:
+        st.dataframe(
+            [
+                {
+                    "时间": row.get("created_at"),
+                    "操作人": row.get("operator"),
+                    "操作": row.get("action"),
+                    "目标": f"{row.get('target_type') or ''} {row.get('target_id') or ''}".strip(),
+                    "详情": row.get("detail") or "",
+                }
+                for row in _logs
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(f"共 {len(_logs)} 条记录")
+    else:
+        st.info("暂无审计日志记录")
 
 
 if __name__ == "__main__":

@@ -49,6 +49,7 @@ class ExperimentCourseService(BaseService):
             student_count=record.get('student_count'),
             location=record.get('location'),
             college=record.get('college'),
+            approver=record.get('approver'),
         )
 
 

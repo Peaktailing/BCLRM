@@ -3,6 +3,7 @@
 显示当前试剂库存状态，支持快速查看和筛选。
 """
 import streamlit as st
+from business.inventory_service import inventory_service
 from business.query_service import query_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
@@ -50,6 +51,36 @@ def main():
     
     st.divider()
     
+    # ---------- 条码查询（扫码枪 / 手动输入） ----------
+    with st.expander("🔎 条码查询（扫码枪扫码后自动查询）", expanded=False):
+        _barcode = st.text_input(
+            "试剂瓶条码",
+            placeholder="用扫码枪扫描条码，或手动输入后回车",
+            key="barcode_query_input",
+        )
+        if _barcode and _barcode.strip():
+            _bc_result = inventory_service.retrieve_inventory_by_barcode(_barcode.strip())
+            if _bc_result.is_success() and _bc_result.data:
+                _b = _bc_result.data
+                st.success(f"✅ 找到试剂瓶：{_b.bottle_number}｜{_b.reagent_name or '-'}")
+                st.dataframe(
+                    [{
+                        "编号": _b.bottle_number,
+                        "名称": _b.reagent_name or "-",
+                        "CAS号": _b.cas_number or "-",
+                        "条码": _b.barcode or "-",
+                        "剩余量": _b.remaining_quantity,
+                        "规格": _b.specification or "-",
+                        "状态": _b.borrowable_flag or "-",
+                        "过期状态": _b.expired_flag or "正常",
+                        "存储位置": _b.storage_location or "-",
+                    }],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.warning("未找到该条码对应的试剂瓶")
+
     # 获取所有试剂名称用于模糊匹配
     reagent_names = sorted(set(r.reagent_name for r in reagents if r.reagent_name))
     

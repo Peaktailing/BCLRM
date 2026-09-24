@@ -20,6 +20,12 @@ from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from business.purchase_service import purchase_service, DEFAULT_TARGET_STUDENT_COUNT
 from business.semester_stats_service import semester_stats_service
+from services.base.person_service import person_service
+from services.base.reservation_purchase_service import (
+    purchase_order_service,
+    reservation_order_service,
+)
+from services.core.reagent_bottle_service import reagent_bottle_service
 
 st.set_page_config(page_title="采购管理", layout="wide")
 
@@ -81,8 +87,8 @@ def _build_summary_excel(rows, semester: str) -> bytes:
     return buffer.getvalue()
 
 
-tab_generate, tab_manage, tab_summary = st.tabs(
-    ["📝 生成课程采购单", "🛠️ 采购单管理", "📊 汇总采购单"]
+tab_generate, tab_manage, tab_summary, tab_resv, tab_po = st.tabs(
+    ["📝 生成课程采购单", "🛠️ 采购单管理", "📊 汇总采购单", "📌 预定单", "📦 采购单跟踪"]
 )
 
 # ==================== 1. 生成课程采购单 ====================
@@ -173,6 +179,49 @@ with tab_manage:
     if not is_admin:
         st.warning("权限不足：修改采购单仅限管理员及以上角色使用。")
     else:
+        # ---------- 待我审批的采购单（危化品采购） ----------
+        _my_purchase_appr = purchase_service.list_pending_purchase_approvals(current_user)
+        if _my_purchase_appr:
+            st.subheader(f"✅ 待你审批的采购单（{len(_my_purchase_appr)}）")
+            for _plan in _my_purchase_appr:
+                with st.expander(
+                    f"{_plan.plan_number}｜{_plan.course_name}｜{_plan.item_count} 条"
+                    f"｜发起人 {_plan.created_by or '—'}",
+                    expanded=len(_my_purchase_appr) <= 3,
+                ):
+                    _cp_remark = st.text_input("审批意见", key=f"cp_appr_remark_{_plan.id}")
+                    _cp1, _cp2 = st.columns(2)
+                    with _cp1:
+                        if st.button(
+                            "✅ 批准",
+                            type="primary",
+                            use_container_width=True,
+                            key=f"cp_appr_ok_{_plan.id}",
+                        ):
+                            _r = purchase_service.approve_purchase(
+                                _plan.id, current_user, _cp_remark
+                            )
+                            if _r.is_success():
+                                st.success(f"✅ {_r.message}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {_r.message}")
+                    with _cp2:
+                        if st.button(
+                            "❌ 驳回",
+                            use_container_width=True,
+                            key=f"cp_appr_no_{_plan.id}",
+                        ):
+                            _r = purchase_service.reject_purchase(
+                                _plan.id, current_user, _cp_remark
+                            )
+                            if _r.is_success():
+                                st.warning(_r.message)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {_r.message}")
+            st.divider()
+
         target_semesters = purchase_service.list_target_semesters()
         if not target_semesters:
             st.info("暂无采购单，请先在「生成课程采购单」中生成。")
@@ -198,8 +247,42 @@ with tab_manage:
                     st.caption(
                         f"课程：{plan.course_name}｜来源学年 {plan.source_semester}｜"
                         f"历史人数 {plan.source_student_count} → 预计人数 {plan.target_student_count}"
-                        f"｜状态 {plan.status}"
+                        f"｜状态 {plan.status}｜审批：{plan.approval_status or '无需审批'}"
+                        + (f"（审批人 {plan.approver}）" if plan.approver else "")
                     )
+
+                    # ---------- 危化品采购审批 ----------
+                    _admins = sorted({
+                        p.name for p in (
+                            person_service.get_by_role("admin")
+                            + person_service.get_by_role("super_admin")
+                        ) if p.name and p.name != current_user
+                    })
+                    _cp_sel, _cp_btn = st.columns([2, 1])
+                    with _cp_sel:
+                        _sel_approver = st.selectbox(
+                            "指定审批管理员（含管控化学品的采购需审批后执行）",
+                            options=["（不提交审批）"] + _admins,
+                            key=f"cp_approver_{plan_id}",
+                        )
+                    with _cp_btn:
+                        st.write("")
+                        if st.button(
+                            "📨 提交审批",
+                            use_container_width=True,
+                            key=f"cp_submit_appr_{plan_id}",
+                        ):
+                            if _sel_approver == "（不提交审批）":
+                                st.warning("请先选择审批管理员")
+                            else:
+                                _r = purchase_service.submit_for_approval(
+                                    plan_id, _sel_approver, current_user
+                                )
+                                if _r.is_success():
+                                    st.success(f"✅ {_r.message}")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {_r.message}")
 
                     detail = purchase_service.get_plan_detail(plan_id)
                     edited = st.data_editor(
@@ -317,3 +400,165 @@ with tab_summary:
                         })
                 if course_rows:
                     st.dataframe(course_rows, use_container_width=True, hide_index=True)
+
+# ==================== 4. 预定单 ====================
+with tab_resv:
+    st.caption("库存不足时提前预定：提交后由管理员审批，批准后可转为正式采购单。")
+
+    with st.form("reservation_form", clear_on_submit=True):
+        _r_name = st.text_input("试剂名称*", placeholder="需要预定的试剂名称")
+        _r_cas = st.text_input("CAS号（可选）")
+        _c_q, _c_u = st.columns([2, 1])
+        with _c_q:
+            _r_qty = st.number_input("预定数量*", min_value=0.0, step=1.0, format="%.2f")
+        with _c_u:
+            _r_unit = st.text_input("单位", value="g")
+        _r_semester = st.text_input("需求学年（可选）", placeholder="2027-2028")
+        if st.form_submit_button("📌 提交预定", type="primary", use_container_width=True):
+            _r = purchase_service.create_reservation(
+                _r_name, float(_r_qty), current_user,
+                cas_number=_r_cas.strip() or None,
+                unit=_r_unit.strip() or "g",
+                semester=_r_semester.strip() or None,
+            )
+            if _r.is_success():
+                st.success(f"✅ {_r.message}")
+            else:
+                st.error(f"❌ {_r.message}")
+
+    st.divider()
+    st.subheader("预定单列表")
+
+    _all_resv = reservation_order_service.get_all_parsed()
+
+    if is_admin:
+        _pending_resv = [r for r in _all_resv if r.status == "pending"]
+        if _pending_resv:
+            st.markdown(f"**⏳ 待审批（{len(_pending_resv)}）**")
+            for _res in _pending_resv:
+                _c_info, _c_ok, _c_no = st.columns([3, 1, 1])
+                _c_info.markdown(
+                    f"{_res.order_number}｜**{_res.reagent_name}** × {_res.quantity}"
+                    f"{_res.unit or 'g'}｜申请人 {_res.applicant}"
+                )
+                with _c_ok:
+                    if st.button("✅ 批准", key=f"resv_ok_{_res.id}", use_container_width=True):
+                        _r = purchase_service.review_reservation(_res.id, True, current_user)
+                        if _r.is_success():
+                            st.success(f"✅ {_r.message}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {_r.message}")
+                with _c_no:
+                    if st.button("❌ 驳回", key=f"resv_no_{_res.id}", use_container_width=True):
+                        _r = purchase_service.review_reservation(_res.id, False, current_user)
+                        if _r.is_success():
+                            st.warning(_r.message)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {_r.message}")
+
+    if not _all_resv:
+        st.info("暂无预定单")
+    else:
+        st.dataframe(
+            [
+                {
+                    "单号": r.order_number,
+                    "试剂": r.reagent_name,
+                    "数量": r.quantity,
+                    "单位": r.unit or "g",
+                    "申请人": r.applicant,
+                    "学年": r.semester or "-",
+                    "状态": reservation_order_service.status_label(r.status),
+                }
+                for r in _all_resv
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    _approved_resv = [r for r in _all_resv if r.status == "approved"]
+    if _approved_resv and is_admin:
+        st.markdown("**🧾 已批准待转采购单**")
+        for _res in _approved_resv:
+            _c_info, _c_act = st.columns([3, 1])
+            _c_info.markdown(
+                f"{_res.order_number}｜**{_res.reagent_name}** × {_res.quantity}{_res.unit or 'g'}"
+            )
+            with _c_act:
+                if st.button(
+                    "转为采购单", key=f"resv_po_{_res.id}", use_container_width=True
+                ):
+                    _r = purchase_service.convert_reservation_to_purchase_order(
+                        _res.id, created_by=current_user
+                    )
+                    if _r.is_success():
+                        st.success(f"✅ {_r.message}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {_r.message}")
+
+# ==================== 5. 采购单跟踪 ====================
+with tab_po:
+    st.caption(
+        "采购单状态流转：待下单 → 已下单 → 已到货（到货后请到「试剂入库」完成入库）。"
+    )
+
+    _all_pos = purchase_order_service.get_all_parsed()
+    if not _all_pos:
+        st.info(
+            "暂无采购单（可将已批准的预定单转为采购单；"
+            "汇总采购单按试剂生成入口即将上线）"
+        )
+    else:
+        st.dataframe(
+            [
+                {
+                    "单号": po.order_number,
+                    "试剂": po.reagent_name,
+                    "数量": po.order_quantity,
+                    "供应商": po.supplier or "-",
+                    "单价": po.unit_price if po.unit_price is not None else "-",
+                    "状态": purchase_order_service.status_label(po.status),
+                }
+                for po in _all_pos
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if is_admin:
+            st.markdown("**状态流转**")
+            for po in _all_pos:
+                _po_info, _po_a, _po_b = st.columns([3, 1, 1])
+                _po_info.markdown(
+                    f"{po.order_number}｜**{po.reagent_name}** × {po.order_quantity}"
+                    f"｜{purchase_order_service.status_label(po.status)}"
+                )
+                if po.status == "pending":
+                    with _po_a:
+                        if st.button(
+                            "标记已下单", key=f"po_ord_{po.id}", use_container_width=True
+                        ):
+                            _r = purchase_service.update_purchase_order_status(
+                                po.id, "ordered", current_user
+                            )
+                            if _r.is_success():
+                                st.success(f"✅ {_r.message}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {_r.message}")
+                elif po.status == "ordered":
+                    with _po_b:
+                        if st.button(
+                            "标记已到货", key=f"po_rec_{po.id}", use_container_width=True
+                        ):
+                            _r = purchase_service.update_purchase_order_status(
+                                po.id, "received", current_user
+                            )
+                            if _r.is_success():
+                                st.success(f"✅ {_r.message}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {_r.message}")

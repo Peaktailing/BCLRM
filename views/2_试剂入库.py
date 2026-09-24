@@ -169,9 +169,41 @@ def main():
 
                 if result.is_success():
                     st.success(result.message)
-                    st.rerun()
+                    _d = result.data or {}
+                    if _d.get("barcode"):
+                        st.session_state["last_inbound_barcode"] = _d["barcode"]
+                        st.session_state["last_inbound_bottle"] = _d.get("bottle_number")
                 else:
                     st.error(result.message)
+
+    # ---------- 🏷️ 最近一次入库的条码（可打印贴瓶） ----------
+    _last_barcode = st.session_state.get("last_inbound_barcode")
+    if _last_barcode:
+        with st.container(border=True):
+            st.subheader("🏷️ 本次入库条码")
+            from utils.barcode_gen import generate_code39_png
+            _png = generate_code39_png(_last_barcode)
+            if _png:
+                _c_img, _c_btn = st.columns([1, 1])
+                with _c_img:
+                    st.image(_png, width=360)
+                with _c_btn:
+                    st.markdown(f"**条码号：`{_last_barcode}`**")
+                    _last_bottle = st.session_state.get("last_inbound_bottle")
+                    if _last_bottle:
+                        st.caption(f"试剂瓶编号：{_last_bottle}")
+                    st.download_button(
+                        "🖨️ 下载条码图片（打印后贴瓶）",
+                        data=_png,
+                        file_name=f"barcode_{_last_barcode}.png",
+                        mime="image/png",
+                        key="download_inbound_barcode",
+                    )
+            if st.button("已打印，清除提示", key="clear_inbound_barcode"):
+                st.session_state.pop("last_inbound_barcode", None)
+                st.session_state.pop("last_inbound_bottle", None)
+                st.rerun()
+
 
 if __name__ == "__main__":
     main()

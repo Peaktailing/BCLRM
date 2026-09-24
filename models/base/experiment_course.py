@@ -23,6 +23,7 @@ class ExperimentCourse:
     student_count: Optional[int] = None   # 班级人数（人均用量的分母）
     location: Optional[str] = None        # 上课地点
     college: Optional[str] = None         # 开课学院
+    approver: Optional[str] = None        # 审批管理员（该课程管控试剂领用的审批人）
 
     @property
     def display_name(self) -> str:

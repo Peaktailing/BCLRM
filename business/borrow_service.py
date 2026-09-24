@@ -315,6 +315,18 @@ class BorrowService:
             user=user
         )
 
+        from utils.audit import audit
+        audit(
+            user,
+            "领用",
+            target_type="bottle",
+            target_id=bottle_number,
+            detail=(
+                f"领用 {borrow_qty}（流水 {record_num}，剩余 {new_qty}）"
+                + (f"；管控化学品({controlled_type})" if is_controlled else "")
+            ),
+        )
+
         return ServiceResult.ok(data=result_data, message=message)
 
     @handle_exception(context="查询领用记录")

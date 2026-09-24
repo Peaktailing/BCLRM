@@ -24,6 +24,20 @@ from services.core.purchase_plan_service import (
     purchase_plan_item_service,
     purchase_plan_service,
 )
+from models.base.purchase_order import (
+    PO_ORDERED,
+    PO_PENDING,
+    PO_RECEIVED,
+    RESERVATION_APPROVED,
+    RESERVATION_FULFILLED,
+    RESERVATION_PENDING,
+    RESERVATION_REJECTED,
+)
+from services.base.controlled_list_service import controlled_list_service
+from services.base.reservation_purchase_service import (
+    purchase_order_service,
+    reservation_order_service,
+)
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
 from utils.error_handler import logger, ServiceResult, handle_exception
@@ -408,6 +422,285 @@ class PurchaseService:
             }
             for item in purchase_plan_item_service.get_by_plan(plan_id)
         ]
+
+
+# 全局实例
+    # ------------------------------------------------------------------
+    # 采购审批（含管控化学品的采购需管理员审批）
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _plan_has_controlled(plan_id: int) -> bool:
+        """判断采购单是否含管控化学品（按明细 CAS 匹配管控目录）"""
+        for item in purchase_plan_item_service.get_by_plan(plan_id):
+            cas = getattr(item, "cas_number", None)
+            if cas and controlled_list_service.get_by_cas_number(cas):
+                return True
+        return False
+
+    @handle_exception(context="提交采购审批")
+    def submit_for_approval(
+        self, plan_id: int, approver: str, submitted_by: str
+    ) -> ServiceResult:
+        """提交采购单进入审批流（含管控化学品时必须经审批）"""
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.approval_status or "") == "待审批":
+            return ServiceResult.fail(
+                message="该采购单已在审批中", error_code="ALREADY_PENDING"
+            )
+        if not self._plan_has_controlled(plan_id):
+            return ServiceResult.fail(
+                message="该采购单不含管控化学品，无需审批，可直接执行采购",
+                error_code="NO_CONTROLLED_ITEM",
+            )
+        if not approver or approver == submitted_by:
+            return ServiceResult.fail(
+                message="请指定审批人（不能是发起人本人）",
+                error_code="INVALID_APPROVER",
+            )
+
+        if purchase_plan_service.update(plan_id, {
+            "approval_status": "待审批",
+            "approver": approver,
+            "approval_time": None,
+            "approval_remark": None,
+        }):
+            logger.info(
+                "采购单已提交审批",
+                plan_number=plan.plan_number, approver=approver
+            )
+            return ServiceResult.ok(message=f"采购单已提交，等待 {approver} 审批")
+        return ServiceResult.fail(message="提交失败，请重试")
+
+    def list_pending_purchase_approvals(self, approver_name: Optional[str] = None) -> List:
+        """待审批采购单（可按审批人过滤）"""
+        plans = [
+            p for p in purchase_plan_service.get_all_parsed()
+            if (p.approval_status or "") == "待审批"
+        ]
+        if approver_name:
+            plans = [p for p in plans if p.approver == approver_name]
+        return plans
+
+    def can_approve_purchase(self, plan, user_name: Optional[str]) -> bool:
+        """仅采购单指定的审批人可审批"""
+        return bool(plan and user_name and plan.approver == user_name)
+
+    @handle_exception(context="审批采购单")
+    def approve_purchase(
+        self, plan_id: int, approver_name: str, remark: Optional[str] = None
+    ) -> ServiceResult:
+        """批准采购单（批准后可执行采购/入库）"""
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.approval_status or "") != "待审批":
+            return ServiceResult.fail(
+                message=f"该采购单审批状态为「{plan.approval_status}」，无法审批",
+                error_code="INVALID_APPROVAL_STATE",
+            )
+        if not self.can_approve_purchase(plan, approver_name):
+            return ServiceResult.fail(
+                message=f"只有指定审批人「{plan.approver}」可以审批该采购单",
+                error_code="NOT_ASSIGNED_APPROVER",
+            )
+
+        if purchase_plan_service.update(plan_id, {
+            "approval_status": "已批准",
+            "approval_time": datetime.now().strftime("%Y/%m/%d %H:%M"),
+            "approval_remark": remark,
+        }):
+            logger.info(
+                "采购单审批通过",
+                plan_number=plan.plan_number, approver=approver_name
+            )
+            return ServiceResult.ok(message=f"采购单 {plan.plan_number} 审批通过")
+        return ServiceResult.fail(message="审批保存失败，请重试")
+
+    @handle_exception(context="驳回采购单")
+    def reject_purchase(
+        self, plan_id: int, approver_name: str, remark: Optional[str] = None
+    ) -> ServiceResult:
+        """驳回采购单"""
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.approval_status or "") != "待审批":
+            return ServiceResult.fail(
+                message=f"该采购单审批状态为「{plan.approval_status}」，无法审批",
+                error_code="INVALID_APPROVAL_STATE",
+            )
+        if not self.can_approve_purchase(plan, approver_name):
+            return ServiceResult.fail(
+                message=f"只有指定审批人「{plan.approver}」可以审批该采购单",
+                error_code="NOT_ASSIGNED_APPROVER",
+            )
+
+        if purchase_plan_service.update(plan_id, {
+            "approval_status": "已驳回",
+            "approval_time": datetime.now().strftime("%Y/%m/%d %H:%M"),
+            "approval_remark": remark,
+        }):
+            logger.info("采购单已驳回", plan_number=plan.plan_number, approver=approver_name)
+            return ServiceResult.ok(message=f"采购单 {plan.plan_number} 已驳回")
+        return ServiceResult.fail(message="驳回保存失败，请重试")
+
+    # ------------------------------------------------------------------
+    # 预定单（库存不足时提前预定 → 审批 → 转采购单）
+    # ------------------------------------------------------------------
+    @handle_exception(context="创建预定单")
+    def create_reservation(
+        self,
+        reagent_name: str,
+        quantity: float,
+        applicant: str,
+        cas_number: Optional[str] = None,
+        unit: str = "g",
+        semester: Optional[str] = None,
+    ) -> ServiceResult:
+        """提交试剂预定单（状态 pending，等待管理员审批）"""
+        if not reagent_name or not str(reagent_name).strip():
+            return ServiceResult.fail(message="请填写试剂名称", error_code="INVALID_RESERVATION")
+        if quantity is None or float(quantity) <= 0:
+            return ServiceResult.fail(message="预定数量必须大于 0", error_code="INVALID_RESERVATION")
+        order_number = "RES" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+        rid = reservation_order_service.create({
+            "order_number": order_number,
+            "semester": semester,
+            "reagent_name": str(reagent_name).strip(),
+            "cas_number": cas_number,
+            "quantity": float(quantity),
+            "unit": unit or "g",
+            "applicant": applicant,
+            "status": RESERVATION_PENDING,
+        })
+        if rid:
+            logger.info("预定单已创建", order_number=order_number, applicant=applicant)
+            from utils.audit import audit
+            audit(applicant, "提交预定", target_type="reservation", target_id=order_number,
+                  detail=f"{reagent_name} × {quantity}{unit or 'g'}")
+            return ServiceResult.ok(
+                data={"reservation_id": rid, "order_number": order_number},
+                message=f"预定单 {order_number} 已提交，等待管理员审批",
+            )
+        return ServiceResult.fail(message="预定失败，请重试")
+
+    @handle_exception(context="审批预定单")
+    def review_reservation(
+        self, reservation_id: int, approve: bool, reviewer: str,
+        remark: Optional[str] = None
+    ) -> ServiceResult:
+        """审批预定单（批准 / 驳回）"""
+        res = reservation_order_service.get_by_id(reservation_id)
+        if not res:
+            return ServiceResult.fail(message="预定单不存在", error_code="NOT_FOUND")
+        if res.status != RESERVATION_PENDING:
+            return ServiceResult.fail(
+                message=(
+                    f"该预定单状态为「{reservation_order_service.status_label(res.status)}」，"
+                    "无法审批"
+                ),
+                error_code="INVALID_STATE",
+            )
+        new_status = RESERVATION_APPROVED if approve else RESERVATION_REJECTED
+        if reservation_order_service.update(reservation_id, {"status": new_status}):
+            from utils.audit import audit
+            audit(
+                reviewer,
+                "预定审批通过" if approve else "驳回预定",
+                target_type="reservation",
+                target_id=res.order_number,
+                detail=remark or "",
+            )
+            return ServiceResult.ok(
+                message=(
+                    f"预定单 {res.order_number} 已{'批准' if approve else '驳回'}"
+                )
+            )
+        return ServiceResult.fail(message="审批保存失败，请重试")
+
+    @handle_exception(context="预定单转采购单")
+    def convert_reservation_to_purchase_order(
+        self,
+        reservation_id: int,
+        supplier: Optional[str] = None,
+        unit_price: Optional[float] = None,
+        created_by: Optional[str] = None,
+    ) -> ServiceResult:
+        """把「已批准」的预定单转为正式采购单（待下单）"""
+        res = reservation_order_service.get_by_id(reservation_id)
+        if not res:
+            return ServiceResult.fail(message="预定单不存在", error_code="NOT_FOUND")
+        if res.status != RESERVATION_APPROVED:
+            return ServiceResult.fail(
+                message="仅「已批准」的预定单可转为采购单",
+                error_code="INVALID_STATE",
+            )
+        order_number = "PO" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+        po_id = purchase_order_service.create({
+            "order_number": order_number,
+            "reservation_order_id": reservation_id,
+            "reagent_name": res.reagent_name,
+            "cas_number": res.cas_number,
+            "order_quantity": res.quantity,
+            "unit_price": unit_price,
+            "supplier": supplier,
+            "status": PO_PENDING,
+        })
+        if po_id:
+            reservation_order_service.update(reservation_id, {"status": RESERVATION_FULFILLED})
+            from utils.audit import audit
+            audit(
+                created_by, "预定转采购",
+                target_type="purchase_order", target_id=order_number,
+                detail=f"来源预定单 {res.order_number}",
+            )
+            return ServiceResult.ok(message=f"已生成采购单 {order_number}（待下单）")
+        return ServiceResult.fail(message="生成采购单失败，请重试")
+
+    # ------------------------------------------------------------------
+    # 采购单状态流转（待下单 → 已下单 → 已到货）
+    # ------------------------------------------------------------------
+    @handle_exception(context="更新采购单状态")
+    def update_purchase_order_status(
+        self, po_id: int, new_status: str, operator: Optional[str] = None
+    ) -> ServiceResult:
+        po = purchase_order_service.get_by_id(po_id)
+        if not po:
+            return ServiceResult.fail(message="采购单不存在", error_code="NOT_FOUND")
+        allowed = {
+            PO_PENDING: {PO_ORDERED, "cancelled"},
+            PO_ORDERED: {PO_RECEIVED, "cancelled"},
+            PO_RECEIVED: set(),
+            "cancelled": set(),
+        }
+        if new_status not in allowed.get(po.status or "", set()):
+            return ServiceResult.fail(
+                message=(
+                    f"不允许从「{purchase_order_service.status_label(po.status)}」"
+                    f"变更为「{purchase_order_service.status_label(new_status)}」"
+                ),
+                error_code="INVALID_TRANSITION",
+            )
+        if purchase_order_service.update(po_id, {"status": new_status}):
+            from utils.audit import audit
+            audit(
+                operator, "采购单状态",
+                target_type="purchase_order", target_id=po.order_number,
+                detail=(
+                    f"{purchase_order_service.status_label(po.status)} → "
+                    f"{purchase_order_service.status_label(new_status)}"
+                ),
+            )
+            msg = (
+                f"采购单 {po.order_number} → "
+                f"{purchase_order_service.status_label(new_status)}"
+            )
+            if new_status == PO_RECEIVED:
+                msg += "；请到「试剂入库」完成入库"
+            return ServiceResult.ok(message=msg)
+        return ServiceResult.fail(message="更新失败，请重试")
 
 
 # 全局实例

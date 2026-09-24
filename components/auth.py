@@ -110,6 +110,10 @@ def render_login_form():
         st.session_state["is_admin"] = bool(permission_service.is_admin(user_name).data)
         st.session_state["user_role"] = permission_service.get_user_role(user_name).data or "user"
         st.session_state["last_activity"] = time.time()
+
+        from utils.audit import audit
+        audit(user_name, "登录", target_type="user", target_id=user_name)
+
         st.success(f"欢迎，{user_name}！")
         st.rerun()
 
@@ -168,6 +172,8 @@ def require_auth():
                 else:
                     result = person_service.set_password(user_name, new_pw)
                     if result.is_success():
+                        from utils.audit import audit
+                        audit(user_name, "修改密码", target_type="user", target_id=user_name)
                         st.success("密码已更新")
                     else:
                         st.error(result.message or "密码更新失败")

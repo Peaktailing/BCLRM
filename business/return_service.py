@@ -293,7 +293,8 @@ class ReturnService:
             "remaining_qty": remaining_qty,
             "return_time": current_time,
             "linked_borrow_record_num": linked_borrow_record_num,
-            "borrowable_flag": borrowable_flag
+            "borrowable_flag": borrowable_flag,
+            "usage_quantity": usage_quantity
         }
 
         logger.info(
@@ -301,6 +302,18 @@ class ReturnService:
             return_number=return_num,
             bottle_number=bottle_number,
             return_user=return_user
+        )
+
+        from utils.audit import audit
+        audit(
+            return_user,
+            "归还",
+            target_type="bottle",
+            target_id=bottle_number,
+            detail=(
+                f"归还后余量 {remaining_qty}（归还单 {return_num}）"
+                + (f"；本次用量 {usage_quantity}" if usage_quantity is not None else "")
+            ),
         )
 
         return ServiceResult.ok(data=result_data, message="归还成功！")

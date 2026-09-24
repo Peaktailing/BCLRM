@@ -11,9 +11,17 @@ ORDER_TYPE_SPORADIC = "零星领用"
 ORDER_TYPE_COURSE = "课程领用"
 
 # 工单状态
+ORDER_STATUS_PENDING = "待审批"
 ORDER_STATUS_BORROWING = "借用中"
 ORDER_STATUS_PARTIAL = "部分归还"
 ORDER_STATUS_RETURNED = "已归还"
+ORDER_STATUS_REJECTED = "已驳回"
+
+# 审批状态
+APPROVAL_NOT_REQUIRED = "无需审批"
+APPROVAL_PENDING = "待审批"
+APPROVAL_APPROVED = "已批准"
+APPROVAL_REJECTED = "已驳回"
 
 # 明细状态
 ITEM_STATUS_PENDING = "待归还"
@@ -30,9 +38,14 @@ class BorrowOrder:
     borrow_time: Optional[str] = None     # 领用时间（用于学期归属）
     course_id: Optional[int] = None
     item_id: Optional[int] = None         # 实验项目
+    project_id: Optional[int] = None      # 非课程类实验项目
     course_name: Optional[str] = None     # 课程名快照
     item_name: Optional[str] = None       # 实验名快照
-    status: Optional[str] = None          # 借用中 / 部分归还 / 已归还
+    status: Optional[str] = None          # 待审批 / 借用中 / 部分归还 / 已归还 / 已驳回
+    approval_status: Optional[str] = None  # 无需审批 / 待审批 / 已批准 / 已驳回
+    approver: Optional[str] = None         # 审批人
+    approval_time: Optional[str] = None    # 审批时间
+    approval_remark: Optional[str] = None  # 审批意见 / 驳回原因
     remark: Optional[str] = None
     created_by: Optional[str] = None
 

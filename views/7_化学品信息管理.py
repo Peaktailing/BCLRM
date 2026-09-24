@@ -167,7 +167,8 @@ def main():
                 "化学品名称*（下拉选择或输入新名称）",
                 options=chemical_names_for_select,
                 index=0,
-                help="从已有化学品中选择，或输入新化学品名称"
+                help="从已有化学品中选择；或直接输入新名称后按回车（输入不会被迫变成相似名称）",
+                accept_new_options=True,
             )
 
             if selected_chemical_name and selected_chemical_name in chemical_options_dict:

@@ -20,6 +20,10 @@ class PurchasePlan:
     source_student_count: Optional[int] = None   # 历史人数（该课程各班级合计）
     target_student_count: Optional[int] = None   # 预计人数（默认 30）
     status: Optional[str] = None                 # 待采购 / 已下单 / 已到货 / 已取消
+    approval_status: Optional[str] = None        # 无需审批 / 待审批 / 已批准 / 已驳回
+    approver: Optional[str] = None               # 审批人
+    approval_time: Optional[str] = None          # 审批时间
+    approval_remark: Optional[str] = None        # 审批意见 / 驳回原因
     item_count: Optional[int] = None             # 明细条目数
     total_quantity: Optional[float] = None       # 需求总量
     remark: Optional[str] = None

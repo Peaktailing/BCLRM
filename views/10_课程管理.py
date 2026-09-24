@@ -20,6 +20,8 @@ from business.course_import_service import course_import_service
 from business.experiment_plan_service import experiment_plan_business
 from services.base.experiment_course_service import experiment_course_service
 from services.base.experiment_item_service import experiment_item_service
+from services.base.experiment_project_service import experiment_project_service
+from services.base.person_service import person_service
 
 st.set_page_config(page_title="课程管理", layout="wide")
 
@@ -34,7 +36,9 @@ st.caption("导入学院实验分组表（CSV / Excel）维护实验课程；不
 is_admin = bool(st.session_state.get("is_admin", False))
 is_super_admin = st.session_state.get("user_role") == "super_admin"
 
-tab_import, tab_add, tab_list = st.tabs(["📥 导入课程", "➕ 新增课程/实验", "📋 课程列表"])
+tab_import, tab_add, tab_list, tab_projects = st.tabs(
+    ["📥 导入课程", "➕ 新增课程/实验", "📋 课程列表", "🔬 实验项目"]
+)
 
 # ---------- 导入课程（管理员及以上） ----------
 with tab_import:
@@ -280,6 +284,7 @@ with tab_list:
                     "教师": c.teacher or "-",
                     "班级人数": c.student_count or 0,
                     "地点": c.location or "-",
+                    "审批管理员": c.approver or "未指定",
                 }
                 for c in courses
             ],
@@ -474,6 +479,51 @@ with tab_list:
                             _preview_rows, use_container_width=True, hide_index=True
                         )
 
+        # ---------- 课程审批管理员（管理员及以上） ----------
+        if is_admin:
+            st.divider()
+            st.subheader("🎓 课程审批管理员")
+            st.caption(
+                "为课程指定审批管理员：该课程的**管控化学品**领用需经其批准后才会扣库存。"
+            )
+
+            _admins = sorted({
+                p.name for p in (
+                    person_service.get_by_role("admin")
+                    + person_service.get_by_role("super_admin")
+                ) if p.name
+            })
+            if not _admins:
+                st.info("系统中暂无管理员角色用户，请先在「系统设置」中添加")
+            else:
+                _course_options = {
+                    c.id: f"{c.semester}-{c.term} | {c.course_name}（{c.class_name or '-'}）"
+                    f"｜当前审批人：{c.approver or '未指定'}"
+                    for c in courses
+                }
+                with st.form("set_approver_form"):
+                    _sel_course_id = st.selectbox(
+                        "选择课程",
+                        options=list(_course_options.keys()),
+                        format_func=lambda cid: _course_options.get(cid, str(cid)),
+                        key="set_approver_course",
+                    )
+                    _sel_approver = st.selectbox(
+                        "审批管理员",
+                        options=_admins,
+                        key="set_approver_name",
+                    )
+                    if st.form_submit_button(
+                        "保存审批管理员", type="primary", use_container_width=True
+                    ):
+                        if experiment_course_service.update(
+                            _sel_course_id, {"approver": _sel_approver}
+                        ):
+                            st.success(f"✅ 已指定 {_sel_approver} 为该课程审批管理员")
+                            st.rerun()
+                        else:
+                            st.error("❌ 保存失败，请重试")
+
         # ---------- 删除实验项目（超级管理员；课程保留） ----------
         if is_super_admin:
             st.divider()
@@ -545,3 +595,64 @@ with tab_list:
                         st.rerun()
                     else:
                         st.error("❌ 删除失败，请重试")
+
+# ==================== 4. 实验项目（非课程类） ====================
+with tab_projects:
+    st.caption(
+        "管理科研课题、毕业设计等**非课程类**实验项目；"
+        "零星领用工单可关联项目，归还后用量会计入项目台账。"
+    )
+
+    with st.form("add_project_form", clear_on_submit=True):
+        _pj_name = st.text_input("项目名称*")
+        _pj_c1, _pj_c2 = st.columns(2)
+        with _pj_c1:
+            _pj_semester = st.text_input("学年（可选）", placeholder="2026-2027")
+        with _pj_c2:
+            _pj_teacher = st.text_input("负责教师")
+        _pj_desc = st.text_area("项目描述（可选）", height=80)
+        if st.form_submit_button(
+            "➕ 新增实验项目", type="primary", use_container_width=True
+        ):
+            if not _pj_name.strip():
+                st.warning("⚠️ 请填写项目名称")
+            elif experiment_project_service.create({
+                "project_name": _pj_name.strip(),
+                "semester": _pj_semester.strip() or None,
+                "teacher": _pj_teacher.strip() or None,
+                "description": _pj_desc.strip() or None,
+            }):
+                st.success(f"✅ 已新增实验项目：{_pj_name.strip()}")
+            else:
+                st.error("❌ 新增失败，请重试")
+
+    _projects = experiment_project_service.get_all_parsed()
+    if not _projects:
+        st.info("暂无实验项目")
+    else:
+        st.dataframe(
+            [
+                {
+                    "项目名称": p.project_name,
+                    "学年": p.semester or "-",
+                    "负责教师": p.teacher or "-",
+                    "描述": (p.description or "-")[:40],
+                }
+                for p in _projects
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+        if is_super_admin:
+            _pj_del = st.selectbox(
+                "删除实验项目",
+                options=[""] + [p.project_name for p in _projects],
+                key="del_project_select",
+            )
+            if _pj_del and st.button("🗑️ 删除该项目", key="del_project_btn"):
+                _pj_target = next(
+                    (p for p in _projects if p.project_name == _pj_del), None
+                )
+                if _pj_target and experiment_project_service.delete(_pj_target.id):
+                    st.success("✅ 项目已删除")
+                    st.rerun()

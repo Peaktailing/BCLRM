@@ -21,6 +21,8 @@ from business.work_order_service import work_order_service
 from business.experiment_plan_service import experiment_plan_business
 from business.query_service import query_service
 from services.base.experiment_course_service import experiment_course_service
+from services.base.experiment_project_service import experiment_project_service
+from services.core.reagent_bottle_service import reagent_bottle_service
 from services.base.experiment_item_service import experiment_item_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
@@ -47,7 +49,9 @@ if is_admin:
 elif is_teacher_or_above:
     order_types = ["课程领用"]
 
-tab_borrow, tab_return = st.tabs(["📥 领用（发起工单）", "📤 还入（按工单归还）"])
+tab_borrow, tab_approval, tab_return = st.tabs([
+    "📥 领用（发起工单）", "✅ 审批（管控试剂）", "📤 还入（按工单归还）"
+])
 
 # ==================== 1. 领用（发起工单） ====================
 with tab_borrow:
@@ -179,6 +183,18 @@ with tab_borrow:
             key="wo_applicant",
             accept_new_options=True,
         )
+
+        # 关联实验项目（零星领用可选）
+        selected_project = None
+        if order_type == "零星领用":
+            _projects_all = experiment_project_service.get_all_parsed()
+            if _projects_all:
+                selected_project = st.selectbox(
+                    "关联实验项目（可选，科研/毕设等）",
+                    options=[None] + _projects_all,
+                    format_func=lambda p: "（不关联项目）" if p is None else p.project_name,
+                    key="wo_project",
+                )
 
         # ---------- 搜索试剂 ----------
         st.markdown("#### 搜索试剂")
@@ -353,6 +369,7 @@ with tab_borrow:
                         course=course,
                         exp_item=exp_item,
                         created_by=user_name,
+                        project_id=selected_project.id if selected_project else None,
                     )
                     if result.is_success():
                         st.success(f"✅ {result.message}")
@@ -361,9 +378,109 @@ with tab_borrow:
                     else:
                         st.error(f"❌ {result.message}")
 
+# ==================== 1.5 审批（管控试剂工单） ====================
+with tab_approval:
+    _pending_orders = work_order_service.list_pending_approvals(user_name)
+
+    st.caption(
+        "仅显示指定审批人为你的工单（含管控化学品的领用需先审批）；"
+        "批准后系统自动执行领用并扣减库存，驳回则工单关闭。"
+    )
+
+    if not _pending_orders:
+        st.info("暂无待你审批的工单")
+    else:
+        for order in _pending_orders:
+            with st.expander(
+                f"{order.order_number}｜{order.order_type}｜申请人 {order.applicant}"
+                f"｜课程 {order.course_name or '—'}／实验 {order.item_name or '—'}",
+                expanded=len(_pending_orders) <= 3,
+            ):
+                st.caption(f"发起时间：{order.borrow_time or '—'}")
+
+                for item in work_order_service.get_order_items(order.id):
+                    st.markdown(
+                        f"- **{item['bottle_number']}**　{item['reagent_name'] or '-'}"
+                        f"　领用量 {item['borrow_qty']:g}"
+                    )
+
+                _appr_remark = st.text_input(
+                    "审批意见（批准/驳回原因，可选）",
+                    key=f"appr_remark_{order.id}",
+                )
+
+                _c_ok, _c_no = st.columns(2)
+                with _c_ok:
+                    if st.button(
+                        "✅ 批准并执行领用",
+                        type="primary",
+                        use_container_width=True,
+                        key=f"appr_ok_{order.id}",
+                    ):
+                        _r = work_order_service.approve_order(
+                            order.id, user_name, _appr_remark
+                        )
+                        if _r.is_success():
+                            st.success(f"✅ {_r.message}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {_r.message}")
+                with _c_no:
+                    if st.button(
+                        "❌ 驳回",
+                        use_container_width=True,
+                        key=f"appr_no_{order.id}",
+                    ):
+                        _r = work_order_service.reject_order(
+                            order.id, user_name, _appr_remark
+                        )
+                        if _r.is_success():
+                            st.warning(_r.message)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {_r.message}")
+
 # ==================== 2. 还入（按工单归还） ====================
 with tab_return:
     orders = work_order_service.list_open_orders(user_name, is_admin)
+
+    # ---------- 扫码核验（扫瓶身条码快速核对待还信息） ----------
+    with st.expander("📷 扫码核验（扫瓶身条码快速核对待还信息）", expanded=False):
+        _scan_barcode = st.text_input(
+            "扫描/输入条码",
+            placeholder="扫码枪扫描或输入条码后回车",
+            key="return_scan_barcode",
+        )
+        if _scan_barcode and _scan_barcode.strip():
+            _scan_bc = _scan_barcode.strip()
+            _scan_bottle = reagent_bottle_service.get_by_barcode(_scan_bc)
+            if not _scan_bottle:
+                st.warning(f"未找到条码 {_scan_bc} 对应的试剂瓶")
+            else:
+                _hit_order, _hit_item = None, None
+                for _o in orders:
+                    if not work_order_service.can_return(_o, user_name, is_admin):
+                        continue
+                    for _it in work_order_service.get_order_items(_o.id):
+                        if (
+                            _it["bottle_number"] == _scan_bottle.bottle_number
+                            and _it["status"] != "已归还"
+                        ):
+                            _hit_order, _hit_item = _o, _it
+                            break
+                    if _hit_order:
+                        break
+                if _hit_item:
+                    st.success(
+                        f"✅ {_scan_bottle.bottle_number}｜{_scan_bottle.reagent_name or '-'}"
+                        f"｜工单 {_hit_order.order_number}｜未还量 {_hit_item['remaining_qty']:g}"
+                    )
+                    st.caption("请在上方的工单下拉中选择该工单进行归还")
+                else:
+                    st.info(
+                        f"{_scan_bottle.bottle_number}｜{_scan_bottle.reagent_name or '-'}"
+                        "：没有待归还的工单记录（可能已还清或不在你的工单中）"
+                    )
 
     if not orders:
         if is_admin:

@@ -366,6 +366,10 @@ class Database:
                     course_name TEXT,
                     item_name TEXT,
                     status TEXT DEFAULT '借用中',
+                    approval_status TEXT DEFAULT '无需审批',
+                    approver TEXT,
+                    approval_time TEXT,
+                    approval_remark TEXT,
                     remark TEXT,
                     created_by TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -464,6 +468,7 @@ class Database:
                     student_count INTEGER,
                     location TEXT,
                     college TEXT,
+                    approver TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(semester, term, course_name, class_name)
@@ -524,6 +529,19 @@ class Database:
                     last_return_time TEXT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(semester, course_name, item_name)
+                )
+            """)
+
+            # 14.6 审计日志表（记录关键操作，纯追加写入）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS operation_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    operator TEXT,
+                    action TEXT,
+                    target_type TEXT,
+                    target_id TEXT,
+                    detail TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
@@ -605,6 +623,10 @@ class Database:
                     status TEXT DEFAULT '待采购',
                     item_count INTEGER DEFAULT 0,
                     total_quantity REAL DEFAULT 0,
+                    approval_status TEXT DEFAULT '无需审批',
+                    approver TEXT,
+                    approval_time TEXT,
+                    approval_remark TEXT,
                     remark TEXT,
                     created_by TEXT,
                     updated_by TEXT,
@@ -676,6 +698,11 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_plan_item ON experiment_plan(course_name, item_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_usage_item ON experiment_default_usage(course_name, item_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_status_item ON experiment_item_status(semester, course_name, item_name)")
+
+            # 审计日志索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_time ON operation_log(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_action ON operation_log(action)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_operator ON operation_log(operator)")
 
             # 预定单表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_order_number ON reservation_order(order_number)")
@@ -806,6 +833,49 @@ class Database:
             if bottle_columns_all and "scrap_flag" not in bottle_columns_all:
                 cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN scrap_flag TEXT")
                 logger.info("迁移完成：reagent_bottle 表添加 scrap_flag 字段")
+
+            # 迁移：experiment_course 表增加 approver 字段（课程绑定的审批管理员）
+            cursor.execute("PRAGMA table_info(experiment_course)")
+            course_columns = {row[1] for row in cursor.fetchall()}
+            if course_columns and "approver" not in course_columns:
+                cursor.execute("ALTER TABLE experiment_course ADD COLUMN approver TEXT")
+                logger.info("迁移完成：experiment_course 表添加 approver 字段")
+
+            # 迁移：工单 / 采购单增加审批流字段
+            for _tbl, _cols in (
+                ("borrow_order", ("approval_status", "approver", "approval_time", "approval_remark")),
+                ("purchase_plan", ("approval_status", "approver", "approval_time", "approval_remark")),
+            ):
+                cursor.execute(f"PRAGMA table_info({_tbl})")
+                _existing = {row[1] for row in cursor.fetchall()}
+                if not _existing:
+                    continue
+                if "approval_status" not in _existing:
+                    cursor.execute(
+                        f"ALTER TABLE {_tbl} ADD COLUMN approval_status TEXT DEFAULT '无需审批'"
+                    )
+                    logger.info(f"迁移完成：{_tbl} 表添加 approval_status 字段")
+                for _col in _cols[1:]:
+                    if _col not in _existing:
+                        cursor.execute(f"ALTER TABLE {_tbl} ADD COLUMN {_col} TEXT")
+                        logger.info(f"迁移完成：{_tbl} 表添加 {_col} 字段")
+
+            # 迁移：borrow_order 增加 project_id（关联非课程类实验项目）
+            cursor.execute("PRAGMA table_info(borrow_order)")
+            bo_cols = {row[1] for row in cursor.fetchall()}
+            if bo_cols and "project_id" not in bo_cols:
+                cursor.execute("ALTER TABLE borrow_order ADD COLUMN project_id INTEGER")
+                logger.info("迁移完成：borrow_order 表添加 project_id 字段")
+
+            # 迁移：experiment_reagent_usage 台账补充课程/实验/学期维度
+            cursor.execute("PRAGMA table_info(experiment_reagent_usage)")
+            eru_cols = {row[1] for row in cursor.fetchall()}
+            for _col in ("course_name", "item_name", "semester"):
+                if eru_cols and _col not in eru_cols:
+                    cursor.execute(
+                        f"ALTER TABLE experiment_reagent_usage ADD COLUMN {_col} TEXT"
+                    )
+                    logger.info(f"迁移完成：experiment_reagent_usage 表添加 {_col} 字段")
 
             # 迁移：采购单升级为「课程-实验-试剂」结构（旧结构无 course_name）
             cursor.execute("PRAGMA table_info(purchase_plan)")
