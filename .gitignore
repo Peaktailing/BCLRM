@@ -250,3 +250,10 @@ config/key.txt
 *.xls
 *.xlsm
 *.xlsb
+
+# SQLite WAL / SHM sidecar files
+*.db-shm
+*.db-wal
+
+# Local temp directory (may contain real exported data)
+tmp/

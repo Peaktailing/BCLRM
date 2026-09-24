@@ -11,6 +11,7 @@ from services.core.return_record_service import return_record_service
 from services.base.controlled_list_service import controlled_list_service
 from services.base.chemical_service import chemical_service
 from business.expiry_service import expiry_service
+from business.bottle_state import BorrowableStatus
 from models.core.reagent_bottle import ReagentBottle
 from models.base.controlled_list import ControlledList
 from utils.field_mapper import ReagentBottleField, BorrowRecordField, ReturnRecordField
@@ -154,7 +155,7 @@ class QueryService:
             )
 
         # 确定状态过滤
-        status = "可借" if borrowable_only else None
+        status = BorrowableStatus.BORROWABLE if borrowable_only else None
 
         # 数据库层过滤
         results = self.bottle_service.search_multi_condition(
@@ -425,7 +426,7 @@ class QueryService:
         # borrowable_only 优先级更高
         effective_status = None
         if borrowable_only:
-            effective_status = "可借"
+            effective_status = BorrowableStatus.BORROWABLE
         elif status is not None:
             # 如果是列表且只有一个元素，取第一个；否则需要特殊处理
             if isinstance(status, list):

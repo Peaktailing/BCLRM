@@ -6,6 +6,7 @@
 """
 from db.base_service import BaseService
 from models.core.reagent_bottle import ReagentBottle
+from utils.bottle_status import derive_bottle_status
 from utils.error_handler import logger
 from typing import List, Optional
 
@@ -177,8 +178,10 @@ class ReagentBottleService(BaseService):
         return [self._parse_record(record) for record in records]
 
     def _parse_record(self, record: dict) -> ReagentBottle:
-        """将数据库记录解析为ReagentBottle对象（Pydantic 自动校验）"""
-        return ReagentBottle(**record)
+        """将数据库记录解析为ReagentBottle对象（Pydantic 自动校验 + 派生显示状态）"""
+        bottle = ReagentBottle(**record)
+        bottle.bottle_status = derive_bottle_status(bottle)
+        return bottle
 
 # 全局实例
 reagent_bottle_service = ReagentBottleService()

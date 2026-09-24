@@ -18,8 +18,9 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-# 项目根目录
-PROJECT_DIR="/home/biochm/Reagent-manager"
+# 项目根目录（基于脚本位置推导，避免硬编码机器路径）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # 远程仓库地址
 REMOTE_URL="https://github.com/Peaktailing/BCLRM.git"
