@@ -54,6 +54,7 @@ def add_test_users():
                 print(f"用户 {user_data['name']} 已存在（已设置密码），跳过")
             continue
 
+        user_data["password_hash"] = hash_password("123456")
         result = person_service.create(user_data)
         if result:
             person_service.set_password(user_data["name"], password)

@@ -8,12 +8,14 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
 from services.core.borrow_record_service import borrow_record_service
 from business.expiry_service import expiry_service
+from business.bottle_state import borrowable_flag_on_return
 from models.core.return_record import ReturnRecord
 from utils.id_generator import id_generator
 from utils.field_mapper import ReturnRecordField, ReagentBottleField, BorrowRecordField
 from utils.error_handler import logger, ServiceResult, handle_exception
 from datetime import datetime
 from typing import Optional, List
+from db.database import db
 
 
 class ReturnService:
@@ -109,6 +111,7 @@ class ReturnService:
         borrow_records = self.borrow_record_service.get_by_bottle_number(bottle_number)
         linked_borrow_record_id = None
         linked_borrow_record_num = None
+        latest_borrow = None
 
         # 找到最近一条领用记录（按领用时间倒序）
         if borrow_records:
@@ -127,13 +130,47 @@ class ReturnService:
                     borrow_record_number=linked_borrow_record_num
                 )
 
+        # 2.1 校验归还量是否合理：归还后的总量不得超过「借出时的总量」
+        #     借出时总量 = 当前瓶剩余（即借出后的剩余）+ 本次领用量
+        if latest_borrow is not None:
+            borrow_qty = getattr(latest_borrow, BorrowRecordField.BORROW_QUANTITY, None)
+            current_qty = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
+            if borrow_qty is not None:
+                max_allowed = float(current_qty) + float(borrow_qty)
+                if remaining_qty > max_allowed + 1e-6:
+                    logger.warning(
+                        "归还量超过借出时的总量",
+                        bottle_number=bottle_number,
+                        remaining_qty=remaining_qty,
+                        max_allowed=max_allowed,
+                        borrow_quantity=borrow_qty
+                    )
+                    return ServiceResult.fail(
+                        message=(
+                            f"归还量（{remaining_qty:g}g）超过借出时的总量（{max_allowed:g}g），"
+                            "请核对后重新填写"
+                        ),
+                        error_code="RETURN_QTY_EXCEEDS_BORROW"
+                    )
+
         # 3. 生成归还记录编号
         return_num = self.id_gen.generate_return_record_number()
 
         # 4. 获取当前时间字符串
         current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
 
-        # 5. 创建归还记录数据
+        # 5. 计算本次实际用量 = 借出时总量 - 归还后总量
+        #    等价于「领用量 - 还入量」：还入量 = 归还后剩余 - 借出后剩余
+        usage_quantity = None
+        if latest_borrow is not None:
+            borrow_qty = getattr(latest_borrow, BorrowRecordField.BORROW_QUANTITY, None)
+            if borrow_qty is not None:
+                pre_borrow_qty = float(
+                    getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
+                ) + float(borrow_qty)
+                usage_quantity = max(0.0, pre_borrow_qty - float(remaining_qty))
+
+        # 6. 创建归还记录数据
         return_data = {
             ReturnRecordField.RETURN_NUMBER: return_num,
             ReturnRecordField.BOTTLE_NUMBER: bottle_number,
@@ -143,6 +180,9 @@ class ReturnService:
             ReturnRecordField.LAST_UPDATE_TIME: current_time,
             ReturnRecordField.MODIFIER: return_user
         }
+
+        if usage_quantity is not None:
+            return_data[ReturnRecordField.USAGE_QUANTITY] = usage_quantity
 
         # 添加关联借出记录号（如果存在）
         if linked_borrow_record_num:
@@ -156,63 +196,73 @@ class ReturnService:
             remaining_qty=remaining_qty
         )
 
-        # 6. 创建归还记录
-        rid = self.return_record_service.create(return_data)
-        logger.info(
-            "归还记录创建结果",
-            record_id=rid,
-            return_number=return_num
-        )
-
-        if not rid:
-            logger.error(
-                "创建归还记录失败",
-                return_number=return_num,
-                bottle_number=bottle_number
-            )
-            return ServiceResult.fail(
-                message="创建归还记录失败",
-                error_code="CREATE_RETURN_RECORD_FAILED"
-            )
-
-        # 7. 更新领用记录中的关联归还记录号
-        if linked_borrow_record_id:
-            borrow_update_data = {
-                BorrowRecordField.LINKED_RETURN_RECORD_NUMBER: return_num,
-                BorrowRecordField.LAST_UPDATE_TIME: current_time,
-                BorrowRecordField.MODIFIER: return_user
-            }
+        # 创建归还记录、关联领用记录、更新瓶库存置于同一事务，原子提交
+        with db.transaction():
+            rid = self.return_record_service.create(return_data)
             logger.info(
-                "更新领用记录关联字段",
-                borrow_record_id=linked_borrow_record_id,
+                "归还记录创建结果",
+                record_id=rid,
                 return_number=return_num
             )
-            try:
-                self.borrow_record_service.update(linked_borrow_record_id, borrow_update_data)
+
+            if not rid:
+                logger.error(
+                    "创建归还记录失败",
+                    return_number=return_num,
+                    bottle_number=bottle_number
+                )
+                return ServiceResult.fail(
+                    message="创建归还记录失败",
+                    error_code="CREATE_RETURN_RECORD_FAILED"
+                )
+
+            # 7. 更新领用记录中的关联归还记录号（与归还记录、瓶库存同事务，原子一致）
+            if linked_borrow_record_id:
+                borrow_update_data = {
+                    BorrowRecordField.LINKED_RETURN_RECORD_NUMBER: return_num,
+                    BorrowRecordField.LAST_UPDATE_TIME: current_time,
+                    BorrowRecordField.MODIFIER: return_user
+                }
                 logger.info(
-                    "领用记录更新成功",
-                    borrow_record_id=linked_borrow_record_id
-                )
-            except Exception as e:
-                logger.warning(
-                    "更新领用记录失败（可能记录已删除）",
+                    "更新领用记录关联字段",
                     borrow_record_id=linked_borrow_record_id,
-                    error=str(e)
+                    return_number=return_num
                 )
+                updated_borrow = self.borrow_record_service.update(
+                    linked_borrow_record_id, borrow_update_data
+                )
+                if not updated_borrow:
+                    # update 返回 False 有两种可能：
+                    #   1) 关联领用记录已不存在（如已被删除）——属合法情况，仅告警跳过；
+                    #   2) 其余更新失败——视为异常，抛出去触发事务回滚，
+                    #      与下方「更新试剂瓶信息失败」保持一致的事务原子性。
+                    if self.borrow_record_service.get_by_id(linked_borrow_record_id):
+                        logger.error(
+                            "更新领用记录失败，触发回滚",
+                            borrow_record_id=linked_borrow_record_id
+                        )
+                        raise RuntimeError("更新领用记录失败，已回滚归还记录")
+                    logger.warning(
+                        "关联领用记录不存在，跳过关联更新",
+                        borrow_record_id=linked_borrow_record_id
+                    )
 
-        # 8. 更新试剂瓶信息
-        bottle_id = getattr(bottle, ReagentBottleField.ID, None)
-        borrowable_flag = "可借" if remaining_qty > 0 else "耗尽"
-        borrowable_check = remaining_qty > 0
+            # 8. 更新试剂瓶信息
+            bottle_id = getattr(bottle, ReagentBottleField.ID, None)
+            borrowable_flag = borrowable_flag_on_return(remaining_qty)
+            borrowable_check = remaining_qty > 0
 
-        updates = {
-            ReagentBottleField.REMAINING_QUANTITY: remaining_qty,
-            ReagentBottleField.LAST_RETURN_TIME: current_time,
-            ReagentBottleField.LAST_RETURN_RECORD_NO: return_num,
-            ReagentBottleField.BORROWABLE_FLAG: borrowable_flag,
-            ReagentBottleField.BORROWABLE_CHECK: borrowable_check
-        }
-        self.bottle_service.update(bottle_id, updates)
+            updates = {
+                ReagentBottleField.REMAINING_QUANTITY: remaining_qty,
+                ReagentBottleField.LAST_RETURN_TIME: current_time,
+                ReagentBottleField.LAST_RETURN_RECORD_NO: return_num,
+                ReagentBottleField.BORROWABLE_FLAG: borrowable_flag,
+                ReagentBottleField.BORROWABLE_CHECK: borrowable_check
+            }
+            updated = self.bottle_service.update(bottle_id, updates)
+            if not updated:
+                # 瓶更新失败主动抛异常，触发事务回滚（归还记录一并撤销）
+                raise RuntimeError("更新试剂瓶信息失败，已回滚归还记录")
 
         logger.info(
             "试剂瓶信息更新成功",

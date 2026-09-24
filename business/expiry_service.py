@@ -69,7 +69,8 @@ class ExpiryService:
             # 未启封：基于生产日期 + 未启封有效时长
             return self._compute_by_date(bottle.production_date, shelf_life_days.unsealed)
 
-    def check_and_update(self, bottle: ReagentBottle, chemical_cache: Optional[Dict[str, Any]] = None) -> str:
+    @handle_exception(context="过期状态检查与更新")
+    def check_and_update(self, bottle: ReagentBottle, chemical_cache: Optional[Dict[str, Any]] = None) -> ServiceResult:
         """判断并更新试剂瓶的过期状态（写库）
 
         计算当前过期状态，若与数据库中不一致则更新。
@@ -79,11 +80,12 @@ class ExpiryService:
             chemical_cache: 可选的化学品信息缓存（用于批量查询优化）
 
         Returns:
-            过期状态字符串
+            ServiceResult[str] - data 为过期状态字符串，message 描述是否变化
         """
         new_flag = self.check_bottle(bottle, chemical_cache)
 
         # 只在状态变化时写库
+        changed = False
         if new_flag != bottle.expired_flag:
             old_flag = bottle.expired_flag
             try:
@@ -94,6 +96,7 @@ class ExpiryService:
                 )
                 # 同步内存对象
                 bottle.expired_flag = new_flag
+                changed = True
                 logger.info(
                     "过期状态已更新",
                     bottle_number=bottle.bottle_number,
@@ -107,21 +110,26 @@ class ExpiryService:
                     exception=e,
                 )
 
-        return new_flag
+        return ServiceResult.ok(
+            data=new_flag,
+            message="过期状态已更新" if changed else "过期状态未变化",
+        )
 
-    def sync_all(self) -> int:
+    @handle_exception(context="同步过期状态")
+    def sync_all(self) -> ServiceResult:
         """同步所有试剂瓶的过期状态
 
         遍历所有试剂瓶，重新计算并更新过期状态。
 
         Returns:
-            更新的试剂瓶数量
+            ServiceResult[int] - data 为更新的试剂瓶数量
         """
         bottles = self.bottle_service.get_all_parsed()
+        chemical_cache = self._build_chemical_cache()
         update_count = 0
 
         for bottle in bottles:
-            new_flag = self.check_bottle(bottle)
+            new_flag = self.check_bottle(bottle, chemical_cache)
             if new_flag != bottle.expired_flag:
                 try:
                     self.bottle_service.update_by_field(
@@ -138,25 +146,29 @@ class ExpiryService:
                     )
 
         logger.info("过期状态同步完成", total=len(bottles), updated=update_count)
-        return update_count
+        return ServiceResult.ok(data=update_count)
 
-    def get_expired_bottles(self) -> list:
+    @handle_exception(context="查询过期试剂")
+    def get_expired_bottles(self) -> ServiceResult:
         """获取所有已过期的试剂瓶
 
         Returns:
-            过期试剂瓶对象列表
+            ServiceResult[list] - data 为过期试剂瓶对象列表
         """
         bottles = self.bottle_service.get_all_parsed()
-        return [b for b in bottles if self.check_bottle(b) == "已过期"]
+        chemical_cache = self._build_chemical_cache()
+        return ServiceResult.ok(data=[b for b in bottles if self.check_bottle(b, chemical_cache) == "已过期"])
 
-    def get_expiring_bottles(self) -> list:
+    @handle_exception(context="查询即将过期试剂")
+    def get_expiring_bottles(self) -> ServiceResult:
         """获取所有即将过期的试剂瓶
 
         Returns:
-            即将过期试剂瓶对象列表
+            ServiceResult[list] - data 为即将过期试剂瓶对象列表
         """
         bottles = self.bottle_service.get_all_parsed()
-        return [b for b in bottles if self.check_bottle(b) == "即将过期"]
+        chemical_cache = self._build_chemical_cache()
+        return ServiceResult.ok(data=[b for b in bottles if self.check_bottle(b, chemical_cache) == "即将过期"])
 
     @handle_exception(context="过期统计")
     def get_expiry_stats(self) -> ServiceResult[dict]:
@@ -166,10 +178,11 @@ class ExpiryService:
             ServiceResult[dict] - 包含正常/即将过期/已过期数量
         """
         bottles = self.bottle_service.get_all_parsed()
+        chemical_cache = self._build_chemical_cache()
         normal = expiring = expired = 0
 
         for bottle in bottles:
-            flag = self.check_bottle(bottle)
+            flag = self.check_bottle(bottle, chemical_cache)
             if flag == "已过期":
                 expired += 1
             elif flag == "即将过期":
@@ -187,6 +200,22 @@ class ExpiryService:
     # ------------------------------------------------------------------
     # 内部方法
     # ------------------------------------------------------------------
+
+    def _build_chemical_cache(self) -> Dict[str, Any]:
+        """一次性构建化学品信息缓存，避免逐瓶查询（消除 N+1）。"""
+        cache: Dict[str, Any] = {}
+        try:
+            chemicals = self.chemical_service.get_all_parsed()
+            for c in chemicals:
+                name = getattr(c, "name", None)
+                cas = getattr(c, "cas_number", None)
+                if name:
+                    cache[f"name:{name}"] = c
+                if cas:
+                    cache[f"cas:{cas}"] = c
+        except Exception as e:
+            logger.warning("构建化学品缓存失败", exception=e)
+        return cache
 
     def _get_shelf_life_for_bottle(self, bottle: ReagentBottle, chemical_cache: dict = None) -> '_ShelfLife':
         """获取试剂瓶对应的有效时长

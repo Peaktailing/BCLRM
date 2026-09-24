@@ -355,32 +355,32 @@ class TestPermissionService(_ServiceIntegrationTest):
         self.test_ps.create({"name": "普通用户", "role": "user"})
 
     def test_super_admin_permission(self):
-        self.assertTrue(self.test_perm.check_permission("超级管理员", "super_admin")[0])
+        self.assertTrue(self.test_perm.check_permission("超级管理员", "super_admin").data)
 
     def test_admin_permission(self):
-        self.assertTrue(self.test_perm.check_permission("管理员", "admin")[0])
+        self.assertTrue(self.test_perm.check_permission("管理员", "admin").data)
 
     def test_teacher_permission(self):
-        self.assertTrue(self.test_perm.check_permission("教师", "teacher")[0])
+        self.assertTrue(self.test_perm.check_permission("教师", "teacher").data)
 
     def test_user_permission(self):
-        self.assertTrue(self.test_perm.check_permission("普通用户", "user")[0])
+        self.assertTrue(self.test_perm.check_permission("普通用户", "user").data)
 
     def test_insufficient_permission(self):
-        self.assertFalse(self.test_perm.check_permission("普通用户", "admin")[0])
+        self.assertFalse(self.test_perm.check_permission("普通用户", "admin").data)
 
     def test_user_not_found(self):
-        self.assertFalse(self.test_perm.check_permission("不存在", "user")[0])
+        self.assertFalse(self.test_perm.check_permission("不存在", "user").data)
 
     def test_is_admin(self):
-        self.assertTrue(self.test_perm.is_admin("超级管理员"))
-        self.assertTrue(self.test_perm.is_admin("管理员"))
-        self.assertFalse(self.test_perm.is_admin("普通用户"))
+        self.assertTrue(self.test_perm.is_admin("超级管理员").data)
+        self.assertTrue(self.test_perm.is_admin("管理员").data)
+        self.assertFalse(self.test_perm.is_admin("普通用户").data)
 
     def test_get_user_role(self):
-        self.assertEqual(self.test_perm.get_user_role("超级管理员"), "super_admin")
-        self.assertEqual(self.test_perm.get_user_role("教师"), "teacher")
-        self.assertEqual(self.test_perm.get_user_role("不存在"), "user")
+        self.assertEqual(self.test_perm.get_user_role("超级管理员").data, "super_admin")
+        self.assertEqual(self.test_perm.get_user_role("教师").data, "teacher")
+        self.assertEqual(self.test_perm.get_user_role("不存在").data, "user")
 
 
 # ============================================================================

@@ -2,12 +2,14 @@
 
 对应数据表：人员信息表 (person)
 
-提供人员信息的CRUD操作和查询方法。
+提供人员信息的CRUD操作和查询方法，以及密码认证相关能力。
+密码统一使用 utils/password_utils（PBKDF2-HMAC-SHA256, 600k 迭代）。
 """
 from db.base_service import BaseService
 from models.base.person import Person
 from utils.error_handler import logger, ServiceResult
 from utils.password_utils import hash_password, verify_password, is_password_hash_set
+from config.settings import DEFAULT_INITIAL_PASSWORD
 from typing import List, Optional, Tuple
 
 
@@ -22,51 +24,26 @@ class PersonService(BaseService):
         logger.info("人员服务初始化完成")
 
     def get_by_id(self, record_id: int) -> Optional[Person]:
-        """通过记录ID查询人员
-
-        Args:
-            record_id: 记录ID
-
-        Returns:
-            Person对象或None
-        """
+        """通过记录ID查询人员"""
         record = super().get_by_id(record_id)
         if record:
             return self._parse_record(record)
         return None
 
     def get_by_name(self, name: str) -> Optional[Person]:
-        """通过姓名查询人员
-
-        Args:
-            name: 人员姓名
-
-        Returns:
-            Person对象或None
-        """
+        """通过姓名查询人员"""
         record = super().get_by_field('name', name)
         if record:
             return self._parse_record(record)
         return None
 
     def get_by_role(self, role: str) -> List[Person]:
-        """通过角色查询人员
-
-        Args:
-            role: 人员角色
-
-        Returns:
-            Person对象列表
-        """
+        """通过角色查询人员"""
         records = super().get_all_by_field('role', role)
         return [self._parse_record(record) for record in records]
 
     def get_all_persons(self) -> List[Person]:
-        """获取所有人员列表
-
-        Returns:
-            Person对象列表
-        """
+        """获取所有人员列表"""
         records = self.get_all()
         return [self._parse_record(record) for record in records]
 
@@ -114,6 +91,9 @@ class PersonService(BaseService):
     def authenticate(self, user_name: str, password: str) -> ServiceResult[Person]:
         """验证用户登录凭据
 
+        兼容迁移期老账户：若该用户尚未设置密码（password_hash 为空），
+        允许使用系统默认初始密码完成首次登录，并即时落库密码哈希。
+
         Args:
             user_name: 用户名
             password: 明文密码
@@ -128,8 +108,14 @@ class PersonService(BaseService):
                 error_code="AUTH_FAILED",
             )
 
-        # 如果用户未设置密码，拒绝登录
+        # 未设置密码（迁移期老账户）：仅当输入等于默认初始密码时放行
         if not is_password_hash_set(person.password_hash or ""):
+            if password and password == DEFAULT_INITIAL_PASSWORD:
+                new_hash = hash_password(password)
+                self.update_by_field("name", user_name, {"password_hash": new_hash})
+                person.password_hash = new_hash
+                logger.info(f"用户 {user_name} 首次登录，已设置初始密码")
+                return ServiceResult.ok(data=person, message="首次登录成功")
             return ServiceResult.fail(
                 message="用户名或密码错误",
                 error_code="AUTH_FAILED",
@@ -145,14 +131,7 @@ class PersonService(BaseService):
         return ServiceResult.ok(data=person, message="验证通过")
 
     def has_password(self, user_name: str) -> bool:
-        """检查用户是否已设置密码
-
-        Args:
-            user_name: 用户名
-
-        Returns:
-            True 表示已设置密码
-        """
+        """检查用户是否已设置密码"""
         person = self.get_by_name(user_name)
         if not person:
             return False

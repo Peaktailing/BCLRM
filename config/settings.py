@@ -42,6 +42,10 @@ MAIN_DB_MAX_ROWS = 100000
 # 过期数据归档年限
 ARCHIVE_AFTER_YEARS = 3
 
+# 会话安全
+SESSION_TIMEOUT_MINUTES = 30  # 登录会话超时（分钟），超时需重新登录
+DEFAULT_INITIAL_PASSWORD = "123456"  # 迁移期老账户首次登录密码，登录后请尽快在侧边栏修改
+
 # 系统配置
 SYSTEM_NAME = "试剂库管理系统"
 DEFAULT_PAGE_SIZE = 100
