@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.base.person_service import person_service
 from db.database import Database
+from utils.security import hash_password
 
 
 def add_test_users():
@@ -48,6 +49,7 @@ def add_test_users():
             print(f"用户 {user_data['name']} 已存在，跳过")
             continue
 
+        user_data["password_hash"] = hash_password("123456")
         result = person_service.create(user_data)
         if result:
             print(f"✅ 成功添加用户: {user_data['name']} ({user_data['role']})")

@@ -62,7 +62,7 @@ class BaseService:
             query += f" ORDER BY {order_by}"
 
         if limit:
-            query += f" LIMIT {limit}"
+            query += f" LIMIT {int(limit)}"
 
         try:
             return self.db.execute_query(query)
@@ -412,7 +412,7 @@ class BaseService:
             query += f" ORDER BY {order_by}"
 
         if limit:
-            query += f" LIMIT {limit}"
+            query += f" LIMIT {int(limit)}"
 
         try:
             return self.db.execute_query(query, tuple(params))

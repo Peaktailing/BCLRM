@@ -144,6 +144,9 @@ class BorrowRecordService(BaseService):
             cas_number=record.get('cas_number'),
             production_date=record.get('production_date'),
             borrow_time=record.get('borrow_time'),
+            borrow_quantity=record.get('borrow_quantity'),
+            course_id=record.get('course_id'),
+            item_id=record.get('item_id'),
             approver=record.get('approver'),
             approval_file=record.get('approval_file'),
             approved=record.get('approved')

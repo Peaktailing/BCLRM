@@ -21,30 +21,30 @@ def test_permissions():
         print(f"\n--- 测试用户: {user_name} (预期角色: {expected_role}) ---")
 
         print("\n1. 用户权限检查 (required_role='user'):")
-        has_perm, msg = permission_service.check_permission(user_name, "user")
-        print(f"   结果: {'✅ 有权限' if has_perm else '❌ 无权限'} - {msg}")
+        r = permission_service.check_permission(user_name, "user")
+        print(f"   结果: {'✅ 有权限' if r.data else '❌ 无权限'} - {r.message}")
 
         print("\n2. 教师权限检查 (required_role='teacher'):")
-        has_perm, msg = permission_service.check_permission(user_name, "teacher")
-        print(f"   结果: {'✅ 有权限' if has_perm else '❌ 无权限'} - {msg}")
+        r = permission_service.check_permission(user_name, "teacher")
+        print(f"   结果: {'✅ 有权限' if r.data else '❌ 无权限'} - {r.message}")
 
         print("\n3. 管理员权限检查 (required_role='admin'):")
-        has_perm, msg = permission_service.check_permission(user_name, "admin")
-        print(f"   结果: {'✅ 有权限' if has_perm else '❌ 无权限'} - {msg}")
+        r = permission_service.check_permission(user_name, "admin")
+        print(f"   结果: {'✅ 有权限' if r.data else '❌ 无权限'} - {r.message}")
 
         print("\n4. 超级管理员权限检查 (required_role='super_admin'):")
-        has_perm, msg = permission_service.check_permission(user_name, "super_admin")
-        print(f"   结果: {'✅ 有权限' if has_perm else '❌ 无权限'} - {msg}")
+        r = permission_service.check_permission(user_name, "super_admin")
+        print(f"   结果: {'✅ 有权限' if r.data else '❌ 无权限'} - {r.message}")
 
         print("\n5. 角色判断方法:")
-        print(f"   is_admin(): {permission_service.is_admin(user_name)}")
-        print(f"   is_super_admin(): {permission_service.is_super_admin(user_name)}")
-        print(f"   is_teacher(): {permission_service.is_teacher(user_name)}")
-        print(f"   get_user_role(): {permission_service.get_user_role(user_name)}")
+        print(f"   is_admin(): {permission_service.is_admin(user_name).data}")
+        print(f"   is_super_admin(): {permission_service.is_super_admin(user_name).data}")
+        print(f"   is_teacher(): {permission_service.is_teacher(user_name).data}")
+        print(f"   get_user_role(): {permission_service.get_user_role(user_name).data}")
 
         print("\n6. 管控试剂领用权限:")
-        can_borrow, msg = permission_service.can_borrow_controlled(user_name)
-        print(f"   结果: {'✅ 允许' if can_borrow else '❌ 拒绝'} - {msg}")
+        r = permission_service.can_borrow_controlled(user_name)
+        print(f"   结果: {'✅ 允许' if r.data else '❌ 拒绝'} - {r.message}")
 
 
 if __name__ == "__main__":

@@ -118,6 +118,8 @@ class ReturnRecordService(BaseService):
             return_user=record.get('return_user', ""),
             return_time=record.get('return_time'),
             remaining_quantity=record.get('remaining_quantity', 0.0),
+            usage_quantity=record.get('usage_quantity'),
+            linked_borrow_record_number=record.get('linked_borrow_record_number'),
             last_update_time=record.get('last_update_time'),
             modifier=record.get('modifier')
         )

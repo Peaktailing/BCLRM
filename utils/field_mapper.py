@@ -56,6 +56,8 @@ class ReagentBottleField:
     BORROWABLE_CHECK = 'borrowable_check'  # 可借标记判断
     # ---- 过期状态（文本类型：正常/即将过期/已过期）----
     EXPIRED_FLAG = 'expired_flag'  # 过期状态
+    # ---- 报废状态（文本类型：待报废/已报废；空=正常在用）----
+    SCRAP_FLAG = 'scrap_flag'  # 报废状态
     # ---- 试剂类型（文本类型，关联试剂类型表）----
     REAGENT_TYPE = 'reagent_type'  # 试剂类型
     # ---- 是否管控（0=否，1=是）----
@@ -85,6 +87,12 @@ class BorrowRecordField:
     PRODUCTION_DATE = 'production_date'  # 生产日期
     # ---- 领用时间（文本格式：YYYY/MM/DD HH:MM）----
     BORROW_TIME = 'borrow_time'  # 领用时间
+    # ---- 领用数量（数字类型，归还时用于超量校验）----
+    BORROW_QUANTITY = 'borrow_quantity'  # 领用数量
+    # ---- 关联实验课程（整数，关联 experiment_course.id）----
+    COURSE_ID = 'course_id'  # 关联实验课程ID
+    # ---- 关联实验项目（整数，关联 experiment_item.id）----
+    ITEM_ID = 'item_id'  # 关联实验项目ID
     # ---- 审批人（文本类型，管控试剂必填）----
     APPROVER = 'approver'  # 审批人
     # ---- 审批记录上传（文件路径）----
@@ -116,6 +124,8 @@ class ReturnRecordField:
     RETURN_TIME = 'return_time'  # 归还时间
     # ---- 归还时余量（数字类型）----
     REMAINING_QUANTITY = 'remaining_quantity'  # 归还时余量
+    # ---- 本次实际用量（数字类型，= 领用量 - 还入量）----
+    USAGE_QUANTITY = 'usage_quantity'  # 本次实际用量
     # ---- 关联借出记录号（文本类型，关联领用记录表）----
     LINKED_BORROW_RECORD_NUMBER = 'linked_borrow_record_number'  # 关联借出记录号
     # ---- 最后更新时间（文本格式）----
@@ -124,6 +134,96 @@ class ReturnRecordField:
     MODIFIER = 'modifier'  # 修改人
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
+
+
+class ExperimentCourseField:
+    """实验课程表字段名常量
+
+    来源于学院实验分组表，用于领用关联与按课程/人均用量统计。
+    """
+    ID = 'id'
+    SEMESTER = 'semester'            # 学年（如 2026-2027）
+    TERM = 'term'                    # 学期（如 1）
+    COURSE_NAME = 'course_name'      # 课程名称
+    CLASS_NAME = 'class_name'        # 开课班级
+    MAJOR = 'major'                  # 开课专业
+    TEACHER = 'teacher'              # 任课教师
+    STUDENT_COUNT = 'student_count'  # 班级人数
+    LOCATION = 'location'            # 上课地点
+    COLLEGE = 'college'              # 开课学院
+
+
+class ExperimentItemField:
+    """实验项目表字段名常量"""
+    ID = 'id'
+    SEMESTER = 'semester'            # 学年
+    COURSE_NAME = 'course_name'      # 所属课程名
+    SEQ = 'seq'                      # 实验序号
+    ITEM_NAME = 'item_name'          # 实验名称
+
+
+class PurchasePlanField:
+    """课程采购单（表头）字段名常量"""
+    ID = 'id'
+    PLAN_NUMBER = 'plan_number'
+    COURSE_NAME = 'course_name'
+    SOURCE_SEMESTER = 'source_semester'
+    TARGET_SEMESTER = 'target_semester'
+    SOURCE_STUDENT_COUNT = 'source_student_count'
+    TARGET_STUDENT_COUNT = 'target_student_count'
+    STATUS = 'status'
+    ITEM_COUNT = 'item_count'
+    TOTAL_QUANTITY = 'total_quantity'
+    REMARK = 'remark'
+    CREATED_BY = 'created_by'
+    UPDATED_BY = 'updated_by'
+
+
+class PurchasePlanItemField:
+    """采购单明细字段名常量"""
+    ID = 'id'
+    PLAN_ID = 'plan_id'
+    ITEM_ID = 'item_id'
+    ITEM_NAME = 'item_name'
+    REAGENT_NAME = 'reagent_name'
+    CAS_NUMBER = 'cas_number'
+    SOURCE_QUANTITY = 'source_quantity'
+    PER_CAPITA_USAGE = 'per_capita_usage'
+    STUDENT_COUNT = 'student_count'
+    DEMAND_QUANTITY = 'demand_quantity'
+    PURCHASE_QUANTITY = 'purchase_quantity'
+    CURRENT_STOCK = 'current_stock'
+    IS_MANUAL = 'is_manual'
+    SUPPLIER = 'supplier'
+    UNIT_PRICE = 'unit_price'
+    REMARK = 'remark'
+
+
+class BorrowOrderField:
+    """领用工单表字段名常量"""
+    ID = 'id'
+    ORDER_NUMBER = 'order_number'
+    ORDER_TYPE = 'order_type'      # 零星领用 / 课程领用
+    APPLICANT = 'applicant'        # 领用人
+    BORROW_TIME = 'borrow_time'    # 领用时间（学期归属）
+    COURSE_ID = 'course_id'
+    ITEM_ID = 'item_id'
+    COURSE_NAME = 'course_name'
+    ITEM_NAME = 'item_name'
+    STATUS = 'status'              # 借用中 / 部分归还 / 已归还
+    REMARK = 'remark'
+    CREATED_BY = 'created_by'
+
+
+class BorrowOrderItemField:
+    """领用工单明细字段名常量"""
+    ID = 'id'
+    ORDER_ID = 'order_id'
+    BOTTLE_NUMBER = 'bottle_number'
+    REAGENT_NAME = 'reagent_name'
+    BORROW_QTY = 'borrow_qty'      # 领用量
+    RETURNED_QTY = 'returned_qty'  # 已归还量
+    STATUS = 'status'              # 待归还 / 已归还
 
 
 # ============================================================================

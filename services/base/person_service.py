@@ -84,7 +84,8 @@ class PersonService(BaseService):
             role=record.get('role'),
             department=record.get('department'),
             phone=record.get('phone'),
-            student_or_work_id=record.get('student_or_work_id')
+            student_or_work_id=record.get('student_or_work_id'),
+            password_hash=record.get('password_hash')
         )
 
 

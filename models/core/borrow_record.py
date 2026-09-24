@@ -30,6 +30,9 @@ class BorrowRecord:
     cas_number: Optional[str] = None      # CAS号（文本类型）
     production_date: Optional[str] = None # 生产日期（ISO格式字符串）
     borrow_time: Optional[str] = None     # 领用时间（文本格式：YYYY/MM/DD HH:MM）
+    borrow_quantity: Optional[float] = None  # 领用数量（用于归还超量校验）
+    course_id: Optional[int] = None          # 关联实验课程ID（experiment_course.id）
+    item_id: Optional[int] = None            # 关联实验项目ID（experiment_item.id）
     approver: Optional[str] = None        # 审批人（文本类型，管控试剂必填）
     approval_file: Optional[str] = None   # 审批记录上传（文件路径）
     approved: Optional[bool] = None       # 是否通过审批（复选框类型）

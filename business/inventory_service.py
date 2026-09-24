@@ -15,6 +15,7 @@ from services.base.reagent_type_service import reagent_type_service
 from models.core.reagent_bottle import ReagentBottle
 from utils.id_generator import id_generator
 from utils.field_mapper import ReagentBottleField
+from business.bottle_state import borrowable_flag_on_inbound
 from utils.error_handler import logger, ServiceResult, ValidationError
 from datetime import datetime
 from typing import Tuple, List, Optional, Dict, Any
@@ -269,7 +270,7 @@ class InventoryService:
         # 5. 构建入库数据（使用字段常量）
         current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
         is_available = remaining_quantity > 0
-        borrowable_text = "可借" if is_available else "耗尽"
+        borrowable_text = borrowable_flag_on_inbound(remaining_quantity)
 
         inventory_data = {
             ReagentBottleField.BOTTLE_NUMBER: bottle_no,
@@ -547,7 +548,7 @@ class InventoryService:
             ServiceResult[List[str]] - 供应商名称字符串列表
         """
         try:
-            suppliers = self.supplier_service.get_all()
+            suppliers = self.supplier_service.get_all_suppliers()
             names = sorted([s.name for s in suppliers if s.name])
             logger.info("获取供应商列表", count=len(names))
             return ServiceResult.ok(data=names)
@@ -568,7 +569,7 @@ class InventoryService:
             ServiceResult[List[str]] - 存储位置名称字符串列表
         """
         try:
-            locations = self.storage_location_service.get_all()
+            locations = self.storage_location_service.get_all_locations()
             names = sorted([l.name for l in locations if l.name])
             logger.info("获取存储位置列表", count=len(names))
             return ServiceResult.ok(data=names)

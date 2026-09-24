@@ -204,6 +204,7 @@ class ReagentBottleService(BaseService):
             borrowable_flag=record.get('borrowable_flag'),
             borrowable_check=bool(record.get('borrowable_check')) if record.get('borrowable_check') is not None else None,
             expired_flag=record.get('expired_flag'),
+            scrap_flag=record.get('scrap_flag'),
             reagent_type=record.get('reagent_type'),
             is_controlled=record.get('is_controlled'),
             storage_requirement=record.get('storage_requirement'),

@@ -1,0 +1,1356 @@
+2026-07-05 16:49:41 | ERROR    | reagent_manager | 获取供应商列表失败
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 551, in get_available_suppliers
+    names = sorted([s.name for s in suppliers if s.name])
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 551, in <listcomp>
+    names = sorted([s.name for s in suppliers if s.name])
+AttributeError: 'dict' object has no attribute 'name'
+
+2026-07-05 16:49:41 | ERROR    | reagent_manager | 获取存储位置列表失败
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 572, in get_available_storage_locations
+    names = sorted([l.name for l in locations if l.name])
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 572, in <listcomp>
+    names = sorted([l.name for l in locations if l.name])
+AttributeError: 'dict' object has no attribute 'name'
+
+2026-08-20 02:53:24 | ERROR    | reagent_manager | 获取供应商列表失败
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 551, in get_available_suppliers
+    names = sorted([s.name for s in suppliers if s.name])
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 551, in <listcomp>
+    names = sorted([s.name for s in suppliers if s.name])
+AttributeError: 'dict' object has no attribute 'name'
+
+2026-08-20 02:53:24 | ERROR    | reagent_manager | 获取存储位置列表失败
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 572, in get_available_storage_locations
+    names = sorted([l.name for l in locations if l.name])
+  File "/home/biochm/Reagent-manager/business/inventory_service.py", line 572, in <listcomp>
+    names = sorted([l.name for l in locations if l.name])
+AttributeError: 'dict' object has no attribute 'name'
+
+2026-09-01 11:04:34 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609010001 status=已借出
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 插入执行失败: FOREIGN KEY constraint failed
+SQL: INSERT INTO borrow_record (record_number, bottle_number, user, borrow_time, reagent_name, cas_number) VALUES (?, ?, ?, ?, ?, ?)
+参数: 6 params (types: ['str', 'str', 'str', 'str', 'str', 'str'])
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/database.py", line 710, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 创建记录失败 [borrow_record]: FOREIGN KEY constraint failed
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/base_service.py", line 158, in create
+    record_id = self.db.execute_insert(query, tuple(fields.values()))
+  File "/home/biochm/Reagent-manager/db/database.py", line 710, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 创建领用记录失败 | record_number=202609010001 bottle_number=202609010001
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 插入执行失败: FOREIGN KEY constraint failed
+SQL: INSERT INTO borrow_record (record_number, bottle_number, user, borrow_time, reagent_name, cas_number) VALUES (?, ?, ?, ?, ?, ?)
+参数: 6 params (types: ['str', 'str', 'str', 'str', 'str', 'str'])
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/database.py", line 710, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 创建记录失败 [borrow_record]: FOREIGN KEY constraint failed
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/base_service.py", line 158, in create
+    record_id = self.db.execute_insert(query, tuple(fields.values()))
+  File "/home/biochm/Reagent-manager/db/database.py", line 710, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 创建领用记录失败 | record_number=202609010001 bottle_number=202609010001
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 插入执行失败: FOREIGN KEY constraint failed
+SQL: INSERT INTO return_record (return_number, bottle_number, return_user, return_time, remaining_quantity, last_update_time, modifier) VALUES (?, ?, ?, ?, ?, ?, ?)
+参数: 7 params (types: ['str', 'str', 'str', 'str', 'float', 'str', 'str'])
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/database.py", line 710, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 创建记录失败 [return_record]: FOREIGN KEY constraint failed
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/base_service.py", line 158, in create
+    record_id = self.db.execute_insert(query, tuple(fields.values()))
+  File "/home/biochm/Reagent-manager/db/database.py", line 710, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+2026-09-01 11:04:34 | ERROR    | reagent_manager | 创建归还记录失败 | return_number=202609010001 bottle_number=202609010001
+2026-09-01 11:07:47 | ERROR    | reagent_manager | 插入执行失败: FOREIGN KEY constraint failed
+SQL: INSERT INTO borrow_record (record_number,bottle_number,user,borrow_time) VALUES (?,?,?,?)
+参数: 4 params (types: ['str', 'str', 'str', 'str'])
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/database.py", line 710, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+2026-09-01 11:08:37 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609010001 status=已借出
+2026-09-01 11:08:37 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 257, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-01 11:09:56 | WARNING  | reagent_manager | 更新记录未找到 [borrow_record] ID: 1
+2026-09-01 11:13:45 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609010001 status=已借出
+2026-09-01 11:13:45 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 257, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-01 11:22:17 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609010001 status=已借出
+2026-09-01 11:22:17 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 258, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-07 09:23:02 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609070001 status=已借出
+2026-09-07 09:23:02 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 258, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-07 09:23:02 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=2
+2026-09-07 09:23:02 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 206, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-07 09:23:02 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=3
+2026-09-07 09:24:01 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609070001 status=已借出
+2026-09-07 09:24:01 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 258, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-07 09:24:02 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=2
+2026-09-07 09:24:02 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 206, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-07 09:24:02 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=3
+2026-09-07 09:24:27 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609070001 status=已借出
+2026-09-07 09:24:27 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 258, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-07 09:24:27 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=2
+2026-09-07 09:24:27 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 206, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-07 09:24:27 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=3
+2026-09-22 09:21:19 | ERROR    | reagent_manager | 读取人员列表失败 | error='BorrowService' object has no attribute 'person_service'
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 395, in get_all_borrow_users
+    for person in self.person_service.get_all_persons():
+AttributeError: 'BorrowService' object has no attribute 'person_service'. Did you mean: 'record_service'?
+
+2026-09-22 09:21:19 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 09:21:19 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 259, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 09:21:19 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=2
+2026-09-22 09:21:19 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 206, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 09:21:19 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=3
+2026-09-22 09:21:50 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 09:21:50 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 260, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 09:21:50 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=2
+2026-09-22 09:21:50 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 206, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 09:21:50 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=3
+2026-09-22 09:39:10 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 09:39:10 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 260, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 09:39:10 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=2
+2026-09-22 09:39:10 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 206, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 09:39:10 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=3
+2026-09-22 10:28:23 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 10:28:23 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 260, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 10:28:23 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=2
+2026-09-22 10:28:23 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 206, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 10:28:23 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=3
+2026-09-22 10:31:44 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 10:31:44 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 261, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 10:31:44 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 10:31:44 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 10:31:44 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 230, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 10:31:44 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 10:42:54 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 10:42:54 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 261, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 10:42:54 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 10:42:54 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 10:42:54 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 230, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 10:42:54 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 11:03:29 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 11:03:29 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 261, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 11:03:29 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 11:03:29 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 11:03:29 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 11:03:29 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 11:13:02 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 11:13:02 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 261, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 11:13:02 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 11:13:02 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 11:13:02 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 11:13:02 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 11:13:29 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 11:13:29 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 261, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 11:13:29 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 11:13:29 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 11:13:29 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 11:13:29 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 11:13:46 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 11:13:46 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 261, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 11:13:46 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 11:13:46 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 11:13:46 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 11:13:46 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 11:33:47 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 11:33:47 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 266, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 11:33:48 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 11:33:48 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 11:33:48 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 11:33:48 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 11:56:45 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 11:56:45 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 266, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 11:56:45 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 11:56:45 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 11:56:45 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 11:56:45 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 12:00:58 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 12:00:58 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 266, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 12:00:58 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 12:00:58 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 12:00:58 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 12:00:58 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 15:27:19 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 15:27:19 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 266, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 15:27:19 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 15:27:19 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 15:27:19 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 15:27:19 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 16:07:20 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 16:07:20 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 266, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 16:07:20 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 16:07:20 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 16:07:20 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 16:07:21 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 16:19:42 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 16:19:42 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 266, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 16:19:42 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 16:19:42 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 16:19:42 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 16:19:43 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 16:36:23 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 16:36:23 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 16:36:23 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 16:36:23 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 16:36:23 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 16:36:23 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 16:36:48 | ERROR    | reagent_manager | 插入执行失败: UNIQUE constraint failed: purchase_plan.plan_number
+SQL: INSERT INTO purchase_plan (plan_number, course_name, source_semester, target_semester, source_student_count, target_student_count, status, item_count, total_quantity, remark, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+参数: 11 params (types: ['str', 'str', 'str', 'str', 'int', 'int', 'str', 'int', 'float', 'str', 'NoneType'])
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/database.py", line 884, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: UNIQUE constraint failed: purchase_plan.plan_number
+
+2026-09-22 16:36:48 | ERROR    | reagent_manager | 创建记录失败 [purchase_plan]: UNIQUE constraint failed: purchase_plan.plan_number
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/db/base_service.py", line 158, in create
+    record_id = self.db.execute_insert(query, tuple(fields.values()))
+  File "/home/biochm/Reagent-manager/db/database.py", line 884, in execute_insert
+    cursor.execute(query, params)
+sqlite3.IntegrityError: UNIQUE constraint failed: purchase_plan.plan_number
+
+2026-09-22 16:36:48 | ERROR    | reagent_manager | 课程采购单生成失败，已回滚 | error=创建采购单失败
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/business/purchase_service.py", line 237, in generate_course_plan
+    raise RuntimeError("创建采购单失败")
+RuntimeError: 创建采购单失败
+
+2026-09-22 16:37:10 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 16:37:10 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 16:37:10 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 16:37:10 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 16:37:10 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 16:37:10 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:11:30 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:11:30 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:11:30 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:11:30 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:11:30 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:11:30 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:52:14 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:52:14 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:52:14 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:52:14 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:52:14 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:52:14 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:52:22 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:52:22 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:52:22 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:52:22 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:52:22 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:52:22 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:52:37 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:52:37 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:52:37 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:52:37 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:52:37 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:52:37 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:54:37 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:54:37 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:54:37 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:54:37 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:54:37 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:54:37 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:54:39 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:54:39 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:54:39 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:54:39 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:54:39 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:54:39 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:55:25 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:55:25 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:55:25 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:55:25 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:55:25 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:55:25 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 17:55:27 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 17:55:27 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 17:55:27 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 17:55:27 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 17:55:27 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 17:55:27 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-22 19:05:10 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609220001 status=已借出
+2026-09-22 19:05:10 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-22 19:05:10 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609220001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-22 19:05:10 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-22 19:05:10 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-22 19:05:10 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 09:28:23 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 09:28:23 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 09:28:23 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 09:28:23 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 09:28:23 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 09:28:23 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 09:30:20 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=10008 remaining_qty=527.2 max_allowed=519.9 borrow_quantity=19.9
+2026-09-23 09:30:33 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=10008 remaining_qty=525.0 max_allowed=519.9 borrow_quantity=19.9
+2026-09-23 09:30:47 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=10008 remaining_qty=527.2 max_allowed=519.9 borrow_quantity=19.9
+2026-09-23 09:34:30 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 09:34:30 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 09:34:30 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 09:34:30 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 09:34:30 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 09:34:30 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 09:41:33 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 09:41:33 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 09:41:33 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 09:41:33 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 09:41:33 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 09:41:33 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 10:21:30 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 10:21:30 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 10:21:30 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 10:21:30 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 10:21:30 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 10:21:30 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 10:38:51 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 10:38:51 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 10:38:51 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 10:38:51 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 10:38:51 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 10:38:51 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 10:39:02 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 10:39:02 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 10:39:02 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 10:39:02 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 10:39:02 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 10:39:02 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 10:39:14 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 10:39:14 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 10:39:14 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 10:39:14 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 10:39:14 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 10:39:14 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 10:42:14 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 10:42:14 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 10:42:14 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 10:42:14 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 10:42:14 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 10:42:14 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 11:16:23 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 11:16:23 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 11:16:23 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 11:16:23 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 11:16:23 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 11:16:23 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 11:25:00 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 11:25:00 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 11:25:00 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 11:25:00 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 11:25:00 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 11:25:00 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-23 11:29:47 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609230001 status=已借出
+2026-09-23 11:29:47 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-23 11:29:47 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609230001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-23 11:29:47 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-23 11:29:47 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-23 11:29:47 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6
+2026-09-24 10:12:27 | WARNING  | reagent_manager | 试剂瓶不可借出 | bottle_number=202609240001 status=已借出
+2026-09-24 10:12:27 | ERROR    | reagent_manager | [试剂领用] RuntimeError: boom
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/borrow_service.py", line 269, in reagent_borrow
+    updated = self.bottle_service.update(bottle.id, updates)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1114, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1118, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/usr/lib/python3.10/unittest/mock.py", line 1173, in _execute_mock_call
+    raise effect
+RuntimeError: boom
+
+2026-09-24 10:12:27 | WARNING  | reagent_manager | 归还量超过借出时的总量 | bottle_number=202609240001 remaining_qty=105.0 max_allowed=100.0 borrow_quantity=10.0
+2026-09-24 10:12:27 | ERROR    | reagent_manager | 更新领用记录失败，触发回滚 | borrow_record_id=5
+2026-09-24 10:12:27 | ERROR    | reagent_manager | [试剂归还] RuntimeError: 更新领用记录失败，已回滚归还记录
+异常堆栈:
+Traceback (most recent call last):
+  File "/home/biochm/Reagent-manager/utils/error_handler.py", line 488, in wrapper
+    result = func(*args, **kwargs)
+  File "/home/biochm/Reagent-manager/business/return_service.py", line 244, in reagent_return
+    raise RuntimeError("更新领用记录失败，已回滚归还记录")
+RuntimeError: 更新领用记录失败，已回滚归还记录
+
+2026-09-24 10:12:27 | WARNING  | reagent_manager | 关联领用记录不存在，跳过关联更新 | borrow_record_id=6

@@ -25,6 +25,8 @@ class ReturnRecord:
     return_user: Optional[str] = None     # 归还人（文本类型）
     return_time: Optional[str] = None     # 归还时间（文本格式：YYYY/MM/DD HH:MM）
     remaining_quantity: Optional[float] = None # 归还时余量（数字类型）
+    usage_quantity: Optional[float] = None     # 本次实际用量（= 领用量 - 还入量）
+    linked_borrow_record_number: Optional[str] = None  # 关联领用记录号
     last_update_time: Optional[str] = None    # 最后更新时间（文本格式）
     modifier: Optional[str] = None        # 修改人（文本类型）
     id: Optional[int] = None       # 自增主键

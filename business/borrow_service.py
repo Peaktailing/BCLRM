@@ -7,13 +7,16 @@
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.borrow_record_service import borrow_record_service
 from services.base.controlled_list_service import controlled_list_service
+from services.base.person_service import person_service
 from business.expiry_service import expiry_service
+from business.bottle_state import borrowable_flag_on_borrow, is_borrowable, is_expired
 from models.core.borrow_record import BorrowRecord
 from utils.id_generator import id_generator
 from utils.field_mapper import BorrowRecordField, ReagentBottleField
 from utils.error_handler import logger, ServiceResult, handle_exception
 from datetime import datetime
 from typing import Optional, List
+from db.database import db
 
 
 class BorrowService:
@@ -36,6 +39,7 @@ class BorrowService:
         self.bottle_service = reagent_bottle_service
         self.record_service = borrow_record_service
         self.controlled_service = controlled_list_service
+        self.person_service = person_service
         self.id_gen = id_generator
 
     @handle_exception(context="试剂领用")
@@ -43,7 +47,9 @@ class BorrowService:
         self,
         bottle_number: str,
         user: str,
-        borrow_qty: float
+        borrow_qty: float,
+        course_id: Optional[int] = None,
+        item_id: Optional[int] = None
     ) -> ServiceResult:
         """试剂领用核心业务逻辑
 
@@ -104,7 +110,7 @@ class BorrowService:
 
         # 2. 校验试剂瓶状态
         borrowable_flag = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None)
-        if borrowable_flag != "可借":
+        if not is_borrowable(borrowable_flag):
             logger.warning(
                 "试剂瓶不可借出",
                 bottle_number=bottle_number,
@@ -117,7 +123,7 @@ class BorrowService:
 
         # 2.1 校验试剂是否已过期
         expired_flag = getattr(bottle, ReagentBottleField.EXPIRED_FLAG, None)
-        if expired_flag == "已过期":
+        if is_expired(expired_flag):
             logger.warning(
                 "试剂已过期，禁止借出",
                 bottle_number=bottle_number,
@@ -172,7 +178,7 @@ class BorrowService:
         bottle_refresh = self.bottle_service.get_by_bottle_number(bottle_number)
         if bottle_refresh:
             refresh_flag = getattr(bottle_refresh, ReagentBottleField.BORROWABLE_FLAG, None)
-            if refresh_flag != "可借":
+            if not is_borrowable(refresh_flag):
                 logger.warning(
                     "试剂已被其他用户领用",
                     bottle_number=bottle_number,
@@ -191,8 +197,15 @@ class BorrowService:
             BorrowRecordField.RECORD_NUMBER: record_num,
             BorrowRecordField.BOTTLE_NUMBER: getattr(bottle, ReagentBottleField.BOTTLE_NUMBER),
             BorrowRecordField.USER: user,
-            BorrowRecordField.BORROW_TIME: current_time
+            BorrowRecordField.BORROW_TIME: current_time,
+            BorrowRecordField.BORROW_QUANTITY: borrow_qty
         }
+
+        # 关联实验课程与实验项目（可选）
+        if course_id is not None:
+            borrow_data[BorrowRecordField.COURSE_ID] = course_id
+        if item_id is not None:
+            borrow_data[BorrowRecordField.ITEM_ID] = item_id
 
         # 添加可选字段（从试剂瓶信息继承）
         reagent_name = getattr(bottle, ReagentBottleField.REAGENT_NAME, None)
@@ -215,44 +228,48 @@ class BorrowService:
             borrow_qty=borrow_qty
         )
 
-        # 创建领用记录
-        rid = self.record_service.create(borrow_data)
-        logger.info(
-            "领用记录创建结果",
-            record_id=rid,
-            record_number=record_num
-        )
-
-        if not rid:
-            logger.error(
-                "创建领用记录失败",
-                record_number=record_num,
-                bottle_number=bottle_number
-            )
-            return ServiceResult.fail(
-                message="创建领用记录失败",
-                error_code="CREATE_RECORD_FAILED"
-            )
-
-        # 7. 更新试剂瓶库存和状态
-        new_qty = remaining_qty - borrow_qty
-        updates = {
-            ReagentBottleField.REMAINING_QUANTITY: new_qty,
-            ReagentBottleField.LAST_BORROW_TIME: current_time,
-            ReagentBottleField.BORROWABLE_FLAG: "已借出",
-            ReagentBottleField.BORROWABLE_CHECK: False
-        }
-
-        # 首次借出时写入启封日期（精确到小时），后续不再覆盖
-        existing_unseal = getattr(bottle, ReagentBottleField.UNSEAL_DATE, None)
-        if not existing_unseal:
-            updates[ReagentBottleField.UNSEAL_DATE] = current_time
+        # 创建领用记录与库存更新置于同一事务，避免中途失败留下孤儿记录
+        with db.transaction():
+            rid = self.record_service.create(borrow_data)
             logger.info(
-                "首次借出，写入启封日期",
-                bottle_number=bottle_number,
-                unseal_date=current_time
+                "领用记录创建结果",
+                record_id=rid,
+                record_number=record_num
             )
-        self.bottle_service.update(bottle.id, updates)
+
+            if not rid:
+                logger.error(
+                    "创建领用记录失败",
+                    record_number=record_num,
+                    bottle_number=bottle_number
+                )
+                return ServiceResult.fail(
+                    message="创建领用记录失败",
+                    error_code="CREATE_RECORD_FAILED"
+                )
+
+            # 7. 更新试剂瓶库存和状态
+            new_qty = remaining_qty - borrow_qty
+            updates = {
+                ReagentBottleField.REMAINING_QUANTITY: new_qty,
+                ReagentBottleField.LAST_BORROW_TIME: current_time,
+                ReagentBottleField.BORROWABLE_FLAG: borrowable_flag_on_borrow(),
+                ReagentBottleField.BORROWABLE_CHECK: False
+            }
+
+            # 首次借出时写入启封日期（精确到小时），后续不再覆盖
+            existing_unseal = getattr(bottle, ReagentBottleField.UNSEAL_DATE, None)
+            if not existing_unseal:
+                updates[ReagentBottleField.UNSEAL_DATE] = current_time
+                logger.info(
+                    "首次借出，写入启封日期",
+                    bottle_number=bottle_number,
+                    unseal_date=current_time
+                )
+            updated = self.bottle_service.update(bottle.id, updates)
+            if not updated:
+                # 更新失败主动抛异常，触发事务回滚（领用记录一并撤销）
+                raise RuntimeError("更新试剂瓶库存失败，已回滚领用记录")
 
         logger.info(
             "试剂瓶库存更新成功",
@@ -380,10 +397,21 @@ class BorrowService:
         Returns:
             ServiceResult: 查询结果，成功时 data 为领用人姓名列表
         """
-        records = self.record_service.get_all_parsed()
         user_set = set()
-        for record in records:
-            user = getattr(record, 'user', None)
+
+        # 1. 人员表（由「系统设置」维护的用户）——主数据源，
+        #    保证新添加的用户无需先有领用记录即可被选择
+        try:
+            for person in self.person_service.get_all_persons():
+                name = getattr(person, "name", None)
+                if name:
+                    user_set.add(name)
+        except Exception as e:
+            logger.error("读取人员列表失败", error=str(e), exception=e)
+
+        # 2. 历史领用记录中出现过的领用人——补充（兼容历史数据/临时借用人）
+        for record in self.record_service.get_all_parsed():
+            user = getattr(record, "user", None)
             if user:
                 user_set.add(user)
 

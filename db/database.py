@@ -5,6 +5,7 @@
 """
 import sqlite3
 import os
+from contextlib import contextmanager
 from typing import Optional
 from pathlib import Path
 from utils.error_handler import logger
@@ -62,6 +63,7 @@ class Database:
 
         self.db_path = db_path
         self.wal_dir = wal_dir
+        self._transaction_depth = 0
         self._ensure_db_directory()
         self._ensure_wal_directory()
 
@@ -82,7 +84,9 @@ class Database:
     def connection(self) -> sqlite3.Connection:
         """获取数据库连接（懒加载）"""
         if self._connection is None:
-            self._connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._connection = sqlite3.connect(
+                self.db_path, check_same_thread=False, isolation_level=None
+            )
             self._connection.row_factory = sqlite3.Row
             self._enable_foreign_keys()
             self._configure_wal()
@@ -161,6 +165,7 @@ class Database:
                     department TEXT,
                     phone TEXT,
                     student_or_work_id TEXT,
+                    password_hash TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -288,6 +293,7 @@ class Database:
                     borrowable_check INTEGER DEFAULT 1,
                     expired_flag TEXT DEFAULT '正常',
                     expiry_date TEXT,
+                    scrap_flag TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (supplier) REFERENCES supplier(name),
@@ -307,6 +313,8 @@ class Database:
                     production_date TEXT,
                     is_controlled INTEGER DEFAULT 0,
                     borrow_time TEXT,
+                    borrow_quantity REAL,
+                    course_id INTEGER,
                     approver TEXT,
                     approval_file TEXT,
                     approved INTEGER,
@@ -322,6 +330,41 @@ class Database:
                 )
             """)
 
+            # 10.1 领用工单（零星领用 / 课程领用）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS borrow_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_number TEXT NOT NULL UNIQUE,
+                    order_type TEXT NOT NULL,
+                    applicant TEXT NOT NULL,
+                    borrow_time TEXT,
+                    course_id INTEGER,
+                    item_id INTEGER,
+                    course_name TEXT,
+                    item_name TEXT,
+                    status TEXT DEFAULT '借用中',
+                    remark TEXT,
+                    created_by TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 10.2 领用工单明细
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS borrow_order_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER NOT NULL,
+                    bottle_number TEXT,
+                    reagent_name TEXT,
+                    borrow_qty REAL,
+                    returned_qty REAL DEFAULT 0,
+                    status TEXT DEFAULT '待归还',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (order_id) REFERENCES borrow_order(id) ON DELETE CASCADE
+                )
+            """)
+
             # 11. 归还记录表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS return_record (
@@ -331,6 +374,7 @@ class Database:
                     return_user TEXT NOT NULL,
                     return_time TEXT,
                     remaining_quantity REAL,
+                    usage_quantity REAL,
                     linked_borrow_record_number TEXT,
                     last_update_time TEXT,
                     modifier TEXT,
@@ -384,6 +428,82 @@ class Database:
                 )
             """)
 
+            # 14.1 实验课程表（来自学院实验分组表，用于领用关联与按课程/人均用量统计）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_course (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    semester TEXT,
+                    term TEXT,
+                    course_name TEXT NOT NULL,
+                    class_name TEXT,
+                    major TEXT,
+                    teacher TEXT,
+                    student_count INTEGER,
+                    location TEXT,
+                    college TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(semester, term, course_name, class_name)
+                )
+            """)
+
+            # 14.2 实验项目表（课程下的实验，来自分组表「实验项目」列）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    semester TEXT,
+                    course_name TEXT NOT NULL,
+                    seq INTEGER,
+                    item_name TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(semester, course_name, item_name)
+                )
+            """)
+
+            # 14.3 实验方案表（默认方案文本，按「课程名 + 实验名」跨学年复用）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_plan (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_name TEXT NOT NULL,
+                    item_name TEXT NOT NULL,
+                    plan_text TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(course_name, item_name)
+                )
+            """)
+
+            # 14.4 实验默认用量表（默认的「人均」试剂用量，领用时按班级人数折算）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_default_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_name TEXT NOT NULL,
+                    item_name TEXT NOT NULL,
+                    reagent_name TEXT NOT NULL,
+                    qty_per_person REAL,
+                    unit TEXT,
+                    base_qty REAL,
+                    base_student_count INTEGER,
+                    source TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(course_name, item_name, reagent_name)
+                )
+            """)
+
+            # 14.5 实验进度状态表（每学年每个实验的领用进度）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_item_status (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    semester TEXT,
+                    course_name TEXT NOT NULL,
+                    item_name TEXT NOT NULL,
+                    status TEXT,
+                    last_borrow_time TEXT,
+                    last_return_time TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(semester, course_name, item_name)
+                )
+            """)
+
             # 15. 预定单表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reservation_order (
@@ -419,6 +539,52 @@ class Database:
                 )
             """)
 
+            # 16.1 课程采购单（表头）：按「课程名 + 目标学年」唯一，重复生成即覆盖
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS purchase_plan (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    plan_number TEXT NOT NULL UNIQUE,
+                    course_name TEXT NOT NULL,
+                    source_semester TEXT,
+                    target_semester TEXT,
+                    source_student_count INTEGER,
+                    target_student_count INTEGER,
+                    status TEXT DEFAULT '待采购',
+                    item_count INTEGER DEFAULT 0,
+                    total_quantity REAL DEFAULT 0,
+                    remark TEXT,
+                    created_by TEXT,
+                    updated_by TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(course_name, target_semester)
+                )
+            """)
+
+            # 16.2 采购单明细：课程 - 实验 - 试剂
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS purchase_plan_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    plan_id INTEGER NOT NULL,
+                    item_id INTEGER,
+                    item_name TEXT,
+                    reagent_name TEXT,
+                    cas_number TEXT,
+                    source_quantity REAL,
+                    per_capita_usage REAL,
+                    student_count INTEGER,
+                    demand_quantity REAL,
+                    purchase_quantity REAL,
+                    current_stock REAL,
+                    is_manual INTEGER DEFAULT 0,
+                    supplier TEXT,
+                    unit_price REAL,
+                    remark TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (plan_id) REFERENCES purchase_plan(id) ON DELETE CASCADE
+                )
+            """)
+
             # 创建索引以提高查询性能
             # 试剂瓶表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_number ON reagent_bottle(bottle_number)")
@@ -449,12 +615,29 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_project_name ON experiment_project(project_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_project_semester ON experiment_project(semester)")
 
+            # 实验课程表索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_course_semester ON experiment_course(semester)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_course_name ON experiment_course(course_name)")
+
+            # 实验方案 / 默认用量 / 进度状态 索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_plan_item ON experiment_plan(course_name, item_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_usage_item ON experiment_default_usage(course_name, item_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiment_status_item ON experiment_item_status(semester, course_name, item_name)")
+
             # 预定单表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_order_number ON reservation_order(order_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_semester ON reservation_order(semester)")
 
             # 采购单表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchase_order_number ON purchase_order(order_number)")
+
+            # 编号序列表：按日期维护自增序号，保证并发安全的编号生成
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS daily_counters (
+                    counter_date TEXT PRIMARY KEY,
+                    seq INTEGER NOT NULL DEFAULT 0
+                )
+            """)
 
             self.connection.commit()
             logger.info("数据库表初始化完成")
@@ -514,6 +697,118 @@ class Database:
                     "ALTER TABLE reagent_type ADD COLUMN default_sealed_shelf_life INTEGER"
                 )
                 logger.info("迁移完成：reagent_type 表添加 default_sealed_shelf_life 字段")
+
+            # 迁移：person 表增加 password_hash 字段（认证改造）
+            cursor.execute("PRAGMA table_info(person)")
+            person_columns = {row[1] for row in cursor.fetchall()}
+            if "password_hash" not in person_columns:
+                cursor.execute(
+                    "ALTER TABLE person ADD COLUMN password_hash TEXT"
+                )
+                logger.info("迁移完成：person 表添加 password_hash 字段")
+
+            # 迁移：borrow_record 表增加 borrow_quantity 字段（归还超量校验依据）
+            cursor.execute("PRAGMA table_info(borrow_record)")
+            borrow_columns = {row[1] for row in cursor.fetchall()}
+            if "borrow_quantity" not in borrow_columns:
+                cursor.execute(
+                    "ALTER TABLE borrow_record ADD COLUMN borrow_quantity REAL"
+                )
+                logger.info("迁移完成：borrow_record 表添加 borrow_quantity 字段")
+
+            # 迁移：return_record 表增加 usage_quantity 字段（学期用量统计依据）
+            cursor.execute("PRAGMA table_info(return_record)")
+            return_columns = {row[1] for row in cursor.fetchall()}
+            if "usage_quantity" not in return_columns:
+                cursor.execute(
+                    "ALTER TABLE return_record ADD COLUMN usage_quantity REAL"
+                )
+                logger.info("迁移完成：return_record 表添加 usage_quantity 字段")
+
+            # 迁移：borrow_order 表增加 borrow_time 字段（学期归属）
+            cursor.execute("PRAGMA table_info(borrow_order)")
+            order_columns = {row[1] for row in cursor.fetchall()}
+            if order_columns and "borrow_time" not in order_columns:
+                cursor.execute("ALTER TABLE borrow_order ADD COLUMN borrow_time TEXT")
+                logger.info("迁移完成：borrow_order 表添加 borrow_time 字段")
+
+            # 迁移：borrow_record 表增加 course_id 字段（关联实验课程）
+            cursor.execute("PRAGMA table_info(borrow_record)")
+            borrow_columns_all = {row[1] for row in cursor.fetchall()}
+            if "course_id" not in borrow_columns_all:
+                cursor.execute(
+                    "ALTER TABLE borrow_record ADD COLUMN course_id INTEGER"
+                )
+                logger.info("迁移完成：borrow_record 表添加 course_id 字段")
+
+            if "item_id" not in borrow_columns_all:
+                cursor.execute(
+                    "ALTER TABLE borrow_record ADD COLUMN item_id INTEGER"
+                )
+                logger.info("迁移完成：borrow_record 表添加 item_id 字段")
+
+            # 迁移：reagent_bottle 表增加 scrap_flag 字段（待报废 / 已报废）
+            cursor.execute("PRAGMA table_info(reagent_bottle)")
+            bottle_columns_all = {row[1] for row in cursor.fetchall()}
+            if bottle_columns_all and "scrap_flag" not in bottle_columns_all:
+                cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN scrap_flag TEXT")
+                logger.info("迁移完成：reagent_bottle 表添加 scrap_flag 字段")
+
+            # 迁移：采购单升级为「课程-实验-试剂」结构（旧结构无 course_name）
+            cursor.execute("PRAGMA table_info(purchase_plan)")
+            plan_columns = {row[1] for row in cursor.fetchall()}
+            if plan_columns and "course_name" not in plan_columns:
+                existing_rows = cursor.execute("SELECT COUNT(*) FROM purchase_plan").fetchone()[0]
+                if existing_rows:
+                    logger.warning(
+                        "采购单表存在旧结构数据，重建将丢弃这些数据",
+                        row_count=existing_rows
+                    )
+                cursor.execute("DROP TABLE IF EXISTS purchase_plan_item")
+                cursor.execute("DROP TABLE IF EXISTS purchase_plan")
+                cursor.execute("""
+                    CREATE TABLE purchase_plan (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        plan_number TEXT NOT NULL UNIQUE,
+                        course_name TEXT NOT NULL,
+                        source_semester TEXT,
+                        target_semester TEXT,
+                        source_student_count INTEGER,
+                        target_student_count INTEGER,
+                        status TEXT DEFAULT '待采购',
+                        item_count INTEGER DEFAULT 0,
+                        total_quantity REAL DEFAULT 0,
+                        remark TEXT,
+                        created_by TEXT,
+                        updated_by TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(course_name, target_semester)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE purchase_plan_item (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        plan_id INTEGER NOT NULL,
+                        item_id INTEGER,
+                        item_name TEXT,
+                        reagent_name TEXT,
+                        cas_number TEXT,
+                        source_quantity REAL,
+                        per_capita_usage REAL,
+                        student_count INTEGER,
+                        demand_quantity REAL,
+                        purchase_quantity REAL,
+                        current_stock REAL,
+                        is_manual INTEGER DEFAULT 0,
+                        supplier TEXT,
+                        unit_price REAL,
+                        remark TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (plan_id) REFERENCES purchase_plan(id) ON DELETE CASCADE
+                    )
+                """)
+                logger.info("迁移完成：purchase_plan / purchase_plan_item 已升级为课程-实验-试剂结构")
 
             self.connection.commit()
 
@@ -596,6 +891,36 @@ class Database:
             logger.error(f"迁移失败：{str(e)}", exc_info=True)
             raise
 
+    @contextmanager
+    def transaction(self):
+        """事务上下文管理器（支持嵌套，仅最外层真正提交/回滚）
+
+        用法::
+
+            with db.transaction():
+                db.execute_insert(...)
+                db.execute_update(...)
+
+        进入时若不在事务中则 BEGIN；正常退出 COMMIT，异常 ROLLBACK。
+        嵌套使用时仅最外层提交/回滚，避免子块提前提交导致跨表写入半成功。
+        依赖连接使用 autocommit 模式（isolation_level=None）。
+        """
+        conn = self.connection
+        nested = self._transaction_depth > 0
+        self._transaction_depth += 1
+        try:
+            if not nested:
+                conn.execute("BEGIN")
+            yield conn
+            if not nested:
+                conn.commit()
+        except Exception:
+            if not nested:
+                conn.rollback()
+            raise
+        finally:
+            self._transaction_depth -= 1
+
     def execute_query(self, query: str, params: tuple = None) -> list:
         """执行查询语句
 
@@ -633,10 +958,12 @@ class Database:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
-            self.connection.commit()
+            if self._transaction_depth == 0:
+                self.connection.commit()
             return cursor.rowcount
         except Exception as e:
-            self.connection.rollback()
+            if self._transaction_depth == 0:
+                self.connection.rollback()
             logger.error(f"更新执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 
@@ -656,10 +983,12 @@ class Database:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
-            self.connection.commit()
+            if self._transaction_depth == 0:
+                self.connection.commit()
             return cursor.lastrowid
         except Exception as e:
-            self.connection.rollback()
+            if self._transaction_depth == 0:
+                self.connection.rollback()
             logger.error(f"插入执行失败: {str(e)}\nSQL: {query}\n参数: {_redact_params(params)}", exception=e)
             raise
 

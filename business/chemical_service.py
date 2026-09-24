@@ -344,7 +344,7 @@ class ChemicalManageService:
                           失败时包含错误信息
         """
         # 参数校验
-        if not record_id or not isinstance(record_id, str) or not record_id.strip():
+        if not record_id or not str(record_id).strip():
             logger.warning("参数校验失败: 记录ID不能为空")
             return ServiceResult.fail(
                 message="记录ID不能为空",
@@ -362,7 +362,7 @@ class ChemicalManageService:
 
         # 2. 检查化学品名称是否被其他记录使用
         existing = self.chemical_service.get_by_name(name.strip() if name else "")
-        if existing and existing.id != record_id:
+        if existing and str(existing.id) != str(record_id):
             logger.warning(
                 "化学品名称已被其他记录使用",
                 record_id=record_id,
@@ -376,7 +376,7 @@ class ChemicalManageService:
 
         # 3. 检查CAS号是否被其他记录使用
         existing_cas = self.chemical_service.get_by_cas_number(cas.strip() if cas else "")
-        if existing_cas and existing_cas.id != record_id:
+        if existing_cas and str(existing_cas.id) != str(record_id):
             logger.warning(
                 "CAS号已被其他记录使用",
                 record_id=record_id,
