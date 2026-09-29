@@ -97,6 +97,7 @@ class PurchasePlanItemService(BaseService):
             is_manual=record.get('is_manual'),
             supplier=record.get('supplier'),
             unit_price=record.get('unit_price'),
+            bottle_number=record.get('bottle_number'),
             remark=record.get('remark'),
         )
 

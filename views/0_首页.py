@@ -89,6 +89,30 @@ if st.session_state.get("user_role") == "super_admin":
 
 st.divider()
 
+# 用户使用手册（读取 docs/用户使用手册.md 渲染）
+@st.cache_data
+def _load_user_manual() -> str:
+    """读取用户使用手册 Markdown 文本（文件内容缓存，改动手册后自动失效重读）"""
+    manual_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "docs", "用户使用手册.md",
+    )
+    try:
+        with open(manual_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+
+_manual_md = _load_user_manual()
+if _manual_md:
+    with st.expander("📖 用户使用手册（点击展开 / 收起）", expanded=True):
+        st.markdown(_manual_md)
+else:
+    st.info("用户使用手册文件缺失（docs/用户使用手册.md），请联系管理员。")
+
+st.divider()
+
 # 快速统计
 try:
     result = dashboard_service.get_inventory_stats()

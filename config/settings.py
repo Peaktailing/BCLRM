@@ -20,12 +20,6 @@ DB_ATTACH_NAME = "attach_cold.db"
 DB_LOG_PATH = "db/operation_log.db"
 DB_LOG_NAME = "operation_log.db"
 
-# WAL 日志独立目录
-WAL_DIR_MAIN = "db_wal/main"
-WAL_DIR_ARCHIVE = "db_wal/archive"
-WAL_DIR_ATTACH = "db_wal/attach"
-WAL_DIR_LOG = "db_wal/logdb"
-
 # 日志目录
 LOG_DIR = "logs"
 ERROR_LOG_FILE = "error.log"
@@ -51,4 +45,4 @@ SYSTEM_NAME = "试剂库管理系统"
 DEFAULT_PAGE_SIZE = 100
 DEFAULT_UNIT = "g"
 EXPIRY_WARNING_DAYS = 30
-VERSION = "v0.88"
+VERSION = "v0.8.9"

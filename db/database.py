@@ -152,24 +152,6 @@ class Database:
             self._connection = None
             logger.info(f"数据库连接已关闭: {self.db_path}")
 
-    @contextmanager
-    def transaction(self):
-        """跨表事务上下文管理器
-
-        使用方式:
-            with db.transaction():
-                db.execute_update(...)
-                db.execute_insert(...)
-
-        事务中所有操作成功则自动 commit，任一失败则 rollback 并抛出异常。
-        """
-        try:
-            yield
-            self.connection.commit()
-        except Exception:
-            self.connection.rollback()
-            raise
-
     def init_tables(self):
         """初始化所有数据表（仅主库使用）
 
@@ -321,6 +303,86 @@ class Database:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (supplier) REFERENCES supplier(name),
                     FOREIGN KEY (storage_location) REFERENCES storage_location(name)
+                )
+            """)
+
+            # 9.1 管理人变更记录表（保管权流转历史）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS manager_change_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bottle_number TEXT NOT NULL,
+                    reagent_name TEXT,
+                    old_manager TEXT,
+                    new_manager TEXT,
+                    reason TEXT,
+                    ref_type TEXT,
+                    ref_id TEXT,
+                    remark TEXT,
+                    operator TEXT,
+                    changed_at TEXT
+                )
+            """)
+
+            # 9.2 需求单表（领用需求 → 拆分为多张调配单）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reagent_demand (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    demand_number TEXT NOT NULL UNIQUE,
+                    requester TEXT NOT NULL,
+                    order_type TEXT,
+                    course_id INTEGER,
+                    item_id INTEGER,
+                    project_id INTEGER,
+                    course_name TEXT,
+                    item_name TEXT,
+                    borrow_time TEXT,
+                    status TEXT,
+                    remark TEXT,
+                    created_by TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 9.3 需求单明细表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reagent_demand_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    demand_id INTEGER NOT NULL,
+                    reagent_name TEXT,
+                    cas_number TEXT,
+                    requested_qty REAL
+                )
+            """)
+
+            # 9.4 调配单表（按管理人拆分，发到对应管理员手上）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS allocation_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    allocation_number TEXT NOT NULL UNIQUE,
+                    demand_id INTEGER,
+                    manager TEXT,
+                    status TEXT,
+                    demand_qty REAL,
+                    manager_stock_qty REAL,
+                    total_stock_qty REAL,
+                    year_demand_qty REAL,
+                    is_stock_sufficient INTEGER,
+                    handled_at TEXT,
+                    remark TEXT,
+                    created_by TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 9.5 调配单明细表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS allocation_order_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    allocation_id INTEGER NOT NULL,
+                    bottle_number TEXT,
+                    reagent_name TEXT,
+                    qty REAL,
+                    status TEXT
                 )
             """)
 
@@ -834,6 +896,31 @@ class Database:
                 cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN scrap_flag TEXT")
                 logger.info("迁移完成：reagent_bottle 表添加 scrap_flag 字段")
 
+            # 迁移：reagent_bottle 表增加 manager 字段（当前管理人/保管权归属）
+            if bottle_columns_all and "manager" not in bottle_columns_all:
+                cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN manager TEXT")
+                logger.info("迁移完成：reagent_bottle 表添加 manager 字段")
+
+            # 迁移：无管理人的试剂瓶默认归属超级管理员
+            cursor.execute(
+                "UPDATE reagent_bottle SET manager = ("
+                "SELECT name FROM person WHERE role = 'super_admin' ORDER BY id LIMIT 1"
+                ") WHERE manager IS NULL OR manager = ''"
+            )
+            if cursor.rowcount and cursor.rowcount > 0:
+                logger.info(
+                    f"迁移完成：已为 {cursor.rowcount} 个无管理人的试剂瓶回填超级管理员"
+                )
+
+            # 迁移：purchase_plan_item 表增加 bottle_number 字段（按采购单入库后回填，防重复入库）
+            cursor.execute("PRAGMA table_info(purchase_plan_item)")
+            plan_item_columns = {row[1] for row in cursor.fetchall()}
+            if plan_item_columns and "bottle_number" not in plan_item_columns:
+                cursor.execute(
+                    "ALTER TABLE purchase_plan_item ADD COLUMN bottle_number TEXT"
+                )
+                logger.info("迁移完成：purchase_plan_item 表添加 bottle_number 字段")
+
             # 迁移：experiment_course 表增加 approver 字段（课程绑定的审批管理员）
             cursor.execute("PRAGMA table_info(experiment_course)")
             course_columns = {row[1] for row in cursor.fetchall()}
@@ -937,15 +1024,6 @@ class Database:
 
             # 迁移：移除 chemical_info 表的 reagent_type 外键约束（支持多类型标签存储）
             self._migrate_chemical_info_drop_reagent_type_fk()
-
-            # 迁移：person 表添加 password_hash 字段（密码认证）
-            cursor.execute("PRAGMA table_info(person)")
-            person_columns = {row[1] for row in cursor.fetchall()}
-            if "password_hash" not in person_columns:
-                cursor.execute(
-                    "ALTER TABLE person ADD COLUMN password_hash TEXT"
-                )
-                logger.info("迁移完成：person 表添加 password_hash 字段")
 
             # 迁移：将 chemical_info.reagent_type 的 CSV 数据迁移到 chemical_reagent_type 关联表
             cursor.execute("PRAGMA table_info(chemical_reagent_type)")

@@ -92,14 +92,13 @@ class IDGenerator:
         return int(row[0]) if row else 1
 
     def _gen(self, key: str) -> str:
-        """生成 "日期(8位) + 4位序号" 编号，序号由 daily_counters 原子分配。"""
+        """生成 "日期(8位) + 4位序号" 编号，序号由 daily_counters 原子分配。
+
+        异常时直接抛出（绝不伪造编号，避免与真实编号冲突）。
+        """
         today = datetime.now().strftime("%Y%m%d")
-        try:
-            seq = self._next_seq(key)
-            return f"{today}{seq:04d}"
-        except Exception as e:
-            logger.error(f"[IDGenerator] 生成编号失败(key={key}): {e}", exception=e)
-            return f"{today}0001"
+        seq = self._next_seq(key)
+        return f"{today}{seq:04d}"
 
     # ------------------------------------------------------------------
     # 1. 试剂瓶编号生成（日期+四位自增）
@@ -114,6 +113,32 @@ class IDGenerator:
             试剂瓶编号字符串
         """
         return self._gen(datetime.now().strftime("%Y%m%d"))
+
+    def next_free_bottle_number(self, is_taken) -> str:
+        """生成下一个**未被占用**的试剂瓶编号
+
+        从当日计数器开始依次生成候选编号，跳过已被占用的号。
+        用于规避「编号被绕过生成器直接写入的数据占用」导致的
+        UNIQUE 冲突（每次跳号都会同步推进计数器，后续生成自然接续）。
+
+        Args:
+            is_taken: 回调函数，接收候选编号，返回 True 表示已被占用
+
+        Returns:
+            未被占用的试剂瓶编号；连续 9999 个候选均被占用时返回空串
+        """
+        for _ in range(9999):
+            candidate = self.generate_bottle_number()
+            try:
+                if not is_taken(candidate):
+                    return candidate
+            except Exception as e:
+                logger.error(
+                    "[IDGenerator] 占用检查失败，返回候选编号", exception=e
+                )
+                return candidate
+        logger.error("[IDGenerator] 当日可用编号耗尽")
+        return ""
 
     # ------------------------------------------------------------------
     # 2. 条码生成（日期+序号）
@@ -153,6 +178,20 @@ class IDGenerator:
             归还记录编号字符串
         """
         return self._gen(f"ret:{datetime.now().strftime('%Y%m%d')}")
+
+    # ------------------------------------------------------------------
+    # 5. 需求单编号生成
+    # ------------------------------------------------------------------
+    def generate_demand_number(self) -> str:
+        """生成需求单编号（日期+四位自增）"""
+        return self._gen(f"dem:{datetime.now().strftime('%Y%m%d')}")
+
+    # ------------------------------------------------------------------
+    # 6. 调配单编号生成
+    # ------------------------------------------------------------------
+    def generate_allocation_number(self) -> str:
+        """生成调配单编号（日期+四位自增）"""
+        return self._gen(f"alo:{datetime.now().strftime('%Y%m%d')}")
 
 
 # 全局单例实例

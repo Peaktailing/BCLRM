@@ -49,4 +49,5 @@ class PurchasePlanItem:
     is_manual: Optional[int] = None            # 是否被人工修改过
     supplier: Optional[str] = None
     unit_price: Optional[float] = None
+    bottle_number: Optional[str] = None        # 按采购单入库后回填的试剂瓶编号（防重复入库）
     remark: Optional[str] = None

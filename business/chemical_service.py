@@ -99,15 +99,28 @@ class ChemicalManageService:
             )
 
         # 5. 检查化学品名称是否已存在
+        # 注意：get_by_name 会同时匹配 name 与 display_name，
+        # 因此“氯化氢水溶液（显示名：盐酸）”这类记录也会命中“盐酸”
         existing = self.chemical_service.get_by_name(name.strip())
         if existing:
+            matched_field = (
+                "化学品名称"
+                if (existing.name or "").strip() == name.strip()
+                else "通用显示名称"
+            )
             logger.warning(
                 "化学品名称已存在",
                 name=name,
-                existing_id=existing.id
+                existing_id=existing.id,
+                matched_field=matched_field
             )
             return ServiceResult.fail(
-                message=f"化学品名称 '{name}' 已存在",
+                message=(
+                    f"已存在{matched_field}为「{name}」的化学品："
+                    f"{existing.name}（通用显示名称：{existing.display_name or '-'}，"
+                    f"CAS：{existing.cas_number}）。"
+                    f"请在「编辑化学品」中选择该条目直接修改"
+                ),
                 error_code="DUPLICATE_CHEMICAL_NAME"
             )
 

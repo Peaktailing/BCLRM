@@ -34,6 +34,7 @@ class ReagentBottle(BaseModel):
     last_return_time: Optional[str] = None  # 最后归还时间
     last_return_record_no: Optional[int] = None  # 最后归还记录号
     storage_location: Optional[str] = None  # 存储位置
+    manager: Optional[str] = None           # 当前管理人（保管权归属，存 person.name）
     borrowable_flag: Optional[str] = None   # 可借标记（事实来源：可借/已借出/耗尽/空瓶）
     reagent_type: Optional[str] = None      # 试剂类型
     is_controlled: Optional[int] = None     # 是否管控（0=否，1=是）

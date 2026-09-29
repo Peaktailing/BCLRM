@@ -12,6 +12,7 @@ from services.base.controlled_list_service import controlled_list_service
 from services.base.supplier_service import supplier_service
 from services.base.storage_location_service import storage_location_service
 from services.base.reagent_type_service import reagent_type_service
+from services.base.person_service import person_service
 from models.core.reagent_bottle import ReagentBottle
 from utils.id_generator import id_generator
 from utils.field_mapper import ReagentBottleField
@@ -32,7 +33,8 @@ class InventoryService:
 
     def __init__(self, chemical_service=None, supplier_service=None,
                  storage_location_service=None, reagent_type_service=None,
-                 controlled_list_service=None, reagent_bottle_service=None):
+                 controlled_list_service=None, reagent_bottle_service=None,
+                 person_service=None):
         """初始化入库服务
 
         注入所有依赖的服务实例，便于测试和维护。
@@ -45,6 +47,7 @@ class InventoryService:
             reagent_type_service: ReagentTypeService 实例
             controlled_list_service: ControlledListService 实例
             reagent_bottle_service: ReagentBottleService 实例
+            person_service: PersonService 实例（用于获取可选管理人）
         """
         from services.core.reagent_bottle_service import reagent_bottle_service as rbs
         from services.base.chemical_service import chemical_service as cs
@@ -52,6 +55,7 @@ class InventoryService:
         from services.base.supplier_service import supplier_service as ss
         from services.base.storage_location_service import storage_location_service as sls
         from services.base.reagent_type_service import reagent_type_service as rts
+        from services.base.person_service import person_service as ps
 
         self.reagent_bottle_service = reagent_bottle_service or rbs
         self.chemical_service = chemical_service or cs
@@ -59,6 +63,7 @@ class InventoryService:
         self.supplier_service = supplier_service or ss
         self.storage_location_service = storage_location_service or sls
         self.reagent_type_service = reagent_type_service or rts
+        self.person_service = person_service or ps
         self.id_generator = id_generator
         logger.info("InventoryService 初始化完成")
 
@@ -71,7 +76,9 @@ class InventoryService:
         reagent_name: str,
         cas_number: str,
         remaining_quantity: float,
-        specification: float
+        specification: float,
+        allow_missing_cas: bool = False,
+        allow_unlisted_chemical: bool = False
     ) -> ServiceResult[bool]:
         """校验入库数据有效性
 
@@ -92,11 +99,13 @@ class InventoryService:
             )
 
         if not cas_number or not cas_number.strip():
-            logger.warning("入库校验失败: CAS号为空")
-            return ServiceResult.fail(
-                message="CAS号不能为空，请先选择试剂名称",
-                error_code="EMPTY_CAS_NUMBER"
-            )
+            if not allow_missing_cas:
+                logger.warning("入库校验失败: CAS号为空")
+                return ServiceResult.fail(
+                    message="CAS号不能为空，请先选择试剂名称",
+                    error_code="EMPTY_CAS_NUMBER"
+                )
+            logger.warning("入库校验: CAS号为空（按采购单入库，允许缺省）")
 
         if remaining_quantity <= 0:
             logger.warning(
@@ -139,14 +148,19 @@ class InventoryService:
             chemicals = self.chemical_service.get_all_parsed()
             chemical_names = {c.name.strip() for c in chemicals if c.name}
             if reagent_name.strip() not in chemical_names:
+                if not allow_unlisted_chemical:
+                    logger.warning(
+                        "入库校验失败: 试剂名称不在化学品信息表中",
+                        reagent_name=reagent_name
+                    )
+                    return ServiceResult.fail(
+                        message="试剂名称不在化学品信息表中，请先添加",
+                        error_code="REAGENT_NOT_FOUND",
+                        data={"reagent_name": reagent_name}
+                    )
                 logger.warning(
-                    "入库校验失败: 试剂名称不在化学品信息表中",
+                    "入库校验: 试剂不在化学品信息表中（按采购单入库，允许）",
                     reagent_name=reagent_name
-                )
-                return ServiceResult.fail(
-                    message="试剂名称不在化学品信息表中，请先添加",
-                    error_code="REAGENT_NOT_FOUND",
-                    data={"reagent_name": reagent_name}
                 )
         except Exception as e:
             logger.error(
@@ -215,7 +229,10 @@ class InventoryService:
         unit_price: Optional[float] = None,
         supplier: Optional[str] = None,
         production_date: Optional[str] = None,
-        storage_location: Optional[str] = None
+        storage_location: Optional[str] = None,
+        manager: Optional[str] = None,
+        allow_missing_cas: bool = False,
+        allow_unlisted_chemical: bool = False
     ) -> ServiceResult[Dict[str, Any]]:
         """创建试剂入库记录
 
@@ -230,13 +247,16 @@ class InventoryService:
             supplier: 供应商（可选）
             production_date: 生产日期（可选，YYYY-MM-DD格式）
             storage_location: 存储位置（可选）
+            manager: 当前管理人/保管人（可选，建议必填；管控试剂可留空）
 
         Returns:
             ServiceResult[Dict] - 成功时返回包含 bottle_number 和 barcode 的字典
         """
         # 1. 校验输入数据
         validation = self.validate_inventory_inputs(
-            reagent_name, cas_number, remaining_quantity, specification
+            reagent_name, cas_number, remaining_quantity, specification,
+            allow_missing_cas=allow_missing_cas,
+            allow_unlisted_chemical=allow_unlisted_chemical,
         )
         if validation.is_failure():
             return ServiceResult.fail(
@@ -276,8 +296,10 @@ class InventoryService:
         if controlled_result.is_success():
             is_controlled, controlled_type = controlled_result.data
 
-        # 4. 生成试剂瓶编号
-        bottle_no = self.id_generator.generate_bottle_number()
+        # 4. 生成试剂瓶编号（跳过已被占用的号，避免 UNIQUE 冲突）
+        bottle_no = self.id_generator.next_free_bottle_number(
+            lambda no: self.reagent_bottle_service.get_by_bottle_number(no) is not None
+        )
         if not bottle_no or len(bottle_no) < 12:
             logger.error("生成试剂瓶编号失败", bottle_no=bottle_no)
             return ServiceResult.fail(
@@ -320,6 +342,9 @@ class InventoryService:
 
         if storage_location:
             inventory_data[ReagentBottleField.STORAGE_LOCATION] = storage_location
+
+        if manager:
+            inventory_data[ReagentBottleField.MANAGER] = manager
 
         # 6. 创建入库记录
         try:
@@ -365,8 +390,21 @@ class InventoryService:
                 reagent_name=reagent_name,
                 bottle_number=bottle_no
             )
+            err_text = str(e)
+            if "UNIQUE constraint failed" in err_text:
+                if "bottle_number" in err_text:
+                    friendly = (
+                        f"试剂瓶编号 {bottle_no} 已被占用，请重试"
+                        "（系统会自动尝试下一个可用编号）"
+                    )
+                else:
+                    friendly = f"条码已被占用：{err_text.split(':')[-1].strip()}，请重试"
+                return ServiceResult.fail(
+                    message=friendly,
+                    error_code="INVENTORY_DUPLICATE_KEY"
+                )
             return ServiceResult.fail(
-                message=f"创建记录失败: {str(e)}",
+                message=f"创建记录失败: {err_text}",
                 error_code="INVENTORY_CREATE_EXCEPTION"
             )
 
@@ -619,6 +657,38 @@ class InventoryService:
             return ServiceResult.fail(
                 message=f"获取试剂类型列表失败: {str(e)}",
                 error_code="REAGENT_TYPE_QUERY_ERROR"
+            )
+
+    def get_available_managers(self) -> ServiceResult[List[str]]:
+        """获取可选管理人列表（保管权归属候选人）
+
+        规则：委托人=系统管理员（super_admin/admin）；若管理员列表为空，
+        则回退为全部人员，保证入库流程不被阻断。
+
+        Returns:
+            ServiceResult[List[str]] - 管理人姓名列表（去重排序）
+        """
+        try:
+            names = set()
+            for role in ("super_admin", "admin"):
+                for person in self.person_service.get_by_role(role):
+                    if person.name:
+                        names.add(person.name)
+            if not names:
+                for person in self.person_service.get_all_persons():
+                    if person.name:
+                        names.add(person.name)
+            result = sorted(names)
+            logger.info("获取可选管理人列表", count=len(result))
+            return ServiceResult.ok(data=result)
+        except Exception as e:
+            logger.error(
+                "获取管理人列表失败",
+                exception=e
+            )
+            return ServiceResult.fail(
+                message=f"获取管理人列表失败: {str(e)}",
+                error_code="MANAGER_QUERY_ERROR"
             )
 
     def get_chemical_info_by_name(

@@ -103,7 +103,10 @@ def verify_password(password: str, password_hash: str) -> bool:
             dklen=HASH_LENGTH,
         )
 
-        return base64.b64encode(dk).decode("ascii") == stored_hash_b64
+        # 常量时间比较，避免时序侧信道
+        return hmac.compare_digest(
+            base64.b64encode(dk).decode("ascii"), stored_hash_b64
+        )
     except (ValueError, IndexError, base64.binascii.Error):
         return False
 

@@ -62,6 +62,18 @@ def _parse_reagent_type_str(type_str):
     return [t.strip() for t in type_str.split(",") if t.strip()]
 
 
+def _chem_label(chemical) -> str:
+    """化学品下拉标签：显示「名称（通用显示名称）」
+
+    避免只有 name 可见时，找不到「氯化氢水溶液（盐酸）」这类记录。
+    """
+    name = getattr(chemical, 'name', '') or ''
+    display = getattr(chemical, 'display_name', '') or ''
+    if display and display != name:
+        return f"{name}（{display}）"
+    return name
+
+
 def main():
     st.set_page_config(page_title="化学品信息管理", layout="wide")
     st.title("🧪 化学品信息管理")
@@ -155,8 +167,8 @@ def main():
             help="从存储要求表中选择"
         )
 
-    # 构建化学品名称下拉选项（用于添加表单）
-    chemical_options_dict = {getattr(c, 'name', ''): c for c in chemicals if getattr(c, 'name', '')}
+    # 构建化学品名称下拉选项（用于添加表单，标签含通用显示名称）
+    chemical_options_dict = {_chem_label(c): c for c in chemicals if getattr(c, 'name', '')}
     chemical_names_for_select = [""] + list(chemical_options_dict.keys())
 
     with st.form("add_chemical_form", clear_on_submit=True):
@@ -167,7 +179,7 @@ def main():
                 "化学品名称*（下拉选择或输入新名称）",
                 options=chemical_names_for_select,
                 index=0,
-                help="从已有化学品中选择；或直接输入新名称后按回车（输入不会被迫变成相似名称）",
+                help="从已有化学品中选择（格式：名称（通用显示名称））；或直接输入新名称后按回车",
                 accept_new_options=True,
             )
 
@@ -241,20 +253,21 @@ def main():
         st.error("获取化学品列表失败，请检查数据库连接。")
 
     if chemicals_for_edit:
-        chemical_options = {getattr(c, 'name', ''): c for c in chemicals_for_edit if getattr(c, 'name', '')}
+        # 标签含通用显示名称，避免「氯化氢水溶液（盐酸）」这类记录找不到
+        chemical_options = {
+            _chem_label(c): c for c in chemicals_for_edit if getattr(c, 'name', '')
+        }
         selected_chemical_to_edit = st.selectbox(
-            "选择要编辑的化学品",
+            "选择要编辑的化学品（格式：名称（通用显示名称））",
             options=[""] + list(chemical_options.keys()),
             index=0,
-            key="edit_chemical_select"
+            key="edit_chemical_select_v2"
         )
 
         if selected_chemical_to_edit:
             selected_chemical = chemical_options[selected_chemical_to_edit]
-
-            # 从业务层获取化学品详情
-            _result = chemical_manage_service.get_chemical_by_name(selected_chemical_to_edit)
-            chem = _result.data if _result.is_success() else None
+            # 直接使用下拉选中的对象，避免按名称二次查询造成错位
+            chem = selected_chemical
 
             # 解析当前试剂类型为列表
             current_types = _parse_reagent_type_str(getattr(chem, 'reagent_type', '')) if chem else []

@@ -18,7 +18,13 @@ import streamlit as st
 from openpyxl import Workbook
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
-from business.purchase_service import purchase_service, DEFAULT_TARGET_STUDENT_COUNT
+from business.purchase_service import (
+    purchase_service,
+    DEFAULT_TARGET_STUDENT_COUNT,
+    PLAN_STATUS_SUBMITTED,
+    PLAN_STATUS_ORDERED,
+    PLAN_STATUS_RECEIVED,
+)
 from business.semester_stats_service import semester_stats_service
 from services.base.person_service import person_service
 from services.base.reservation_purchase_service import (
@@ -222,16 +228,23 @@ with tab_manage:
                                 st.error(f"❌ {_r.message}")
             st.divider()
 
-        target_semesters = purchase_service.list_target_semesters()
+        target_semesters = purchase_service.list_draft_target_semesters()
         if not target_semesters:
-            st.info("暂无采购单，请先在「生成课程采购单」中生成。")
+            st.info(
+                "暂无草稿采购单：可到「生成课程采购单」生成；"
+                "已提交的采购单请在「📦 采购单跟踪」中查看。"
+            )
         else:
             selected_semester = st.selectbox("目标学年", options=target_semesters, key="cp_manage_semester")
-            plans = purchase_service.list_plans(selected_semester)
+            plans = purchase_service.list_draft_plans(selected_semester)
 
             if not plans:
-                st.info("该学年暂无采购单")
+                st.info("该学年暂无草稿采购单（已提交的请在「📦 采购单跟踪」中查看）")
             else:
+                st.caption(
+                    "此处仅管理草稿「待采购」的采购单；点「🚀 提交采购单」后即从本页消失，"
+                    "进入汇总采购单与「📦 采购单跟踪」，不能再修改。"
+                )
                 options = {
                     p.id: f"{p.plan_number}｜{p.course_name}｜{p.item_count} 条"
                     for p in plans
@@ -258,13 +271,28 @@ with tab_manage:
                             + person_service.get_by_role("super_admin")
                         ) if p.name and p.name != current_user
                     })
-                    _cp_sel, _cp_btn = st.columns([2, 1])
+                    _cp_sel, _cp_sub, _cp_btn = st.columns([2, 1, 1])
                     with _cp_sel:
                         _sel_approver = st.selectbox(
                             "指定审批管理员（含管控化学品的采购需审批后执行）",
                             options=["（不提交审批）"] + _admins,
                             key=f"cp_approver_{plan_id}",
                         )
+                    with _cp_sub:
+                        st.write("")
+                        if st.button(
+                            "🚀 提交采购单",
+                            type="primary",
+                            use_container_width=True,
+                            key=f"cp_submit_plan_{plan_id}",
+                            help="提交后纳入汇总采购单与采购单跟踪",
+                        ):
+                            _r = purchase_service.submit_plan(plan_id, current_user)
+                            if _r.is_success():
+                                st.success(f"✅ {_r.message}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {_r.message}")
                     with _cp_btn:
                         st.write("")
                         if st.button(
@@ -314,7 +342,7 @@ with tab_manage:
                         hide_index=True,
                         use_container_width=True,
                         num_rows="fixed",
-                        key=f"cp_edit_{plan_id}"
+                        key=f"cp_edit_{plan_id}_{st.session_state.get('cp_edit_version', 0)}"
                     )
 
                     if st.button("保存修改", type="primary", use_container_width=True):
@@ -333,15 +361,22 @@ with tab_manage:
                         )
                         if result.is_success():
                             st.success(f"✅ {result.message}")
+                            # 版本号 +1：强制重建 data_editor，让「已改」列立即刷新
+                            st.session_state["cp_edit_version"] = (
+                                st.session_state.get("cp_edit_version", 0) + 1
+                            )
                             st.rerun()
                         else:
                             st.error(f"❌ {result.message}")
-
 # ==================== 3. 汇总采购单（超管）====================
 with tab_summary:
     if not is_super_admin:
         st.warning("权限不足：汇总采购单仅限超级管理员使用。")
     else:
+        st.caption(
+            "汇总范围：**已提交**的课程采购单 + **已批准**的预定单（按需求学年归集）；"
+            "草稿「待采购」的课程采购单不参与汇总，请在「采购单管理」中「🚀 提交采购单」。"
+        )
         target_semesters = purchase_service.list_target_semesters()
         if not target_semesters:
             st.info("暂无采购单可汇总。")
@@ -502,17 +537,111 @@ with tab_resv:
 # ==================== 5. 采购单跟踪 ====================
 with tab_po:
     st.caption(
-        "采购单状态流转：待下单 → 已下单 → 已到货（到货后请到「试剂入库」完成入库）。"
+        "跟踪范围：**已提交**的课程采购单 + 预定单转来的采购单。"
+        "状态流转：已提交/待下单 → 已下单 → 已到货（到货后请到「试剂入库」完成入库）。"
     )
 
+    _submitted_plans = purchase_service.list_submitted_plans()
     _all_pos = purchase_order_service.get_all_parsed()
-    if not _all_pos:
+
+    if not _submitted_plans and not _all_pos:
         st.info(
-            "暂无采购单（可将已批准的预定单转为采购单；"
-            "汇总采购单按试剂生成入口即将上线）"
+            "暂无采购跟踪单：在「采购单管理」中对课程采购单点「🚀 提交采购单」后，"
+            "会出现在这里；已批准的预定单转采购单后也会出现在这里。"
         )
     else:
-        st.dataframe(
+        if _submitted_plans:
+            st.markdown("**📚 课程采购单**")
+            st.dataframe(
+                [
+                    {
+                        "单号": p.plan_number,
+                        "课程": p.course_name,
+                        "目标学年": p.target_semester,
+                        "条数": p.item_count,
+                        "总需求量": p.total_quantity,
+                        "审批": p.approval_status or "无需审批",
+                        "状态": p.status,
+                    }
+                    for p in _submitted_plans
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+            if is_admin:
+                st.markdown("**课程采购单状态流转**")
+                for _plan in _submitted_plans:
+                    _pl_info, _pl_a, _pl_b = st.columns([4, 1, 1])
+                    _pl_info.markdown(
+                        f"{_plan.plan_number}｜**{_plan.course_name}**"
+                        f"｜{_plan.target_semester}｜{_plan.status}"
+                    )
+                    if _plan.status == PLAN_STATUS_SUBMITTED:
+                        with _pl_a:
+                            if st.button(
+                                "标记已下单",
+                                key=f"pl_ord_{_plan.id}",
+                                use_container_width=True,
+                            ):
+                                _r = purchase_service.update_plan_status(
+                                    _plan.id, PLAN_STATUS_ORDERED, current_user
+                                )
+                                if _r.is_success():
+                                    st.success(f"✅ {_r.message}")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {_r.message}")
+                        with _pl_b:
+                            if st.button(
+                                "❌ 取消",
+                                key=f"pl_cancel_{_plan.id}",
+                                use_container_width=True,
+                                help="到货前可取消，退回草稿「待采购」后可重新编辑再提交",
+                            ):
+                                _r = purchase_service.cancel_plan(_plan.id, current_user)
+                                if _r.is_success():
+                                    st.warning(_r.message)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {_r.message}")
+                    elif _plan.status == PLAN_STATUS_ORDERED:
+                        with _pl_a:
+                            if st.button(
+                                "标记已到货",
+                                key=f"pl_rec_{_plan.id}",
+                                use_container_width=True,
+                            ):
+                                _r = purchase_service.update_plan_status(
+                                    _plan.id, PLAN_STATUS_RECEIVED, current_user
+                                )
+                                if _r.is_success():
+                                    st.success(f"✅ {_r.message}")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {_r.message}")
+                        with _pl_b:
+                            if st.button(
+                                "❌ 取消",
+                                key=f"pl_cancel_{_plan.id}",
+                                use_container_width=True,
+                                help="到货前可取消，退回草稿「待采购」后可重新编辑再提交",
+                            ):
+                                _r = purchase_service.cancel_plan(_plan.id, current_user)
+                                if _r.is_success():
+                                    st.warning(_r.message)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {_r.message}")
+                    elif _plan.status == PLAN_STATUS_RECEIVED:
+                        with _pl_a:
+                            st.caption("📥 待入库：到「试剂入库 → 按采购单入库」批量入库")
+                    else:
+                        with _pl_b:
+                            st.caption("✅ 已完成")
+
+        if _all_pos:
+            st.markdown("**📦 预定转采购单**")
+            st.dataframe(
             [
                 {
                     "单号": po.order_number,

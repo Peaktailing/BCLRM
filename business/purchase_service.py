@@ -40,9 +40,30 @@ from services.base.reservation_purchase_service import (
 )
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
+from services.base.chemical_service import chemical_service
+from business.inventory_service import inventory_service
 from utils.error_handler import logger, ServiceResult, handle_exception
 
 DEFAULT_TARGET_STUDENT_COUNT = 30
+
+# 课程采购单状态流转：待采购（草稿）→ 已提交 → 已下单 → 已到货 → 已入库
+PLAN_STATUS_DRAFT = "待采购"
+PLAN_STATUS_SUBMITTED = "已提交"
+PLAN_STATUS_ORDERED = "已下单"
+PLAN_STATUS_RECEIVED = "已到货"
+PLAN_STATUS_INBOUND = "已入库"
+PLAN_SUBMITTED_STATUSES = (
+    PLAN_STATUS_SUBMITTED, PLAN_STATUS_ORDERED,
+    PLAN_STATUS_RECEIVED, PLAN_STATUS_INBOUND,
+)
+PLAN_STATUS_FLOW = {
+    PLAN_STATUS_SUBMITTED: {PLAN_STATUS_ORDERED},
+    PLAN_STATUS_ORDERED: {PLAN_STATUS_RECEIVED},
+    PLAN_STATUS_RECEIVED: {PLAN_STATUS_INBOUND},
+    PLAN_STATUS_INBOUND: set(),
+}
+# 到货之前可取消（退回草稿）
+PLAN_CANCELLABLE_STATUSES = (PLAN_STATUS_SUBMITTED, PLAN_STATUS_ORDERED)
 
 
 class PurchaseService:
@@ -198,6 +219,14 @@ class PurchaseService:
 
         total_quantity = round(sum(r["demand_quantity"] for r in rows), 2)
         existing = purchase_plan_service.get_by_course(course_name, target_semester)
+        if existing and (existing.status or "") != PLAN_STATUS_DRAFT:
+            return ServiceResult.fail(
+                message=(
+                    f"该课程在 {target_semester} 已有「{existing.status}」的采购单，"
+                    "不能覆盖；已提交的采购单请在「采购单跟踪」中处理"
+                ),
+                error_code="PLAN_ALREADY_SUBMITTED",
+            )
 
         from db.database import db
 
@@ -280,17 +309,42 @@ class PurchaseService:
     # ------------------------------------------------------------------
     # 管理员修改明细
     # ------------------------------------------------------------------
+    @staticmethod
+    def _field_changed(old, new) -> bool:
+        """判断字段是否变化：数字按数值比较，文本按去首尾空格比较"""
+        old_str = "" if old is None else str(old).strip()
+        new_str = "" if new is None else str(new).strip()
+        if old_str == new_str:
+            return False
+        try:
+            return abs(float(old_str) - float(new_str)) > 1e-9
+        except (TypeError, ValueError):
+            return True
+
     @handle_exception(context="修改采购单明细")
     def update_plan_items(self, plan_id: int, updates: List[Dict], updated_by: Optional[str] = None) -> ServiceResult:
         """保存采购单明细的人工修改（需求量 / 采购量 / 供应商 / 备注）"""
         if not updates:
             return ServiceResult.fail(message="没有需要保存的修改", error_code="EMPTY_UPDATES")
 
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.status or "") != PLAN_STATUS_DRAFT:
+            return ServiceResult.fail(
+                message=f"该采购单已「{plan.status}」，不能再修改",
+                error_code="PLAN_NOT_EDITABLE",
+            )
+
         from db.database import db
 
         saved = 0
         try:
             with db.transaction():
+                current_items = {
+                    item.id: item
+                    for item in purchase_plan_item_service.get_by_plan(plan_id)
+                }
                 for row in updates:
                     item_id = row.get("id")
                     if not item_id:
@@ -300,8 +354,19 @@ class PurchaseService:
                         "purchase_quantity": row.get("purchase_quantity"),
                         "supplier": row.get("supplier"),
                         "remark": row.get("remark"),
-                        "is_manual": 1,
                     }
+                    item = current_items.get(item_id)
+                    changed = (
+                        True if item is None else (
+                            self._field_changed(item.demand_quantity, fields["demand_quantity"])
+                            or self._field_changed(item.purchase_quantity, fields["purchase_quantity"])
+                            or self._field_changed(item.supplier, fields["supplier"])
+                            or self._field_changed(item.remark, fields["remark"])
+                        )
+                    )
+                    # 只有真正改过的行才标记「已改」
+                    if changed:
+                        fields["is_manual"] = 1
                     if purchase_plan_item_service.update(item_id, fields):
                         saved += 1
 
@@ -324,16 +389,33 @@ class PurchaseService:
     # ------------------------------------------------------------------
     @handle_exception(context="汇总采购单")
     def summarize(self, target_semester: str) -> ServiceResult:
-        """汇总某目标学年所有课程采购单：按试剂合并需求，再统一扣减一次库存"""
+        """汇总某目标学年的采购需求：已提交课程采购单 + 已批准预定单
+
+        按试剂合并需求，再统一扣减一次库存。
+        未提交的课程采购单（草稿「待采购」）不参与汇总。
+        """
         if not target_semester:
             return ServiceResult.fail(message="请选择目标学年", error_code="MISSING_SEMESTER")
 
         plans = [
             p for p in purchase_plan_service.get_all_parsed()
             if p.target_semester == target_semester
+            and (p.status or "") in PLAN_SUBMITTED_STATUSES
         ]
-        if not plans:
-            return ServiceResult.ok(data=[], message=f"{target_semester} 学年还没有课程采购单")
+        # 已批准且尚未转采购单的预定单（按需求学年归集）
+        reservations = [
+            r for r in reservation_order_service.get_all_parsed()
+            if r.status == RESERVATION_APPROVED
+            and (r.semester or "") == target_semester
+        ]
+        if not plans and not reservations:
+            return ServiceResult.ok(
+                data=[],
+                message=(
+                    f"{target_semester} 学年还没有已提交的课程采购单"
+                    "或已批准的预定单（课程采购单需在「采购单管理」中提交）"
+                ),
+            )
 
         merged: Dict[str, Dict] = {}
         for plan in plans:
@@ -349,12 +431,36 @@ class PurchaseService:
                 })
                 demand = float(item.demand_quantity or 0)
                 entry["total_demand"] += demand
+                if not entry.get("cas_number") and item.cas_number:
+                    entry["cas_number"] = item.cas_number
                 entry["courses"].append({
                     "course_name": plan.course_name,
                     "item_name": item.item_name or "（未指定实验）",
                     "demand": round(demand, 2),
                 })
 
+        for res in reservations:
+            reagent = res.reagent_name or "（未命名试剂）"
+            entry = merged.setdefault(reagent, {
+                "reagent_name": reagent,
+                "cas_number": res.cas_number,
+                "total_demand": 0.0,
+                "courses": [],
+                "supplier": None,
+                "unit_price": None,
+            })
+            qty = float(res.quantity or 0)
+            entry["total_demand"] += qty
+            if not entry.get("cas_number") and res.cas_number:
+                entry["cas_number"] = res.cas_number
+            entry["courses"].append({
+                "course_name": "📌 预定单",
+                "item_name": res.order_number,
+                "demand": round(qty, 2),
+            })
+
+        # 预定单没有供应商信息，用库存参考信息补齐
+        meta = self._bottle_meta()
         stock = self._stock_by_reagent()
 
         rows: List[Dict] = []
@@ -370,8 +476,8 @@ class PurchaseService:
                 "final_purchase": final_purchase,
                 "need_purchase": final_purchase > 0,
                 "course_detail": sorted(entry["courses"], key=lambda x: x["demand"], reverse=True),
-                "supplier": entry["supplier"],
-                "unit_price": entry["unit_price"],
+                "supplier": entry["supplier"] or meta.get(reagent, {}).get("supplier"),
+                "unit_price": entry["unit_price"] or meta.get(reagent, {}).get("unit_price"),
             })
 
         rows.sort(key=lambda r: r["final_purchase"], reverse=True)
@@ -379,11 +485,15 @@ class PurchaseService:
             "采购单汇总完成",
             target_semester=target_semester,
             plan_count=len(plans),
+            reservation_count=len(reservations),
             reagent_count=len(rows)
         )
         return ServiceResult.ok(
             data=rows,
-            message=f"已汇总 {len(plans)} 份课程采购单，共 {len(rows)} 种试剂"
+            message=(
+                f"已汇总 {len(plans)} 份已提交课程采购单"
+                f" + {len(reservations)} 张已批准预定单，共 {len(rows)} 种试剂"
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -395,6 +505,26 @@ class PurchaseService:
         if target_semester:
             plans = [p for p in plans if p.target_semester == target_semester]
         return plans
+
+    def list_draft_plans(self, target_semester: Optional[str] = None) -> List:
+        """草稿（待采购）采购单列表——「采购单管理」页仅可管理草稿，
+
+        已提交的采购单进入汇总与「采购单跟踪」，不能再修改。
+        """
+        plans = [
+            p for p in purchase_plan_service.get_all_parsed()
+            if (p.status or "") == PLAN_STATUS_DRAFT
+        ]
+        if target_semester:
+            plans = [p for p in plans if p.target_semester == target_semester]
+        return plans
+
+    def list_draft_target_semesters(self) -> List[str]:
+        """存在草稿采购单的目标学年（去重倒序）"""
+        return sorted(
+            {p.target_semester for p in self.list_draft_plans() if p.target_semester},
+            reverse=True,
+        )
 
     def list_target_semesters(self) -> List[str]:
         """已存在采购单的目标学年（去重倒序）"""
@@ -418,6 +548,7 @@ class PurchaseService:
                 "current_stock": item.current_stock,
                 "is_manual": item.is_manual,
                 "supplier": item.supplier,
+                "bottle_number": getattr(item, "bottle_number", None),
                 "remark": item.remark,
             }
             for item in purchase_plan_item_service.get_by_plan(plan_id)
@@ -445,6 +576,11 @@ class PurchaseService:
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.status or "") != PLAN_STATUS_DRAFT:
+            return ServiceResult.fail(
+                message=f"该采购单已「{plan.status}」，无需再提交审批",
+                error_code="INVALID_STATE",
+            )
         if (plan.approval_status or "") == "待审批":
             return ServiceResult.fail(
                 message="该采购单已在审批中", error_code="ALREADY_PENDING"
@@ -495,6 +631,11 @@ class PurchaseService:
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.status or "") != PLAN_STATUS_DRAFT:
+            return ServiceResult.fail(
+                message=f"该采购单已「{plan.status}」，无需审批",
+                error_code="INVALID_STATE",
+            )
         if (plan.approval_status or "") != "待审批":
             return ServiceResult.fail(
                 message=f"该采购单审批状态为「{plan.approval_status}」，无法审批",
@@ -526,6 +667,11 @@ class PurchaseService:
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.status or "") != PLAN_STATUS_DRAFT:
+            return ServiceResult.fail(
+                message=f"该采购单已「{plan.status}」，无需审批",
+                error_code="INVALID_STATE",
+            )
         if (plan.approval_status or "") != "待审批":
             return ServiceResult.fail(
                 message=f"该采购单审批状态为「{plan.approval_status}」，无法审批",
@@ -545,6 +691,210 @@ class PurchaseService:
             logger.info("采购单已驳回", plan_number=plan.plan_number, approver=approver_name)
             return ServiceResult.ok(message=f"采购单 {plan.plan_number} 已驳回")
         return ServiceResult.fail(message="驳回保存失败，请重试")
+
+    # ------------------------------------------------------------------
+    # 提交 / 跟踪（课程采购单 → 汇总 + 采购跟踪）
+    # ------------------------------------------------------------------
+    @handle_exception(context="提交课程采购单")
+    def submit_plan(self, plan_id: int, submitted_by: Optional[str] = None) -> ServiceResult:
+        """提交课程采购单：纳入汇总采购单与采购单跟踪（草稿 → 已提交）"""
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.status or "") != PLAN_STATUS_DRAFT:
+            return ServiceResult.fail(
+                message=f"该采购单状态为「{plan.status}」，无需重复提交",
+                error_code="INVALID_STATE",
+            )
+        approval = plan.approval_status or ""
+        if approval == "待审批":
+            return ServiceResult.fail(
+                message="该采购单正在审批中，审批通过后再提交",
+                error_code="PENDING_APPROVAL",
+            )
+        if approval == "已驳回":
+            return ServiceResult.fail(
+                message="该采购单已被驳回，无法提交",
+                error_code="REJECTED",
+            )
+
+        if purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_SUBMITTED}):
+            from utils.audit import audit
+            audit(
+                submitted_by, "提交采购单",
+                target_type="purchase_plan", target_id=plan.plan_number,
+                detail=f"课程 {plan.course_name}｜目标学年 {plan.target_semester}",
+            )
+            logger.info("课程采购单已提交", plan_number=plan.plan_number)
+            return ServiceResult.ok(
+                message=f"采购单 {plan.plan_number} 已提交，已纳入汇总采购单与采购跟踪"
+            )
+        return ServiceResult.fail(message="提交失败，请重试")
+
+    @handle_exception(context="更新课程采购单状态")
+    def update_plan_status(
+        self, plan_id: int, new_status: str, operator: Optional[str] = None
+    ) -> ServiceResult:
+        """课程采购单跟踪状态流转：已提交 → 已下单 → 已到货"""
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        allowed = PLAN_STATUS_FLOW.get(plan.status or "", set())
+        if new_status not in allowed:
+            return ServiceResult.fail(
+                message=f"不允许从「{plan.status}」变更为「{new_status}」",
+                error_code="INVALID_TRANSITION",
+            )
+        if purchase_plan_service.update(plan_id, {"status": new_status}):
+            from utils.audit import audit
+            audit(
+                operator, "采购单跟踪状态",
+                target_type="purchase_plan", target_id=plan.plan_number,
+                detail=f"{plan.status} → {new_status}",
+            )
+            msg = f"采购单 {plan.plan_number} → {new_status}"
+            if new_status == PLAN_STATUS_RECEIVED:
+                msg += "；请到「试剂入库」完成入库"
+            return ServiceResult.ok(message=msg)
+        return ServiceResult.fail(message="更新失败，请重试")
+
+    def list_submitted_plans(self, target_semester: Optional[str] = None) -> List:
+        """已提交的课程采购单（纳入汇总与跟踪），可按目标学年筛选"""
+        plans = [
+            p for p in purchase_plan_service.get_all_parsed()
+            if (p.status or "") in PLAN_SUBMITTED_STATUSES
+        ]
+        if target_semester:
+            plans = [p for p in plans if p.target_semester == target_semester]
+        return plans
+
+    @handle_exception(context="取消课程采购单")
+    def cancel_plan(
+        self, plan_id: int, operator: Optional[str] = None,
+        remark: Optional[str] = None,
+    ) -> ServiceResult:
+        """取消采购单（到货之前）：退回草稿「待采购」，可重新编辑后再提交"""
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.status or "") not in PLAN_CANCELLABLE_STATUSES:
+            return ServiceResult.fail(
+                message=f"该采购单状态为「{plan.status}」，仅「已提交 / 已下单」且未到货时可取消",
+                error_code="INVALID_TRANSITION",
+            )
+        if purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_DRAFT}):
+            from utils.audit import audit
+            audit(
+                operator, "取消采购单",
+                target_type="purchase_plan", target_id=plan.plan_number,
+                detail=f"{plan.status} → 待采购" + (f"｜{remark}" if remark else ""),
+            )
+            logger.info("课程采购单已取消退回草稿", plan_number=plan.plan_number)
+            return ServiceResult.ok(
+                message=f"采购单 {plan.plan_number} 已取消，退回草稿「待采购」，可重新编辑后再提交"
+            )
+        return ServiceResult.fail(message="取消失败，请重试")
+
+    def list_received_plans(self, target_semester: Optional[str] = None) -> List:
+        """已到货、待入库的课程采购单"""
+        plans = [
+            p for p in purchase_plan_service.get_all_parsed()
+            if (p.status or "") == PLAN_STATUS_RECEIVED
+        ]
+        if target_semester:
+            plans = [p for p in plans if p.target_semester == target_semester]
+        return plans
+
+    @handle_exception(context="按采购单批量入库")
+    def inbound_plan(
+        self, plan_id: int, manager: Optional[str] = None,
+        operator: Optional[str] = None,
+    ) -> ServiceResult:
+        """按采购单批量入库：为每个未入库明细生成一瓶试剂（仅「已到货」可入库）
+
+        明细入库成功后回填 bottle_number，防止重复入库；
+        全部明细入库完成后，采购单状态流转为「已入库」。
+        """
+        plan = purchase_plan_service.get_by_id(plan_id)
+        if not plan:
+            return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
+        if (plan.status or "") != PLAN_STATUS_RECEIVED:
+            return ServiceResult.fail(
+                message=f"该采购单状态为「{plan.status}」，只有「已到货」的采购单才能批量入库",
+                error_code="INVALID_STATE",
+            )
+
+        items = purchase_plan_item_service.get_by_plan(plan_id)
+        pending = [
+            i for i in items if not getattr(i, "bottle_number", None)
+        ]
+        if not pending:
+            purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_INBOUND})
+            return ServiceResult.ok(message="该采购单明细均已入库，状态已更新为「已入库」")
+
+        succeeded, failed = [], []
+        for item in pending:
+            qty = float(item.purchase_quantity or item.demand_quantity or 0)
+            if qty <= 0:
+                failed.append(f"{item.reagent_name}: 采购量为 0，请先在采购单管理中调整")
+                continue
+            # 明细缺 CAS 时按试剂名从化学品信息表回查；仍无则入库时缺省（已放宽校验）
+            cas_number = item.cas_number
+            if not cas_number:
+                _chem = chemical_service.get_by_name(item.reagent_name or "")
+                cas_number = getattr(_chem, "cas_number", None) if _chem else None
+            result = inventory_service.create_inventory_record(
+                reagent_name=item.reagent_name,
+                cas_number=cas_number,
+                remaining_quantity=qty,
+                specification=qty,
+                unit_price=item.unit_price,
+                supplier=item.supplier,
+                manager=manager,
+                # 按采购单入库放宽：历史试剂可能未建化学品档案 / 缺 CAS
+                allow_missing_cas=True,
+                allow_unlisted_chemical=True,
+            )
+            if result.is_success() and result.data:
+                bottle_no = result.data.get("bottle_number")
+                purchase_plan_item_service.update(item.id, {"bottle_number": bottle_no})
+                succeeded.append(f"{item.reagent_name} → {bottle_no}")
+            else:
+                failed.append(f"{item.reagent_name}: {result.message}")
+
+        items_after = purchase_plan_item_service.get_by_plan(plan_id)
+        all_done = all(getattr(i, "bottle_number", None) for i in items_after)
+        if all_done:
+            purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_INBOUND})
+
+        from utils.audit import audit
+        audit(
+            operator, "按采购单入库",
+            target_type="purchase_plan", target_id=plan.plan_number,
+            detail=f"入库 {len(succeeded)} 项" + (f"；失败 {len(failed)} 项" if failed else ""),
+        )
+        logger.info(
+            "按采购单批量入库完成",
+            plan_number=plan.plan_number,
+            success=len(succeeded),
+            failed=len(failed),
+        )
+
+        if not succeeded:
+            return ServiceResult.fail(
+                message="批量入库失败：" + "；".join(failed),
+                error_code="INBOUND_FAILED",
+                data={"succeeded": succeeded, "failed": failed},
+            )
+        message = f"✅ 已按采购单入库 {len(succeeded)} 瓶"
+        if failed:
+            message += f"；失败 {len(failed)} 项：{'；'.join(failed)}"
+        if all_done:
+            message += "；该采购单已全部入库完成，状态更新为「已入库」"
+        return ServiceResult.ok(
+            data={"succeeded": succeeded, "failed": failed},
+            message=message,
+        )
 
     # ------------------------------------------------------------------
     # 预定单（库存不足时提前预定 → 审批 → 转采购单）

@@ -5,6 +5,7 @@
 import streamlit as st
 from business.inventory_service import inventory_service
 from business.query_service import query_service
+from business.manager_service import manager_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 
@@ -74,12 +75,15 @@ def main():
                         "状态": _b.borrowable_flag or "-",
                         "过期状态": _b.expired_flag or "正常",
                         "存储位置": _b.storage_location or "-",
+                        "管理人": manager_service.resolve_manager(getattr(_b, "manager", None)) or "—",
                     }],
                     use_container_width=True,
                     hide_index=True,
                 )
             else:
                 st.warning("未找到该条码对应的试剂瓶")
+
+    # 管理权流转已移至「试剂处置」页面（支持多选 / 批量流转）
 
     # 获取所有试剂名称用于模糊匹配
     reagent_names = sorted(set(r.reagent_name for r in reagents if r.reagent_name))
@@ -131,7 +135,8 @@ def main():
                 "启封日期": reagent.unseal_date or "-",
                 "过期状态": reagent.expired_flag or "正常",
                 "状态": f"{status_color} {status}",
-                "存储位置": reagent.storage_location or "-"
+                "存储位置": reagent.storage_location or "-",
+                "管理人": manager_service.resolve_manager(getattr(reagent, "manager", None)) or "—"
             })
         
         # 显示表格

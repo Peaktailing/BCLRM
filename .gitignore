@@ -257,3 +257,8 @@ config/key.txt
 
 # Local temp directory (may contain real exported data)
 tmp/
+
+# 本地数据与附件（不入库）
+backup/
+attachments/
+db_wal/

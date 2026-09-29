@@ -20,6 +20,10 @@ from business.borrow_service import borrow_service
 from business.work_order_service import work_order_service
 from business.experiment_plan_service import experiment_plan_business
 from business.query_service import query_service
+from business.demand_service import demand_service
+from business.allocation_service import allocation_service
+from services.core.allocation_order_service import allocation_order_service
+from services.core.reagent_demand_service import reagent_demand_service
 from services.base.experiment_course_service import experiment_course_service
 from services.base.experiment_project_service import experiment_project_service
 from services.core.reagent_bottle_service import reagent_bottle_service
@@ -49,8 +53,8 @@ if is_admin:
 elif is_teacher_or_above:
     order_types = ["课程领用"]
 
-tab_borrow, tab_approval, tab_return = st.tabs([
-    "📥 领用（发起工单）", "✅ 审批（管控试剂）", "📤 还入（按工单归还）"
+tab_borrow, tab_approval, tab_return, tab_allocation = st.tabs([
+    "📥 领用（发起工单）", "✅ 审批（管控试剂）", "📤 还入（按工单归还）", "🔀 需求调配"
 ])
 
 # ==================== 1. 领用（发起工单） ====================
@@ -525,7 +529,7 @@ with tab_return:
                 st.caption(
                     "勾选「还入」并提交后，该瓶即视为结清（不再出现在待还列表）："
                     "比例 > 0 时还回该量、差额计入实际使用量；"
-                    "比例为 0 时视为空瓶，该瓶移入「待报废与过期预警」清单。"
+                    "比例为 0 时视为空瓶，该瓶移入「试剂处置」的待报废清单。"
                     "未勾选的瓶子保持待归还。"
                 )
                 # 逐瓶：勾选结清 + 归还比例估算（默认 100%），还回量 = 未还量 × 比例
@@ -609,3 +613,193 @@ with tab_return:
                             st.rerun()
                         else:
                             st.error(f"❌ {result.message}")
+
+# ==================== 3. 需求调配（管理员之间流转试剂） ====================
+with tab_allocation:
+    st.caption(
+        "需求调配用于在不同管理员之间流转试剂：提交需求后，系统按"
+        "「本人 → 本教研室 → 全院」智能分配，拆成若干调配单发到对应管理员手上。"
+        "管理员「借出」即把试剂的管理权流转到需求人名下（自动记录一条变更历史），"
+        "「退回」则驳回。现有领用 / 归还流程保持不变。"
+    )
+
+    # ---------- ① 发起需求 ----------
+    st.markdown("#### ① 发起需求")
+    if "dmd_lines" not in st.session_state:
+        st.session_state.dmd_lines = []
+
+    _user_result = borrow_service.get_all_borrow_users()
+    _dmd_requester = st.selectbox(
+        "需求人*",
+        options=[""] + (_user_result.data if _user_result.is_success() else []),
+        key="dmd_requester",
+        help="试剂管理权将流转到此用户名下",
+    )
+
+    _reagent_result = query_service.filter_reagents(borrowable_only=True)
+    _reagent_options = _reagent_result.data if _reagent_result.is_success() else []
+    _reagent_labels = {
+        f"{r.bottle_number}｜{r.reagent_name or '-'}"
+        f"｜剩余 {(r.remaining_quantity or 0):g}": r
+        for r in _reagent_options
+    }
+    _col_r, _col_q = st.columns([3, 1])
+    with _col_r:
+        _sel_label = st.selectbox(
+            "选择试剂（可借）",
+            options=[""] + list(_reagent_labels.keys()),
+            key="dmd_reagent",
+        )
+    with _col_q:
+        _sel_qty = st.number_input(
+            "需求量", min_value=0.0, step=1.0, value=1.0, key="dmd_qty"
+        )
+    if st.button("➕ 加入需求清单", key="dmd_add"):
+        if not _sel_label:
+            st.error("请选择试剂")
+        else:
+            _rr = _reagent_labels[_sel_label]
+            st.session_state.dmd_lines.append({
+                "reagent_name": _rr.reagent_name,
+                "cas_number": _rr.cas_number,
+                "requested_qty": float(_sel_qty),
+            })
+            st.rerun()
+
+    if st.session_state.dmd_lines:
+        st.dataframe(
+            [
+                {
+                    "试剂": line["reagent_name"],
+                    "CAS号": line["cas_number"] or "-",
+                    "需求量": line["requested_qty"],
+                }
+                for line in st.session_state.dmd_lines
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            if st.button("清空清单", key="dmd_clear", use_container_width=True):
+                st.session_state.dmd_lines = []
+                st.rerun()
+        with _c2:
+            if st.button(
+                "提交需求", type="primary", key="dmd_submit", use_container_width=True
+            ):
+                if not _dmd_requester:
+                    st.error("请选择需求人")
+                else:
+                    _res = demand_service.create_demand(
+                        requester=_dmd_requester,
+                        lines=st.session_state.dmd_lines,
+                        created_by=user_name,
+                        remark="需求调配",
+                    )
+                    if _res.is_success():
+                        st.session_state.dmd_lines = []
+                        st.success(_res.message)
+                        for _s in (_res.data.get("shortages") or []):
+                            st.warning(f"{_s['reagent_name']}：{_s['reason']}")
+                        st.rerun()
+                    else:
+                        st.error(_res.message)
+    else:
+        st.info("需求清单为空，请先添加试剂需求")
+
+    st.divider()
+
+    # ---------- ② 待我处理的调配单 ----------
+    st.markdown("#### ② 待我处理的调配单")
+    _pending_result = demand_service.list_pending_by_manager(user_name)
+    _pending_orders = _pending_result.data if _pending_result.is_success() else []
+    if not _pending_orders:
+        st.info("暂无待你处理的调配单")
+    else:
+        for _order in _pending_orders:
+            _demand = reagent_demand_service.get_by_id(_order.demand_id)
+            _who = _demand.requester if _demand else "—"
+            _enough = "✅ 足够" if _order.is_stock_sufficient else "⚠️ 可能不足"
+            with st.expander(
+                f"{_order.allocation_number}｜需求人 {_who}"
+                f"｜承接量 {(_order.demand_qty or 0):g}｜存量 {_enough}",
+                expanded=True,
+            ):
+                st.caption(
+                    f"智能计算：本年度需求量 {(_order.year_demand_qty or 0):g}"
+                    f"｜你的可借存量 {(_order.manager_stock_qty or 0):g}"
+                    f"｜全院可借存量 {(_order.total_stock_qty or 0):g}"
+                )
+                _items = demand_service.get_allocation_items(_order.id).data or []
+                st.dataframe(
+                    [
+                        {
+                            "试剂瓶号": i.bottle_number,
+                            "试剂": i.reagent_name or "-",
+                            "流转量": i.qty,
+                        }
+                        for i in _items
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                _cc1, _cc2 = st.columns(2)
+                with _cc1:
+                    if st.button(
+                        "✅ 借出（管理权流转给需求人）",
+                        type="primary",
+                        use_container_width=True,
+                        key=f"dmd_lend_{_order.id}",
+                    ):
+                        _r = allocation_service.handle(_order.id, "lend", user_name)
+                        if _r.is_success():
+                            st.success(_r.message)
+                            st.rerun()
+                        else:
+                            st.error(_r.message)
+                with _cc2:
+                    if st.button(
+                        "❌ 退回",
+                        use_container_width=True,
+                        key=f"dmd_reject_{_order.id}",
+                    ):
+                        _r = allocation_service.handle(_order.id, "reject", user_name)
+                        if _r.is_success():
+                            st.warning(_r.message)
+                            st.rerun()
+                        else:
+                            st.error(_r.message)
+
+    st.divider()
+
+    # ---------- ③ 我的需求进度 ----------
+    st.markdown("#### ③ 我的需求进度")
+    _mine_result = demand_service.list_by_requester(user_name)
+    _my_demands = _mine_result.data if _mine_result.is_success() else []
+    if not _my_demands:
+        st.info("你还没有提交过需求")
+    else:
+        for _d in _my_demands:
+            _allocs = allocation_order_service.get_by_demand(_d.id)
+            with st.expander(
+                f"{_d.demand_number}｜{_d.status}｜{len(_allocs)} 张调配单",
+                expanded=False,
+            ):
+                st.caption(f"需求人 {_d.requester}｜提交 {_d.borrow_time or '—'}")
+                if _allocs:
+                    st.dataframe(
+                        [
+                            {
+                                "调配单": a.allocation_number,
+                                "受理人": a.manager,
+                                "承接量": a.demand_qty,
+                                "状态": a.status,
+                            }
+                            for a in _allocs
+                        ],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.caption("未生成调配单（可能无可借试剂）")

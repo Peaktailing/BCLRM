@@ -52,7 +52,7 @@ _common_pages = [
     st.Page("views/9_学期用量.py", title="学期用量", icon="📈"),
     st.Page("views/10_课程管理.py", title="课程管理", icon="📚"),
     st.Page("views/11_采购管理.py", title="采购管理", icon="🧾"),
-    st.Page("views/12_待报废与过期预警.py", title="待报废与过期预警", icon="🗑️"),
+    st.Page("views/12_试剂处置.py", title="试剂处置", icon="🧰"),
     st.Page("views/7_化学品信息管理.py", title="化学品信息管理", icon="🧪"),
     st.Page("views/8_管控化学品目录.py", title="管控化学品目录", icon="📋"),
 ]

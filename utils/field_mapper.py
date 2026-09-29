@@ -50,6 +50,8 @@ class ReagentBottleField:
     LAST_RETURN_RECORD_NO = 'last_return_record_no'  # 最后归还记录号
     # ---- 存储位置（文本类型，如：危化品存储柜1）----
     STORAGE_LOCATION = 'storage_location'  # 存储位置
+    # ---- 当前管理人（文本类型，保管权归属，存 person.name）----
+    MANAGER = 'manager'  # 当前管理人
     # ---- 可借标记（文本类型：可借/已借出/耗尽）----
     # 注意：BORROWABLE_FLAG 已废弃，仅用于显示兼容，请使用 BORROWABLE_CHECK 进行业务判断
     BORROWABLE_FLAG = 'borrowable_flag'  # 可借标记（废弃，仅用于显示兼容）
@@ -137,6 +139,80 @@ class ReturnRecordField:
     ID = 'id'  # 记录ID
 
 
+class ManagerChangeLogField:
+    """管理人变更记录表字段名常量
+
+    记录试剂瓶管理人（保管权归属）的每一次变更，用于追溯保管权历史。
+    借出/归还不写入本表；仅显式流转等场景写入。
+    """
+    ID = 'id'                    # 记录ID
+    BOTTLE_NUMBER = 'bottle_number'  # 试剂瓶编号
+    REAGENT_NAME = 'reagent_name'    # 试剂名称快照
+    OLD_MANAGER = 'old_manager'      # 原管理人
+    NEW_MANAGER = 'new_manager'      # 新管理人
+    REASON = 'reason'                # 变更原因
+    REF_TYPE = 'ref_type'            # 关联单据类型
+    REF_ID = 'ref_id'                # 关联单据ID
+    REMARK = 'remark'                # 备注
+    OPERATOR = 'operator'            # 操作人
+    CHANGED_AT = 'changed_at'        # 变更时间
+
+
+class ReagentDemandField:
+    """需求单表字段名常量"""
+    ID = 'id'
+    DEMAND_NUMBER = 'demand_number'   # 需求单编号
+    REQUESTER = 'requester'           # 需求人（领用人）
+    ORDER_TYPE = 'order_type'         # 零星领用 / 课程领用
+    COURSE_ID = 'course_id'
+    ITEM_ID = 'item_id'
+    PROJECT_ID = 'project_id'
+    COURSE_NAME = 'course_name'       # 课程名快照
+    ITEM_NAME = 'item_name'           # 实验名快照
+    BORROW_TIME = 'borrow_time'       # 领用时间（用于学期归属）
+    STATUS = 'status'                 # 待调配 / 调配中 / 已完成 / 已驳回
+    REMARK = 'remark'
+    CREATED_BY = 'created_by'
+    CREATED_AT = 'created_at'
+
+
+class ReagentDemandItemField:
+    """需求单明细表字段名常量"""
+    ID = 'id'
+    DEMAND_ID = 'demand_id'
+    REAGENT_NAME = 'reagent_name'
+    CAS_NUMBER = 'cas_number'
+    REQUESTED_QTY = 'requested_qty'   # 需求量
+
+
+class AllocationOrderField:
+    """调配单表字段名常量"""
+    ID = 'id'
+    ALLOCATION_NUMBER = 'allocation_number'  # 调配单编号
+    DEMAND_ID = 'demand_id'
+    MANAGER = 'manager'               # 受理管理人
+    STATUS = 'status'                 # 待处理 / 已借出 / 已退回
+    DEMAND_QTY = 'demand_qty'         # 本单承接需求量
+    MANAGER_STOCK_QTY = 'manager_stock_qty'  # 受理人可借存量
+    TOTAL_STOCK_QTY = 'total_stock_qty'      # 全院可借存量
+    YEAR_DEMAND_QTY = 'year_demand_qty'      # 本年度需求量
+    IS_STOCK_SUFFICIENT = 'is_stock_sufficient'  # 存量是否够用(0/1)
+    HANDLED_AT = 'handled_at'
+    REMARK = 'remark'
+    CREATED_BY = 'created_by'
+    CREATED_AT = 'created_at'
+
+
+class AllocationOrderItemField:
+    """调配单明细表字段名常量"""
+    ID = 'id'
+    ALLOCATION_ID = 'allocation_id'
+    BOTTLE_NUMBER = 'bottle_number'
+    REAGENT_NAME = 'reagent_name'
+    QTY = 'qty'
+    STATUS = 'status'
+
+
 class ExperimentCourseField:
     """实验课程表字段名常量
 
@@ -194,6 +270,7 @@ class PurchasePlanItemField:
     DEMAND_QUANTITY = 'demand_quantity'
     PURCHASE_QUANTITY = 'purchase_quantity'
     CURRENT_STOCK = 'current_stock'
+    BOTTLE_NUMBER = 'bottle_number'   # 按采购单入库后回填的试剂瓶编号
     IS_MANUAL = 'is_manual'
     SUPPLIER = 'supplier'
     UNIT_PRICE = 'unit_price'

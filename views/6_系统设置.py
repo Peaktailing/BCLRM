@@ -19,6 +19,7 @@ import streamlit as st
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth, require_super_admin, require_admin
 from config.settings import DEFAULT_INITIAL_PASSWORD
+from utils.password_utils import hash_password
 from services.base.person_service import person_service
 from services.base.operation_log_service import operation_log_service
 from services.core.borrow_record_service import borrow_record_service
@@ -131,6 +132,12 @@ def main():
                     st.warning("⚠️ 新用户名与原用户名相同")
                 elif person_service.get_by_name(new_name_clean):
                     st.error(f"❌ 用户名 {new_name_clean} 已存在")
+                elif target and (
+                    borrow_record_service.get_all_by_field("user", rename_target)
+                    or return_record_service.get_all_by_field("return_user", rename_target)
+                ):
+                    # borrow_record.user / return_record.return_user 对 person(name) 有外键
+                    st.error("❌ 该用户已有领用 / 归还记录，暂不支持改名（外键关联）")
                 elif target and person_service.update(target.id, {"name": new_name_clean}):
                     # 若修改的是当前登录用户，同步会话中的用户名，避免后续鉴权失效
                     if st.session_state.get("user_name") == rename_target:
@@ -144,15 +151,21 @@ def main():
         with col_reset:
             st.markdown("**重置密码**")
             reset_target = st.selectbox("选择用户", options=user_names, key="reset_target")
-            st.caption(f"重置后该用户密码恢复为初始密码「{DEFAULT_INITIAL_PASSWORD}」。")
-            if st.button("重置为初始密码", key="reset_btn", use_container_width=True):
+            st.caption("重置后生成一次性随机密码，仅显示一次，请立即转告该用户并嘱其尽快修改。")
+            if st.button("生成随机密码并重置", key="reset_btn", use_container_width=True):
                 target = person_service.get_by_name(reset_target)
-                if target and person_service.update(target.id, {"password_hash": None}):
-                    st.success(
-                        f"✅ 已将 {reset_target} 的密码重置为初始密码「{DEFAULT_INITIAL_PASSWORD}」"
-                    )
+                if not target:
+                    st.error("❌ 用户不存在")
                 else:
-                    st.error("❌ 重置密码失败，请重试")
+                    _new_pwd = "Rst" + secrets.token_urlsafe(6)
+                    if person_service.update(
+                        target.id, {"password_hash": hash_password(_new_pwd)}
+                    ):
+                        st.success(
+                            f"✅ 已重置 {reset_target} 的密码，新密码（仅显示一次）：{_new_pwd}"
+                        )
+                    else:
+                        st.error("❌ 重置密码失败，请重试")
 
         # --- 删除用户（本页已限超级管理员）---
         st.markdown("**删除用户**")
@@ -212,7 +225,7 @@ def main():
     # ========== 数据库数据查看 ==========
     st.divider()
     st.subheader("🗄️ 数据库数据查看")
-    st.caption("选择数据表查看其中的所有记录。此功能仅限管理员使用。")
+    st.caption("选择数据表查看其中的所有记录。此功能仅限超级管理员使用。")
 
     # 管理员权限检查
     if not require_admin():
