@@ -335,6 +335,11 @@ class PurchaseService:
                 message=f"该采购单已「{plan.status}」，不能再修改",
                 error_code="PLAN_NOT_EDITABLE",
             )
+        if (plan.approval_status or "") == "待审批":
+            return ServiceResult.fail(
+                message="该采购单正在审批中，暂不能修改；如需调整请让审批人驳回后再改",
+                error_code="PENDING_APPROVAL",
+            )
 
         from db.database import db
 
@@ -403,17 +408,28 @@ class PurchaseService:
             and (p.status or "") in PLAN_SUBMITTED_STATUSES
         ]
         # 已批准且尚未转采购单的预定单（按需求学年归集）
-        reservations = [
+        approved_reservations = [
             r for r in reservation_order_service.get_all_parsed()
             if r.status == RESERVATION_APPROVED
-            and (r.semester or "") == target_semester
         ]
+        reservations = [
+            r for r in approved_reservations
+            if (r.semester or "") == target_semester
+        ]
+        # 已批准但未填「需求学年」的预定单无法归集，明确提示而非静默忽略
+        missing_semester = [
+            r for r in approved_reservations if not (r.semester or "").strip()
+        ]
+        missing_hint = (
+            f"；另有 {len(missing_semester)} 张已批准预定单未填写需求学年，未纳入汇总"
+            if missing_semester else ""
+        )
         if not plans and not reservations:
             return ServiceResult.ok(
                 data=[],
                 message=(
-                    f"{target_semester} 学年还没有已提交的课程采购单"
-                    "或已批准的预定单（课程采购单需在「采购单管理」中提交）"
+                    f"{target_semester} 学年还没有已提交的课程采购单或已批准的预定单"
+                    "（课程采购单需在「采购单管理」中提交）" + missing_hint
                 ),
             )
 
@@ -493,6 +509,7 @@ class PurchaseService:
             message=(
                 f"已汇总 {len(plans)} 份已提交课程采购单"
                 f" + {len(reservations)} 张已批准预定单，共 {len(rows)} 种试剂"
+                + missing_hint
             ),
         )
 
@@ -863,7 +880,10 @@ class PurchaseService:
                 failed.append(f"{item.reagent_name}: {result.message}")
 
         items_after = purchase_plan_item_service.get_by_plan(plan_id)
-        all_done = all(getattr(i, "bottle_number", None) for i in items_after)
+        # 空明细的采购单不应被判定为「已入库」
+        all_done = bool(items_after) and all(
+            getattr(i, "bottle_number", None) for i in items_after
+        )
         if all_done:
             purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_INBOUND})
 
@@ -939,9 +959,13 @@ class PurchaseService:
     @handle_exception(context="审批预定单")
     def review_reservation(
         self, reservation_id: int, approve: bool, reviewer: str,
-        remark: Optional[str] = None
+        remark: Optional[str] = None, semester: Optional[str] = None
     ) -> ServiceResult:
-        """审批预定单（批准 / 驳回）"""
+        """审批预定单（批准 / 驳回）
+
+        Args:
+            semester: 批准时可补填「需求学年」，用于归集进对应学年的汇总采购单
+        """
         res = reservation_order_service.get_by_id(reservation_id)
         if not res:
             return ServiceResult.fail(message="预定单不存在", error_code="NOT_FOUND")
@@ -954,7 +978,10 @@ class PurchaseService:
                 error_code="INVALID_STATE",
             )
         new_status = RESERVATION_APPROVED if approve else RESERVATION_REJECTED
-        if reservation_order_service.update(reservation_id, {"status": new_status}):
+        fields = {"status": new_status}
+        if approve and semester and str(semester).strip():
+            fields["semester"] = str(semester).strip()
+        if reservation_order_service.update(reservation_id, fields):
             from utils.audit import audit
             audit(
                 reviewer,

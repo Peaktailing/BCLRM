@@ -14,6 +14,7 @@ DEMAND_STATUS_PENDING = "待调配"     # 已提交，存在未处理的调配�
 DEMAND_STATUS_DONE = "已完成"        # 所有调配单均已借出
 DEMAND_STATUS_PARTIAL = "部分完成"    # 部分调配单借出、部分退回
 DEMAND_STATUS_REJECTED = "已驳回"     # 所有调配单均被退回
+DEMAND_STATUS_CANCELLED = "已撤销"    # 需求人主动撤销（无已借出的调配单）
 
 
 @dataclass

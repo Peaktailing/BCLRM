@@ -305,7 +305,7 @@ with tab_transfer:
             hide_index=True,
             use_container_width=True,
             num_rows="fixed",
-            key=f"tr_table_{_tr_all}",
+            key=f"tr_table_{_tr_all}_{st.session_state.get('tr_version', 0)}",
             disabled=not is_admin,
         )
 
@@ -344,6 +344,11 @@ with tab_transfer:
                     remark=_tr_remark or None,
                 )
                 if _r.is_success():
+                    # 版本号 +1 并清除全选：流转成功后重建表格，避免残留失效勾选
+                    st.session_state["tr_version"] = (
+                        st.session_state.get("tr_version", 0) + 1
+                    )
+                    st.session_state["tr_select_all"] = False
                     st.success(_r.message)
                     st.rerun()
                 else:

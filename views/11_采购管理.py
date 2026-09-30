@@ -471,14 +471,25 @@ with tab_resv:
         if _pending_resv:
             st.markdown(f"**⏳ 待审批（{len(_pending_resv)}）**")
             for _res in _pending_resv:
-                _c_info, _c_ok, _c_no = st.columns([3, 1, 1])
+                _c_info, _c_sem = st.columns([3, 2])
                 _c_info.markdown(
                     f"{_res.order_number}｜**{_res.reagent_name}** × {_res.quantity}"
                     f"{_res.unit or 'g'}｜申请人 {_res.applicant}"
+                    f"｜需求学年 {_res.semester or '（未填）'}"
                 )
+                with _c_sem:
+                    _res_semester = st.text_input(
+                        "需求学年（批准时补填，用于归集进汇总采购单）",
+                        value=_res.semester or "",
+                        key=f"resv_sem_{_res.id}",
+                        placeholder="如 2027-2028",
+                    )
+                _c_ok, _c_no = st.columns(2)
                 with _c_ok:
                     if st.button("✅ 批准", key=f"resv_ok_{_res.id}", use_container_width=True):
-                        _r = purchase_service.review_reservation(_res.id, True, current_user)
+                        _r = purchase_service.review_reservation(
+                            _res.id, True, current_user, semester=_res_semester
+                        )
                         if _r.is_success():
                             st.success(f"✅ {_r.message}")
                             st.rerun()

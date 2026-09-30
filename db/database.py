@@ -900,17 +900,16 @@ class Database:
             if bottle_columns_all and "manager" not in bottle_columns_all:
                 cursor.execute("ALTER TABLE reagent_bottle ADD COLUMN manager TEXT")
                 logger.info("迁移完成：reagent_bottle 表添加 manager 字段")
-
-            # 迁移：无管理人的试剂瓶默认归属超级管理员
-            cursor.execute(
-                "UPDATE reagent_bottle SET manager = ("
-                "SELECT name FROM person WHERE role = 'super_admin' ORDER BY id LIMIT 1"
-                ") WHERE manager IS NULL OR manager = ''"
-            )
-            if cursor.rowcount and cursor.rowcount > 0:
-                logger.info(
-                    f"迁移完成：已为 {cursor.rowcount} 个无管理人的试剂瓶回填超级管理员"
+                # 仅在新增列时回填一次历史数据（此后启动不再覆盖人工调整过的管理人）
+                cursor.execute(
+                    "UPDATE reagent_bottle SET manager = ("
+                    "SELECT name FROM person WHERE role = 'super_admin' ORDER BY id LIMIT 1"
+                    ") WHERE manager IS NULL OR manager = ''"
                 )
+                if cursor.rowcount and cursor.rowcount > 0:
+                    logger.info(
+                        f"迁移完成：已为 {cursor.rowcount} 个无管理人的试剂瓶回填超级管理员"
+                    )
 
             # 迁移：purchase_plan_item 表增加 bottle_number 字段（按采购单入库后回填，防重复入库）
             cursor.execute("PRAGMA table_info(purchase_plan_item)")

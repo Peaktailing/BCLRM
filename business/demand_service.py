@@ -15,10 +15,22 @@ from services.core.allocation_order_service import (
     allocation_order_item_service,
 )
 from business.allocation_service import allocation_service
-from models.core.reagent_demand import DEMAND_STATUS_PENDING
+from business.permission_service import permission_service
+from models.core.reagent_demand import (
+    DEMAND_STATUS_PENDING,
+    DEMAND_STATUS_CANCELLED,
+)
+from models.core.allocation_order import (
+    ALLOC_STATUS_PENDING,
+    ALLOC_STATUS_LENT,
+    ALLOC_STATUS_REJECTED,
+    ALLOC_ITEM_REJECTED,
+)
 from utils.field_mapper import (
     ReagentDemandField,
     ReagentDemandItemField,
+    AllocationOrderField,
+    AllocationOrderItemField,
 )
 from utils.id_generator import id_generator
 from utils.error_handler import logger, ServiceResult, handle_exception
@@ -66,6 +78,14 @@ class DemandService:
         """
         if not requester or not str(requester).strip():
             return ServiceResult.fail(message="需求人不能为空", error_code="EMPTY_REQUESTER")
+
+        requester = str(requester).strip()
+        # 需求调配用于「管理员之间流转试剂」，需求人必须是管理员及以上
+        if not permission_service.check_permission(requester, "admin").data:
+            return ServiceResult.fail(
+                message="需求人必须是管理员及以上（需求调配用于管理员之间流转试剂）",
+                error_code="REQUESTER_NOT_ADMIN",
+            )
 
         valid_lines = []
         for line in (lines or []):
@@ -163,6 +183,57 @@ class DemandService:
     def get_allocation_items(self, allocation_id: int) -> ServiceResult:
         items = self.order_item_service.get_by_allocation(allocation_id)
         return ServiceResult.ok(data=items)
+
+
+    @handle_exception(context="撤销需求单")
+    def cancel_demand(self, demand_id: int, operator: str) -> ServiceResult:
+        """撤销需求单
+
+        仅当该需求单**没有任何已借出**的调配单时可撤销：
+        - 未处理的调配单一并置为「已退回」，明细同步退回；
+        - 需求单状态置为「已撤销」。
+
+        用于需求提交后无可借试剂（未生成调配单）或等待受理期间撤回。
+        """
+        demand = self.demand_service.get_by_id(demand_id)
+        if not demand:
+            return ServiceResult.fail(message="需求单不存在", error_code="DEMAND_NOT_FOUND")
+
+        orders = self.order_service.get_by_demand(demand_id)
+        if any((o.status or "") == ALLOC_STATUS_LENT for o in orders):
+            return ServiceResult.fail(
+                message="该需求单已有调配单借出，不能撤销",
+                error_code="DEMAND_ALREADY_LENT",
+            )
+
+        handled_at = datetime.now().strftime("%Y/%m/%d %H:%M")
+        for order in orders:
+            if (order.status or "") != ALLOC_STATUS_PENDING:
+                continue
+            for item in self.order_item_service.get_by_allocation(order.id):
+                self.order_item_service.update(
+                    item.id, {AllocationOrderItemField.STATUS: ALLOC_ITEM_REJECTED}
+                )
+            self.order_service.update(
+                order.id,
+                {
+                    AllocationOrderField.STATUS: ALLOC_STATUS_REJECTED,
+                    AllocationOrderField.HANDLED_AT: handled_at,
+                },
+            )
+
+        self.demand_service.update(
+            demand_id, {ReagentDemandField.STATUS: DEMAND_STATUS_CANCELLED}
+        )
+        audit(
+            operator, "撤销需求",
+            target_type="demand", target_id=demand.demand_number,
+            detail=f"退回 {len(orders)} 张未处理调配单",
+        )
+        logger.info("需求单已撤销", demand_number=demand.demand_number)
+        return ServiceResult.ok(
+            message=f"需求单 {demand.demand_number} 已撤销，相关未处理调配单已退回"
+        )
 
 
 # ============================================================================

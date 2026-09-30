@@ -26,6 +26,7 @@ from services.core.reagent_demand_service import (
     reagent_demand_item_service,
 )
 from services.base.person_service import person_service
+from business.permission_service import permission_service
 from business.manager_service import manager_service, REASON_ALLOCATION
 from business.bottle_state import is_borrowable, is_expired
 from models.core.allocation_order import (
@@ -141,6 +142,7 @@ class AllocationService:
         requester: str,
         cas_number: Optional[str] = None,
         reagent_name: Optional[str] = None,
+        exclude_bottle_numbers: Optional[set] = None,
     ) -> ServiceResult:
         """对单一试剂做智能分配
 
@@ -156,6 +158,13 @@ class AllocationService:
 
         qty = self._num(qty)
         bottles = self._available_bottles(cas_number, reagent_name)
+        # 同一需求内跨明细去重：已被其它明细占用的瓶不再重复分配
+        if exclude_bottle_numbers:
+            bottles = [
+                b for b in bottles
+                if str(getattr(b, ReagentBottleField.BOTTLE_NUMBER, ""))
+                not in exclude_bottle_numbers
+            ]
         if not bottles:
             return ServiceResult.fail(
                 message="未找到可借的该试剂（可能已被借出/耗尽/过期）",
@@ -288,59 +297,90 @@ class AllocationService:
         """
         created = []
         shortages = []
+        # 本次需求内已被占用的瓶：避免同一批瓶被多条明细重复规划
+        used_bottles = set()
+        # 按 (管理人, 试剂) 归并，避免同一管理人同一试剂生成多张调配单
+        merged: Dict[tuple, Dict] = {}
         for line in lines:
             cas = line.get("cas_number")
             name = line.get("reagent_name")
             req_qty = self._num(line.get("requested_qty"))
-            plan_result = self.plan(req_qty, requester, cas_number=cas, reagent_name=name)
+            plan_result = self.plan(
+                req_qty, requester,
+                cas_number=cas, reagent_name=name,
+                exclude_bottle_numbers=used_bottles,
+            )
             if plan_result.is_failure():
                 shortages.append({"reagent_name": name, "reason": plan_result.message})
                 continue
 
             plan = plan_result.data
+            for _group in plan["groups"]:
+                for _item in _group["items"]:
+                    used_bottles.add(str(_item["bottle_number"]))
             if self._num(plan.get("shortage")) > 0:
                 shortages.append({
                     "reagent_name": name,
                     "reason": f"可借不足，缺口 {plan['shortage']}",
                 })
 
+            # 归并：同一管理人 + 同一试剂 → 一张调配单（跨明细合并）
+            for group in plan["groups"]:
+                key = (group["manager"], cas or name or "")
+                entry = merged.setdefault(key, {
+                    "manager": group["manager"],
+                    "reagent_name": name,
+                    "cas_number": cas,
+                    "items": [],
+                    "total_qty": 0.0,
+                })
+                entry["items"].extend(group["items"])
+                entry["total_qty"] += self._num(group["total_qty"])
+
+        # 统一创建调配单（每个管理人每试剂一张）
+        for entry in merged.values():
+            manager = entry["manager"]
+            cas = entry["cas_number"]
+            name = entry["reagent_name"]
+            total_qty = round(entry["total_qty"], 6)
             year_demand = self._year_demand(cas, name)
             total_stock = self._stock(cas, name)
-
-            for group in plan["groups"]:
-                manager = group["manager"]
-                manager_stock = self._stock(cas, name, manager=None if manager == UNASSIGNED_MANAGER else manager)
-                sufficient = 1 if total_stock >= year_demand else 0
-                alloc_number = self.id_gen.generate_allocation_number()
-                alloc_id = self.order_service.create({
-                    AllocationOrderField.ALLOCATION_NUMBER: alloc_number,
-                    AllocationOrderField.DEMAND_ID: demand_id,
-                    AllocationOrderField.MANAGER: manager,
-                    AllocationOrderField.STATUS: ALLOC_STATUS_PENDING,
-                    AllocationOrderField.DEMAND_QTY: group["total_qty"],
-                    AllocationOrderField.MANAGER_STOCK_QTY: manager_stock,
-                    AllocationOrderField.TOTAL_STOCK_QTY: total_stock,
-                    AllocationOrderField.YEAR_DEMAND_QTY: year_demand,
-                    AllocationOrderField.IS_STOCK_SUFFICIENT: sufficient,
-                    AllocationOrderField.CREATED_BY: created_by,
+            manager_stock = self._stock(
+                cas, name,
+                manager=None if manager == UNASSIGNED_MANAGER else manager,
+            )
+            sufficient = 1 if total_stock >= year_demand else 0
+            alloc_number = self.id_gen.generate_allocation_number()
+            alloc_id = self.order_service.create({
+                AllocationOrderField.ALLOCATION_NUMBER: alloc_number,
+                AllocationOrderField.DEMAND_ID: demand_id,
+                AllocationOrderField.MANAGER: manager,
+                AllocationOrderField.STATUS: ALLOC_STATUS_PENDING,
+                AllocationOrderField.DEMAND_QTY: total_qty,
+                AllocationOrderField.MANAGER_STOCK_QTY: manager_stock,
+                AllocationOrderField.TOTAL_STOCK_QTY: total_stock,
+                AllocationOrderField.YEAR_DEMAND_QTY: year_demand,
+                AllocationOrderField.IS_STOCK_SUFFICIENT: sufficient,
+                AllocationOrderField.CREATED_BY: created_by,
+            })
+            if not alloc_id:
+                logger.error("创建调配单失败", demand_id=demand_id, manager=manager)
+                continue
+            for item in entry["items"]:
+                self.order_item_service.create({
+                    AllocationOrderItemField.ALLOCATION_ID: alloc_id,
+                    AllocationOrderItemField.BOTTLE_NUMBER: item["bottle_number"],
+                    AllocationOrderItemField.REAGENT_NAME: item["reagent_name"],
+                    AllocationOrderItemField.QTY: item["qty"],
+                    AllocationOrderItemField.STATUS: ALLOC_ITEM_PENDING,
                 })
-                if not alloc_id:
-                    logger.error("创建调配单失败", demand_id=demand_id, manager=manager)
-                    continue
-                for item in group["items"]:
-                    self.order_item_service.create({
-                        AllocationOrderItemField.ALLOCATION_ID: alloc_id,
-                        AllocationOrderItemField.BOTTLE_NUMBER: item["bottle_number"],
-                        AllocationOrderItemField.REAGENT_NAME: item["reagent_name"],
-                        AllocationOrderItemField.QTY: item["qty"],
-                        AllocationOrderItemField.STATUS: ALLOC_ITEM_PENDING,
-                    })
-                created.append({
-                    "allocation_number": alloc_number,
-                    "manager": manager,
-                    "total_qty": group["total_qty"],
-                    "is_stock_sufficient": sufficient,
-                })
+            created.append({
+                "allocation_number": alloc_number,
+                "manager": manager,
+                "reagent_name": name,
+                "total_qty": total_qty,
+                "is_stock_sufficient": sufficient,
+            })
 
         if not created:
             return ServiceResult.fail(
@@ -400,6 +440,15 @@ class AllocationService:
             )
 
         items = self.order_item_service.get_by_allocation(allocation_id)
+
+        # 权限：仅该单受理管理人（或超级管理员）可处理，不依赖前端过滤
+        if operator != order.manager:
+            if not permission_service.is_super_admin(operator).data:
+                return ServiceResult.fail(
+                    message=f"只有受理管理人「{order.manager}」可以处理该调配单",
+                    error_code="NOT_ASSIGNED_MANAGER",
+                )
+
         handled_at = datetime.now().strftime("%Y/%m/%d %H:%M")
 
         if decision == "reject":
@@ -421,8 +470,13 @@ class AllocationService:
         demand = self.demand_service.get_by_id(order.demand_id)
         new_manager = (demand.requester if demand else "") or order.created_by or operator
 
+        # 仅处理仍待处理的明细（重复处理时已流转项自动跳过，保持幂等）
+        pending_items = [i for i in items if i.status == ALLOC_ITEM_PENDING]
+        if not pending_items:
+            return ServiceResult.ok(message="该调配单明细均已处理，无需重复操作")
+
         lent_items, failed = [], []
-        for item in items:
+        for item in pending_items:
             bottle = self.bottle_service.get_by_bottle_number(item.bottle_number)
             if not bottle:
                 failed.append(f"{item.bottle_number}: 试剂瓶不存在")
@@ -457,6 +511,17 @@ class AllocationService:
             return ServiceResult.fail(
                 message="借出失败：" + "；".join(failed),
                 error_code="LEND_FAILED",
+            )
+
+        if failed:
+            # 部分失败：不置「已借出」，保持「待处理」以便修复后重试；需求状态不推进
+            return ServiceResult.ok(
+                data={"lent": lent_items, "failed": failed, "partial": True},
+                message=(
+                    f"⚠️ 部分完成：已流转 {len(lent_items)} 瓶，"
+                    f"{len(failed)} 瓶失败，调配单仍为「待处理」可重试："
+                    + "；".join(failed)
+                ),
             )
 
         self.order_service.update(

@@ -20,6 +20,7 @@ from business.borrow_service import borrow_service
 from business.work_order_service import work_order_service
 from business.experiment_plan_service import experiment_plan_business
 from business.query_service import query_service
+from business.inventory_service import inventory_service
 from business.demand_service import demand_service
 from business.allocation_service import allocation_service
 from services.core.allocation_order_service import allocation_order_service
@@ -628,12 +629,18 @@ with tab_allocation:
     if "dmd_lines" not in st.session_state:
         st.session_state.dmd_lines = []
 
-    _user_result = borrow_service.get_all_borrow_users()
+    _mgr_users = inventory_service.get_available_managers()
+    _requester_options = _mgr_users.data if _mgr_users.is_success() else []
+    if is_admin and user_name and user_name not in _requester_options:
+        _requester_options = [user_name] + _requester_options
     _dmd_requester = st.selectbox(
-        "需求人*",
-        options=[""] + (_user_result.data if _user_result.is_success() else []),
+        "需求人*（仅管理员及以上）",
+        options=[""] + _requester_options,
+        index=1 if (
+            user_name and _requester_options and _requester_options[0] == user_name
+        ) else 0,
         key="dmd_requester",
-        help="试剂管理权将流转到此用户名下",
+        help="需求调配用于管理员之间流转试剂，试剂管理权将流转到此人名下",
     )
 
     _reagent_result = query_service.filter_reagents(borrowable_only=True)
@@ -803,3 +810,12 @@ with tab_allocation:
                     )
                 else:
                     st.caption("未生成调配单（可能无可借试剂）")
+                # 无可借出调配单时可撤销（含提交后未生成调配单的卡单）
+                if not any((a.status or "") == "已借出" for a in _allocs):
+                    if st.button("🚫 撤销该需求", key=f"dmd_cancel_{_d.id}"):
+                        _cr = demand_service.cancel_demand(_d.id, user_name)
+                        if _cr.is_success():
+                            st.warning(_cr.message)
+                            st.rerun()
+                        else:
+                            st.error(_cr.message)
