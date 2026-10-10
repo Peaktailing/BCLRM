@@ -28,7 +28,7 @@ from services.core.reagent_demand_service import (
 from services.base.person_service import person_service
 from business.permission_service import permission_service
 from business.manager_service import manager_service, REASON_ALLOCATION
-from business.bottle_state import is_borrowable, is_expired
+from business.bottle_state import is_borrowable, is_expired, ScrapStatus
 from models.core.allocation_order import (
     ALLOC_STATUS_PENDING,
     ALLOC_STATUS_LENT,
@@ -101,13 +101,40 @@ class AllocationService:
             return getattr(bottle, ReagentBottleField.REAGENT_NAME, None) == reagent_name
         return False
 
+    def _reserved_bottle_numbers(self) -> set:
+        """已被「待处理」调配单预占的瓶（避免同一瓶被多个需求重复分配）"""
+        reserved = set()
+        try:
+            pending_ids = [
+                o.id for o in self.order_service.get_all_parsed()
+                if (o.status or "") == ALLOC_STATUS_PENDING
+            ]
+            if not pending_ids:
+                return reserved
+            marks = ",".join("?" for _ in pending_ids)
+            rows = self.order_item_service.db.execute_query(
+                f"SELECT bottle_number FROM allocation_order_item "
+                f"WHERE allocation_id IN ({marks})",
+                tuple(pending_ids),
+            )
+            for r in rows:
+                reserved.add(r.get("bottle_number"))
+        except Exception as e:
+            logger.warning("读取调配预占瓶失败", exception=e)
+        return reserved
+
     def _available_bottles(self, cas_number, reagent_name) -> List:
-        """可借且未过期、有剩余量的目标试剂瓶"""
+        """可借且未过期、未被调配单预占、有剩余量的目标试剂瓶"""
         result = []
+        reserved = self._reserved_bottle_numbers()
         for bottle in self.bottle_service.get_all_parsed():
             if not self._match_reagent(bottle, cas_number, reagent_name):
                 continue
-            if getattr(bottle, ReagentBottleField.SCRAP_FLAG, None) in ("待报废", "已报废"):
+            if str(getattr(bottle, ReagentBottleField.BOTTLE_NUMBER, "")) in reserved:
+                continue
+            if getattr(bottle, ReagentBottleField.SCRAP_FLAG, None) in (
+                ScrapStatus.PENDING, ScrapStatus.SCRAPPED,
+            ):
                 continue
             if not is_borrowable(getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None)):
                 continue
@@ -267,7 +294,10 @@ class AllocationService:
         total = 0.0
         for bottle in self._available_bottles(cas_number, reagent_name):
             if manager is not None:
-                bm = getattr(bottle, ReagentBottleField.MANAGER, None) or UNASSIGNED_MANAGER
+                # 与 plan() 分组保持同一套管理人归一口径（空值→超管）
+                bm = self.manager.resolve_manager(
+                    getattr(bottle, ReagentBottleField.MANAGER, None)
+                ) or UNASSIGNED_MANAGER
                 if bm != manager:
                     continue
             total += self._num(getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, None))
@@ -480,6 +510,11 @@ class AllocationService:
             bottle = self.bottle_service.get_by_bottle_number(item.bottle_number)
             if not bottle:
                 failed.append(f"{item.bottle_number}: 试剂瓶不存在")
+                continue
+            # 复校验可借状态：调配单挂起期间瓶可能被工单借走或过期，此时不得流转
+            _flag = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None)
+            if not is_borrowable(_flag):
+                failed.append(f"{item.bottle_number}: 当前状态「{_flag}」，已不可流转")
                 continue
             current = self.manager.resolve_manager(
                 getattr(bottle, ReagentBottleField.MANAGER, None)

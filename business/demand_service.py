@@ -199,6 +199,13 @@ class DemandService:
         if not demand:
             return ServiceResult.fail(message="需求单不存在", error_code="DEMAND_NOT_FOUND")
 
+        # 仅需求人本人或管理员可撤销
+        if operator != demand.requester and not permission_service.is_admin(operator).data:
+            return ServiceResult.fail(
+                message="只有需求人本人或管理员可以撤销该需求单",
+                error_code="NOT_DEMAND_OWNER",
+            )
+
         orders = self.order_service.get_by_demand(demand_id)
         if any((o.status or "") == ALLOC_STATUS_LENT for o in orders):
             return ServiceResult.fail(

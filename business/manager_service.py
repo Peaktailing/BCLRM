@@ -10,6 +10,7 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.manager_change_log_service import manager_change_log_service
 from services.base.person_service import person_service
 from utils.field_mapper import ReagentBottleField, ManagerChangeLogField
+from business.bottle_state import is_borrowable
 from utils.error_handler import logger, ServiceResult, handle_exception
 from utils.audit import audit
 from db.database import db
@@ -122,6 +123,22 @@ class ManagerService:
             )
 
         old_manager = getattr(bottle, ReagentBottleField.MANAGER, None)
+
+        # 新管理人必须是真实存在的人员（服务层校验，避免写入任意字符串）
+        if not self.person_service.get_by_name(new_manager):
+            return ServiceResult.fail(
+                message=f"用户「{new_manager}」不存在，无法作为管理人",
+                error_code="INVALID_NEW_MANAGER",
+            )
+
+        # 借用中的瓶不允许流转管理权（否则借用人与管理人双重归属）；归还回转场景除外
+        if reason != REASON_RETURN:
+            _flag = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None)
+            if _flag and not is_borrowable(_flag):
+                return ServiceResult.fail(
+                    message=f"该试剂瓶当前状态为「{_flag}」，请先归还后再流转管理权",
+                    error_code="BOTTLE_NOT_BORROWABLE",
+                )
         if old_manager == new_manager:
             return ServiceResult.fail(
                 message=f"该试剂瓶的管理人已是「{new_manager}」，无需流转",

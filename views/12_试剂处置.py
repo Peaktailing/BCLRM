@@ -136,7 +136,12 @@ with tab_scrap:
                     _ok = 0
                     for _rid in _selected_ids:
                         if reagent_bottle_service.update(
-                            _rid, {ReagentBottleField.SCRAP_FLAG: ScrapStatus.SCRAPPED}
+                            _rid,
+                            {
+                                ReagentBottleField.SCRAP_FLAG: ScrapStatus.SCRAPPED,
+                                # 报废瓶必须同时退出「可借」集合
+                                ReagentBottleField.BORROWABLE_CHECK: 0,
+                            },
                         ):
                             _ok += 1
                     logger.info("确认报废完成", count=_ok)
@@ -158,14 +163,19 @@ with tab_scrap:
                         if _bottle.id not in _selected_ids:
                             continue
                         _qty = float(_bottle.remaining_quantity or 0)
+                        # 恢复使用：过期瓶不得回到「可借」池（领用时仍会被拦截，易造成误解）
+                        _still_expired = (
+                            getattr(_bottle, "expired_flag", None) == ExpiryStatus.EXPIRED
+                        )
                         _borrowable_text = (
-                            BorrowableStatus.BORROWABLE if _qty > 0
-                            else BorrowableStatus.DEPLETED
+                            BorrowableStatus.DEPLETED
+                            if (_qty <= 0 or _still_expired)
+                            else BorrowableStatus.BORROWABLE
                         )
                         if reagent_bottle_service.update(_bottle.id, {
                             ReagentBottleField.SCRAP_FLAG: None,
                             # borrowable_check 是业务判定事实来源；flag 仅作展示兼容
-                            ReagentBottleField.BORROWABLE_CHECK: _qty > 0,
+                            ReagentBottleField.BORROWABLE_CHECK: _borrowable_text == BorrowableStatus.BORROWABLE,
                             ReagentBottleField.BORROWABLE_FLAG: _borrowable_text,
                         }):
                             _ok += 1

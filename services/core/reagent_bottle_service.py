@@ -6,9 +6,11 @@
 """
 from db.base_service import BaseService
 from models.core.reagent_bottle import ReagentBottle
+from business.bottle_state import BorrowableStatus
 from utils.bottle_status import derive_bottle_status
 from utils.error_handler import logger
-from typing import List, Optional
+from utils.field_mapper import ReagentBottleField
+from typing import Any, Dict, List, Optional
 
 
 class ReagentBottleService(BaseService):
@@ -20,6 +22,31 @@ class ReagentBottleService(BaseService):
     def __init__(self, db=None):
         super().__init__("reagent_bottle", db=db)
         logger.info("试剂瓶服务初始化完成")
+
+    # ------------------------------------------------------------------
+    # 可借状态：flag 为事实源，check 自动派生（避免两字段分裂）
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _sync_borrowable_fields(fields: Dict) -> Dict:
+        """写入 borrowable_flag 时自动同步 borrowable_check"""
+        if (
+            ReagentBottleField.BORROWABLE_FLAG in fields
+            and ReagentBottleField.BORROWABLE_CHECK not in fields
+        ):
+            fields = dict(fields)
+            fields[ReagentBottleField.BORROWABLE_CHECK] = (
+                1 if fields[ReagentBottleField.BORROWABLE_FLAG] == BorrowableStatus.BORROWABLE
+                else 0
+            )
+        return fields
+
+    def update(self, record_id: int, fields: Dict) -> bool:
+        return super().update(record_id, self._sync_borrowable_fields(fields))
+
+    def update_by_field(self, field_name: str, value: Any, fields: Dict) -> bool:
+        return super().update_by_field(
+            field_name, value, self._sync_borrowable_fields(fields)
+        )
 
     def get_by_id(self, record_id: int) -> Optional[ReagentBottle]:
         """通过记录ID查询试剂瓶

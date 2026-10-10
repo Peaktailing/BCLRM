@@ -72,15 +72,21 @@ class DashboardService:
             borrowable = 0
             exhausted = 0
             borrowed = 0
+            expired = 0
+            scrapped = 0
             total_quantity = 0.0
 
             for bottle in bottles:
                 bc = getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None)
                 rq = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
                 ef = getattr(bottle, ReagentBottleField.EXPIRED_FLAG, "")
+                sf = getattr(bottle, ReagentBottleField.SCRAP_FLAG, None)
 
-                if ef == "已过期":
-                    pass  # 过期试剂不计入可用统计
+                # 分类互斥且穷尽：报废 > 过期 > 可借/已借出/耗尽，避免「分类之和 ≠ 总数」
+                if sf in ("待报废", "已报废"):
+                    scrapped += 1
+                elif ef == "已过期":
+                    expired += 1
                 elif bc:
                     borrowable += 1
                 elif rq == 0:
@@ -88,7 +94,8 @@ class DashboardService:
                 else:
                     borrowed += 1
 
-                if rq:
+                # 报废瓶余量不计入可用总量
+                if rq and sf not in ("待报废", "已报废"):
                     total_quantity += rq
 
             stats = {
@@ -96,6 +103,8 @@ class DashboardService:
                 "borrowable": borrowable,
                 "exhausted": exhausted,
                 "borrowed": borrowed,
+                "expired": expired,
+                "scrapped": scrapped,
                 "total_quantity": round(total_quantity, 2),
             }
 

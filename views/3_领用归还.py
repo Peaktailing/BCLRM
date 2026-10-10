@@ -529,8 +529,8 @@ with tab_return:
             else:
                 st.caption(
                     "勾选「还入」并提交后，该瓶即视为结清（不再出现在待还列表）："
-                    "比例 > 0 时还回该量、差额计入实际使用量；"
-                    "比例为 0 时视为空瓶，该瓶移入「试剂处置」的待报废清单。"
+                    "按「归还比例」还回该量、差额计入实际使用量；"
+                    "若该瓶已用完，请另外勾选「空瓶」才会移入「试剂处置」的待报废清单。"
                     "未勾选的瓶子保持待归还。"
                 )
                 # 逐瓶：勾选结清 + 归还比例估算（默认 100%），还回量 = 未还量 × 比例
@@ -564,17 +564,19 @@ with tab_return:
                         qty = round(
                             float(item["remaining_qty"] or 0) * percent / 100, 4
                         )
-                        if qty > 0:
-                            st.metric("本次还回量", f"{qty:g}")
-                        else:
-                            st.metric("本次还回量", "0")
-                            st.caption("空瓶 → 待报废")
+                        st.metric("本次还回量", f"{qty:g}")
 
+                    # 空瓶需显式确认：避免误把归还比例拖到 0% 就被判为空瓶（不可逆）
                     if selected:
+                        as_empty = st.checkbox(
+                            "空瓶（用完，移入待报废）",
+                            key=f"wo_ret_empty_{item['id']}",
+                            help="勾选后该瓶按空瓶结清并移入「试剂处置」待报废清单；不勾选则按上面比例正常归还",
+                        )
                         return_entries.append({
                             "item_id": item["id"],
-                            "return_qty": qty,
-                            "discard": qty <= 0,
+                            "return_qty": 0.0 if as_empty else qty,
+                            "discard": as_empty,
                         })
 
                 if done_items:

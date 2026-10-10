@@ -227,49 +227,50 @@ class WorkOrderService:
         # 逐瓶领用（复用既有校验与库存扣减）
         success_items: List[Dict] = []
         failures: List[str] = []
-        for entry in cart_items:
-            bottle_number = entry.get("bottle_number")
-            # 优先使用清单里显式填写的领用量（默认清单会带历史领用量），
-            # 未填写时退回「整瓶剩余量」
-            qty = entry.get("borrow_qty")
-            if qty is None:
-                qty = entry.get("remaining_quantity") or 0.1
-            try:
-                qty = float(qty)
-            except (TypeError, ValueError):
-                qty = 0.0
-            if qty <= 0:
-                failures.append(f"{bottle_number}：领用量必须大于 0")
-                continue
-            result = borrow_service.reagent_borrow(
-                bottle_number=bottle_number,
-                user=applicant,
-                borrow_qty=qty,
-                course_id=course_id,
-                item_id=item_id,
-            )
-            if result.is_success():
-                success_items.append({
-                    "bottle_number": bottle_number,
-                    "reagent_name": entry.get("reagent_name"),
-                    "borrow_qty": qty,
-                    "returned_qty": 0.0,
-                    "status": "待归还",
-                })
-            else:
-                failures.append(f"{bottle_number}：{result.message}")
-
-        if not success_items:
-            return ServiceResult.fail(
-                message="领用失败：" + "；".join(failures),
-                error_code="ALL_ITEMS_FAILED"
-            )
-
         order_number = "BO" + datetime.now().strftime("%Y%m%d%H%M%S%f")
         from db.database import db
 
+        all_failed_msg = None
         try:
+            # 领用扣库存与工单落库放在同一事务：任一环节失败则整体回滚，
+            # 避免出现「已扣库存但没有工单记录 → 该瓶永远无法归还、用量丢失」的孤儿数据
             with db.transaction():
+                for entry in cart_items:
+                    bottle_number = entry.get("bottle_number")
+                    # 优先使用清单里显式填写的领用量（默认清单会带历史领用量），
+                    # 未填写时退回「整瓶剩余量」
+                    qty = entry.get("borrow_qty")
+                    if qty is None:
+                        qty = entry.get("remaining_quantity") or 0.1
+                    try:
+                        qty = float(qty)
+                    except (TypeError, ValueError):
+                        qty = 0.0
+                    if qty <= 0:
+                        failures.append(f"{bottle_number}：领用量必须大于 0")
+                        continue
+                    result = borrow_service.reagent_borrow(
+                        bottle_number=bottle_number,
+                        user=applicant,
+                        borrow_qty=qty,
+                        course_id=course_id,
+                        item_id=item_id,
+                    )
+                    if result.is_success():
+                        success_items.append({
+                            "bottle_number": bottle_number,
+                            "reagent_name": entry.get("reagent_name"),
+                            "borrow_qty": qty,
+                            "returned_qty": 0.0,
+                            "status": "待归还",
+                        })
+                    else:
+                        failures.append(f"{bottle_number}：{result.message}")
+
+                if not success_items:
+                    all_failed_msg = "领用失败：" + "；".join(failures)
+                    raise RuntimeError(all_failed_msg)
+
                 order_id = borrow_order_service.create({
                     "order_number": order_number,
                     "order_type": order_type,
@@ -292,6 +293,10 @@ class WorkOrderService:
                     if not borrow_order_item_service.create(item):
                         raise RuntimeError(f"创建工单明细失败：{item['bottle_number']}")
         except Exception as e:
+            if all_failed_msg:
+                return ServiceResult.fail(
+                    message=all_failed_msg, error_code="ALL_ITEMS_FAILED"
+                )
             logger.error("创建领用工单失败，已回滚", error=str(e), exception=e)
             return ServiceResult.fail(message=f"创建工单失败：{str(e)}")
 
@@ -347,8 +352,9 @@ class WorkOrderService:
             order for order in borrow_order_service.get_all_parsed()
             if order.status in (ORDER_STATUS_BORROWING, ORDER_STATUS_PARTIAL)
         ]
-        if not is_admin and user_name:
-            orders = [order for order in orders if order.applicant == user_name]
+        if not is_admin:
+            # 非管理员只看本人工单；user_name 为空时返回空列表（避免鉴权被绕过）
+            orders = [order for order in orders if order.applicant == (user_name or "")]
         return orders
 
     def list_orders(self, user_name: Optional[str] = None, is_admin: bool = False) -> List:
@@ -550,10 +556,18 @@ class WorkOrderService:
             if result.is_success():
                 success_count += 1
                 borrow_order_item_service.update(item.id, {"status": ITEM_STATUS_PENDING})
-                # 审批信息回写领用流水（approver / approved 字段落地）
-                borrow_record_service.update_by_field(
-                    "bottle_number", item.bottle_number,
-                    {"approver": approver_name, "approved": True},
+                # 审批信息精确回写本工单产生的领用流水：按「领用人 + 领用时间」定位，
+                # 避免按瓶号回写把该瓶历史领用记录一并标记为已审批
+                from db.database import db as _db
+                _db.execute_update(
+                    "UPDATE borrow_record SET approver = ?, approved = 1 "
+                    "WHERE bottle_number = ? AND user = ? AND borrow_time >= ?",
+                    (
+                        approver_name,
+                        item.bottle_number,
+                        order.applicant or "",
+                        order.borrow_time or "",
+                    ),
                 )
             else:
                 failures.append(f"{item.bottle_number}：{result.message}")
@@ -696,6 +710,9 @@ class WorkOrderService:
             remaining = float(item.borrow_qty or 0) - float(item.returned_qty or 0)
             qty = float(entry.get("return_qty") or 0)
             if qty < 0:
+                failures.append(
+                    f"{item.bottle_number}：归还量不能为负数"
+                )
                 continue
             if qty > remaining + 1e-6:
                 failures.append(
@@ -708,7 +725,9 @@ class WorkOrderService:
 
             # 归还比例 0%（或显式 discard）：视为「空瓶」——
             # 不还回试剂，归还后瓶中余量记 0，并把该瓶移入待报废清单
-            discard = bool(entry.get("discard")) or qty <= 0
+            # 空瓶必须由界面显式勾选确认，不再因「归还比例 0%」隐式触发
+            # （比例 0 常是误拖，一旦隐式判空瓶即不可逆，会把整瓶用量全额计入）
+            discard = bool(entry.get("discard"))
             target_remaining = 0.0 if discard else round(current + qty, 4)
 
             result = return_service.reagent_return(

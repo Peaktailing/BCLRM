@@ -15,6 +15,7 @@ from typing import Optional, Tuple, Dict, Any
 from models.core.reagent_bottle import ReagentBottle
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.base.chemical_service import chemical_service
+from business.bottle_state import BorrowableStatus, ExpiryStatus
 from utils.error_handler import logger, ServiceResult, handle_exception
 from utils.field_mapper import ReagentBottleField
 
@@ -89,10 +90,20 @@ class ExpiryService:
         if new_flag != bottle.expired_flag:
             old_flag = bottle.expired_flag
             try:
+                fields = {ReagentBottleField.EXPIRED_FLAG: new_flag}
+                # 过期瓶必须同时退出「可借」集合（否则仍会出现在只显示可借的清单里）；
+                # 恢复正常且有剩余量、未报废时再恢复可借
+                if new_flag == ExpiryStatus.EXPIRED:
+                    fields[ReagentBottleField.BORROWABLE_CHECK] = 0
+                elif (
+                    float(getattr(bottle, "remaining_quantity", 0) or 0) > 0
+                    and not getattr(bottle, "scrap_flag", None)
+                ):
+                    fields[ReagentBottleField.BORROWABLE_CHECK] = 1
                 self.bottle_service.update_by_field(
                     field_name=ReagentBottleField.BOTTLE_NUMBER,
                     value=bottle.bottle_number,
-                    fields={ReagentBottleField.EXPIRED_FLAG: new_flag},
+                    fields=fields,
                 )
                 # 同步内存对象
                 bottle.expired_flag = new_flag

@@ -162,17 +162,30 @@ class BorrowService:
         is_controlled = False
         controlled_type = None
         cas_number = getattr(bottle, ReagentBottleField.CAS_NUMBER, None)
+        controlled_item = None
         if cas_number:
             controlled_item = self.controlled_service.get_by_cas_number(cas_number)
-            if controlled_item:
-                is_controlled = True
-                controlled_type = getattr(controlled_item, 'dangerous_type', None)
-                logger.info(
-                    "检测到管控试剂",
-                    bottle_number=bottle_number,
-                    cas_number=cas_number,
-                    controlled_type=controlled_type
-                )
+        if not controlled_item:
+            # 无 CAS 的历史试剂：按名称/别名兜底匹配管控名录，避免危化品绕过审批
+            _name = getattr(bottle, ReagentBottleField.REAGENT_NAME, None)
+            if _name:
+                controlled_item = self.controlled_service.get_by_name(_name)
+                if controlled_item:
+                    logger.info(
+                        "按名称匹配到管控试剂（该瓶未登记 CAS）",
+                        bottle_number=bottle_number,
+                        reagent_name=_name,
+                        controlled_type=getattr(controlled_item, 'dangerous_type', None),
+                    )
+        if controlled_item:
+            is_controlled = True
+            controlled_type = getattr(controlled_item, 'dangerous_type', None)
+            logger.info(
+                "检测到管控试剂",
+                bottle_number=bottle_number,
+                cas_number=cas_number,
+                controlled_type=controlled_type
+            )
 
         # 5. 创建领用记录前再次检查状态（防止并发问题）
         bottle_refresh = self.bottle_service.get_by_bottle_number(bottle_number)

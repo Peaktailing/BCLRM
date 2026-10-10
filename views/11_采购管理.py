@@ -376,6 +376,7 @@ with tab_summary:
         st.caption(
             "汇总范围：**已提交**的课程采购单 + **已批准**的预定单（按需求学年归集）；"
             "草稿「待采购」的课程采购单不参与汇总，请在「采购单管理」中「🚀 提交采购单」。"
+            "「最终采购量」按**采购量**扣减库存计算（采购量 0 表示不采购）。"
         )
         target_semesters = purchase_service.list_target_semesters()
         if not target_semesters:

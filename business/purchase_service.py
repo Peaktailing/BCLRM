@@ -42,6 +42,7 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
 from services.base.chemical_service import chemical_service
 from business.inventory_service import inventory_service
+from business.bottle_state import ExpiryStatus, ScrapStatus
 from utils.error_handler import logger, ServiceResult, handle_exception
 
 DEFAULT_TARGET_STUDENT_COUNT = 30
@@ -82,12 +83,19 @@ class PurchaseService:
         return sorted(names)
 
     def _stock_by_reagent(self) -> Dict[str, float]:
-        """当前库存：按试剂名汇总（所有试剂瓶剩余量）"""
+        """当前库存：按试剂名汇总（排除待报废/已报废与已过期瓶，与调配口径一致）"""
         stock: Dict[str, float] = defaultdict(float)
         for bottle in reagent_bottle_service.get_all_parsed():
             name = getattr(bottle, "reagent_name", None)
-            if name:
-                stock[name] += float(getattr(bottle, "remaining_quantity", 0) or 0)
+            if not name:
+                continue
+            if getattr(bottle, "scrap_flag", None) in (
+                ScrapStatus.PENDING, ScrapStatus.SCRAPPED,
+            ):
+                continue
+            if getattr(bottle, "expired_flag", None) == ExpiryStatus.EXPIRED:
+                continue
+            stock[name] += float(getattr(bottle, "remaining_quantity", 0) or 0)
         return stock
 
     def _bottle_meta(self) -> Dict[str, Dict]:
@@ -266,6 +274,8 @@ class PurchaseService:
                         raise RuntimeError("创建采购单失败")
 
                 for row in rows:
+                    _key = (row["item_id"], row["reagent_name"])
+                    _kept = manual_map.get(_key)
                     created = purchase_plan_item_service.create({
                         "plan_id": plan_id,
                         "item_id": row["item_id"],
@@ -276,14 +286,53 @@ class PurchaseService:
                         "per_capita_usage": row["per_capita_usage"],
                         "student_count": row["student_count"],
                         "demand_quantity": row["demand_quantity"],
-                        "purchase_quantity": row["purchase_quantity"],
+                        # 人工修改过的明细：保留采购量/供应商/备注，并继续标记「已改」
+                        "purchase_quantity": (
+                            _kept.purchase_quantity if _kept else row["purchase_quantity"]
+                        ),
                         "current_stock": row["current_stock"],
-                        "is_manual": 0,
-                        "supplier": row["supplier"],
+                        "is_manual": 1 if _kept else 0,
+                        "supplier": (
+                            (_kept.supplier or row["supplier"]) if _kept else row["supplier"]
+                        ),
                         "unit_price": row["unit_price"],
+                        "remark": (_kept.remark if _kept else None),
                     })
                     if not created:
                         raise RuntimeError(f"创建采购明细失败：{row['reagent_name']}")
+
+                # 旧明细中已被人工修改、但本次预估不再出现的，保留为独立明细
+                if existing and manual_map:
+                    _new_keys = {(r["item_id"], r["reagent_name"]) for r in rows}
+                    for _key2, _old2 in manual_map.items():
+                        if _key2 in _new_keys:
+                            continue
+                        purchase_plan_item_service.create({
+                            "plan_id": plan_id,
+                            "item_id": _old2.item_id,
+                            "item_name": _old2.item_name,
+                            "reagent_name": _old2.reagent_name,
+                            "cas_number": _old2.cas_number,
+                            "source_quantity": _old2.source_quantity,
+                            "per_capita_usage": _old2.per_capita_usage,
+                            "student_count": _old2.student_count,
+                            "demand_quantity": _old2.demand_quantity,
+                            "purchase_quantity": _old2.purchase_quantity,
+                            "current_stock": _old2.current_stock,
+                            "is_manual": 1,
+                            "supplier": _old2.supplier,
+                            "unit_price": _old2.unit_price,
+                            "remark": _old2.remark,
+                        })
+
+                # 以实际落库的明细重算条数与总量（覆盖后可能多于/少于预估行数）
+                _items_now = purchase_plan_item_service.get_by_plan(plan_id)
+                purchase_plan_service.update(plan_id, {
+                    "item_count": len(_items_now),
+                    "total_quantity": round(
+                        sum(float(i.demand_quantity or 0) for i in _items_now), 2
+                    ),
+                })
 
             logger.info(
                 "课程采购单生成完成",
@@ -433,22 +482,39 @@ class PurchaseService:
                 ),
             )
 
-        merged: Dict[str, Dict] = {}
+        # 合并键：试剂名 + CAS（同名不同 CAS 视为不同物质，避免错录被静默吞掉）
+        merged: Dict[tuple, Dict] = {}
+        cas_conflicts: Dict[str, set] = {}
+
+        def _entry_for(reagent: str, cas: Optional[str]) -> Dict:
+            key = (reagent, cas or "")
+            entry = merged.setdefault(key, {
+                "reagent_name": reagent,
+                "cas_number": cas,
+                "total_demand": 0.0,
+                "total_purchase": 0.0,
+                "courses": [],
+                "supplier": None,
+                "unit_price": None,
+            })
+            if cas:
+                cas_conflicts.setdefault(reagent, set()).add(cas)
+                if not entry.get("cas_number"):
+                    entry["cas_number"] = cas
+            return entry
+
         for plan in plans:
             for item in purchase_plan_item_service.get_by_plan(plan.id):
                 reagent = item.reagent_name or "（未命名试剂）"
-                entry = merged.setdefault(reagent, {
-                    "reagent_name": reagent,
-                    "cas_number": item.cas_number,
-                    "total_demand": 0.0,
-                    "courses": [],
-                    "supplier": item.supplier,
-                    "unit_price": item.unit_price,
-                })
+                entry = _entry_for(reagent, item.cas_number)
                 demand = float(item.demand_quantity or 0)
                 entry["total_demand"] += demand
-                if not entry.get("cas_number") and item.cas_number:
-                    entry["cas_number"] = item.cas_number
+                # 采购量才决定实际要买多少（采购量=0 表示不采购）
+                entry["total_purchase"] += float(item.purchase_quantity or 0)
+                if item.supplier and not entry.get("supplier"):
+                    entry["supplier"] = item.supplier
+                if item.unit_price and not entry.get("unit_price"):
+                    entry["unit_price"] = item.unit_price
                 entry["courses"].append({
                     "course_name": plan.course_name,
                     "item_name": item.item_name or "（未指定实验）",
@@ -457,18 +523,11 @@ class PurchaseService:
 
         for res in reservations:
             reagent = res.reagent_name or "（未命名试剂）"
-            entry = merged.setdefault(reagent, {
-                "reagent_name": reagent,
-                "cas_number": res.cas_number,
-                "total_demand": 0.0,
-                "courses": [],
-                "supplier": None,
-                "unit_price": None,
-            })
+            entry = _entry_for(reagent, res.cas_number)
             qty = float(res.quantity or 0)
             entry["total_demand"] += qty
-            if not entry.get("cas_number") and res.cas_number:
-                entry["cas_number"] = res.cas_number
+            # 预定单数量即采购量
+            entry["total_purchase"] += qty
             entry["courses"].append({
                 "course_name": "📌 预定单",
                 "item_name": res.order_number,
@@ -480,14 +539,16 @@ class PurchaseService:
         stock = self._stock_by_reagent()
 
         rows: List[Dict] = []
-        for reagent, entry in merged.items():
+        for (reagent, _cas), entry in merged.items():
             total_demand = round(entry["total_demand"], 2)
+            total_purchase = round(entry["total_purchase"], 2)
             current_stock = round(stock.get(reagent, 0.0), 2)
-            final_purchase = round(max(0.0, total_demand - current_stock), 2)
+            final_purchase = round(max(0.0, total_purchase - current_stock), 2)
             rows.append({
                 "reagent_name": reagent,
                 "cas_number": entry["cas_number"],
                 "total_demand": total_demand,
+                "total_purchase": total_purchase,
                 "current_stock": current_stock,
                 "final_purchase": final_purchase,
                 "need_purchase": final_purchase > 0,
@@ -495,6 +556,14 @@ class PurchaseService:
                 "supplier": entry["supplier"] or meta.get(reagent, {}).get("supplier"),
                 "unit_price": entry["unit_price"] or meta.get(reagent, {}).get("unit_price"),
             })
+
+        # 同名试剂出现多个 CAS：提示核对，避免危化品因取首条 CAS 而漏审批
+        cas_conflict_names = [n for n, cs in cas_conflicts.items() if len(cs) > 1]
+        cas_conflict_hint = (
+            f"；⚠️ {len(cas_conflict_names)} 种试剂存在多个 CAS（{ '、'.join(cas_conflict_names[:3]) }），"
+            "已按 CAS 分别汇总，请核对录入"
+            if cas_conflict_names else ""
+        )
 
         rows.sort(key=lambda r: r["final_purchase"], reverse=True)
         logger.info(
@@ -509,7 +578,7 @@ class PurchaseService:
             message=(
                 f"已汇总 {len(plans)} 份已提交课程采购单"
                 f" + {len(reservations)} 张已批准预定单，共 {len(rows)} 种试剂"
-                + missing_hint
+                + missing_hint + cas_conflict_hint
             ),
         )
 
@@ -799,7 +868,14 @@ class PurchaseService:
                 message=f"该采购单状态为「{plan.status}」，仅「已提交 / 已下单」且未到货时可取消",
                 error_code="INVALID_TRANSITION",
             )
-        if purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_DRAFT}):
+        # 退回草稿时一并清空审批痕迹，避免「已批准」状态被复用而绕过危化品审批
+        if purchase_plan_service.update(plan_id, {
+            "status": PLAN_STATUS_DRAFT,
+            "approval_status": None,
+            "approver": None,
+            "approval_time": None,
+            "approval_remark": None,
+        }):
             from utils.audit import audit
             audit(
                 operator, "取消采购单",
@@ -851,15 +927,26 @@ class PurchaseService:
 
         succeeded, failed = [], []
         for item in pending:
-            qty = float(item.purchase_quantity or item.demand_quantity or 0)
+            # 显式判空：采购量为 0 表示「不采购」，不能回退到需求量（否则凭空造库存）
+            if item.purchase_quantity is not None:
+                qty = float(item.purchase_quantity)
+            else:
+                qty = float(item.demand_quantity or 0)
             if qty <= 0:
-                failed.append(f"{item.reagent_name}: 采购量为 0，请先在采购单管理中调整")
+                failed.append(f"{item.reagent_name}: 采购量为 0，不予入库（如需采购请先调整采购量）")
                 continue
             # 明细缺 CAS 时按试剂名从化学品信息表回查；仍无则入库时缺省（已放宽校验）
             cas_number = item.cas_number
             if not cas_number:
                 _chem = chemical_service.get_by_name(item.reagent_name or "")
                 cas_number = getattr(_chem, "cas_number", None) if _chem else None
+            # 试剂类型：优先取化学品档案，便于过期判定与统计口径一致
+            reagent_type = None
+            if not cas_number or cas_number != (item.cas_number or None):
+                _chem_for_type = chemical_service.get_by_name(item.reagent_name or "")
+                if _chem_for_type:
+                    cas_number = cas_number or getattr(_chem_for_type, "cas_number", None)
+                    reagent_type = getattr(_chem_for_type, "reagent_type", None)
             result = inventory_service.create_inventory_record(
                 reagent_name=item.reagent_name,
                 cas_number=cas_number,
@@ -868,6 +955,10 @@ class PurchaseService:
                 unit_price=item.unit_price,
                 supplier=item.supplier,
                 manager=manager,
+                # 生产日期必须提供，否则过期判定会因缺日期而永远返回「正常」
+                production_date=production_date,
+                storage_location=storage_location,
+                reagent_type=reagent_type,
                 # 按采购单入库放宽：历史试剂可能未建化学品档案 / 缺 CAS
                 allow_missing_cas=True,
                 allow_unlisted_chemical=True,

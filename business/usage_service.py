@@ -15,8 +15,26 @@ from services.core.borrow_order_service import (
     borrow_order_item_service,
     borrow_order_service,
 )
+from models.core.borrow_order import (
+    ORDER_STATUS_BORROWING,
+    ORDER_STATUS_PARTIAL,
+    ORDER_STATUS_RETURNED,
+)
 from utils.error_handler import logger
 from utils.semester_utils import date_to_semester
+
+# 只有「已生效」的工单才计入用量：待审批（尚未执行领用）与已驳回（永不会归还）
+# 的工单若计入，会让「用量 = 领用量 − 归还量」永久偏大，并污染采购人均用量测算。
+USAGE_ORDER_STATUSES = (
+    ORDER_STATUS_BORROWING,
+    ORDER_STATUS_PARTIAL,
+    ORDER_STATUS_RETURNED,
+)
+
+
+def is_effective_order(order) -> bool:
+    """判断工单是否已生效（可计入用量统计）"""
+    return (getattr(order, "status", None) or "") in USAGE_ORDER_STATUSES
 
 
 class UsageService:
@@ -100,6 +118,8 @@ class UsageService:
         orders_by_user: Dict[str, set] = defaultdict(set)
 
         for order in orders:
+            if not is_effective_order(order):
+                continue
             if semester and date_to_semester(getattr(order, "borrow_time", None)) != semester:
                 continue
             order_items = items_cache.get(order.id)
@@ -160,6 +180,7 @@ class UsageService:
         semesters = {
             date_to_semester(getattr(order, "borrow_time", None))
             for order in borrow_order_service.get_all_parsed()
+            if is_effective_order(order)
         }
         return sorted({s for s in semesters if s}, reverse=True)
 

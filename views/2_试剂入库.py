@@ -299,6 +299,19 @@ def main():
                     key="po_inbound_manager",
                     help="本批试剂瓶的保管人（管理人），默认为当前登录管理员。",
                 )
+                _c_date, _c_loc = st.columns([1, 2])
+                with _c_date:
+                    _po_date = st.date_input(
+                        "生产日期*",
+                        key="po_inbound_date",
+                        help="用于过期判定；缺生产日期会导致该批试剂永远不会被判过期",
+                    )
+                with _c_loc:
+                    _po_loc = st.selectbox(
+                        "存储位置",
+                        options=[""] + storage_location_names,
+                        key="po_inbound_loc",
+                    )
                 if st.button(
                     "📦 批量入库",
                     type="primary",
@@ -312,6 +325,8 @@ def main():
                             _sel_plan_id,
                             manager=_po_manager,
                             operator=_current_user,
+                            production_date=str(_po_date),
+                            storage_location=_po_loc or None,
                         )
                         if _r.is_success():
                             st.success(_r.message)
