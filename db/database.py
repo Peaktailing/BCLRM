@@ -1129,7 +1129,7 @@ class Database:
 
     @contextmanager
     def transaction(self):
-        """事务上下文管理器（支持嵌套，仅最外层真正提交/回滚）
+        """事务上下文管理器（支持嵌套；嵌套段使用 SAVEPOINT 保证原子回滚）
 
         用法::
 
@@ -1138,21 +1138,37 @@ class Database:
                 db.execute_update(...)
 
         进入时若不在事务中则 BEGIN；正常退出 COMMIT，异常 ROLLBACK。
-        嵌套使用时仅最外层提交/回滚，避免子块提前提交导致跨表写入半成功。
+        嵌套段使用 SAVEPOINT：正常退出 RELEASE（并入外层事务），异常时
+        ROLLBACK TO + RELEASE——仅撤销本段写入。
+
+        为何不用「嵌套只跳过回滚」：批量操作（如 bulk_assign_manager）外层
+        单事务包裹、内层逐项 best-effort 失败时，旧实现会让失败项的半截写入
+        （如瓶已更新、变更历史未写入）被外层 COMMIT 落库，造成数据不一致
+        （QA 审查发现）。SAVEPOINT 让失败项的影响范围收敛在自身。
+
         依赖连接使用 autocommit 模式（isolation_level=None）。
         """
         conn = self.connection
         nested = self._transaction_depth > 0
         self._transaction_depth += 1
+        savepoint = f"sp_tx_{self._transaction_depth}"
         try:
             if not nested:
                 conn.execute("BEGIN")
+            else:
+                conn.execute(f"SAVEPOINT {savepoint}")
             yield conn
             if not nested:
                 conn.commit()
+            else:
+                conn.execute(f"RELEASE {savepoint}")
         except Exception:
             if not nested:
                 conn.rollback()
+            else:
+                # 仅回滚本嵌套段的写入（回滚后释放保存点，外层事务继续）
+                conn.execute(f"ROLLBACK TO {savepoint}")
+                conn.execute(f"RELEASE {savepoint}")
             raise
         finally:
             self._transaction_depth -= 1

@@ -52,12 +52,28 @@ class TestPermissionGuard(unittest.TestCase):
     def test_user_allowed_on_own_password_change(self):
         """回归保护：普通用户仅改自己的密码（password_hash）放行"""
         set_user("张三", "user")
-        enforce_write("person", {"password_hash": "pbkdf2:..."}, action="更新")
+        enforce_write(
+            "person", {"password_hash": "pbkdf2:..."}, action="更新",
+            row_identity={"name": "张三"},
+        )
         # 但 person 表其他字段仍拦（防提权/改他人）
         with self.assertRaises(PermissionDeniedError):
             enforce_write("person", {"role": "super_admin"}, action="更新")
         with self.assertRaises(PermissionDeniedError):
             enforce_write("person", {"password_hash": "x", "role": "admin"}, action="更新")
+
+    def test_self_service_requires_target_row_is_self(self):
+        """行级约束：自助豁免仅当目标行是本人（QA 审查发现 M8）"""
+        set_user("张三", "user")
+        # 目标行是他人 → 拒绝，防止直接调用/新增路径改他人密码
+        with self.assertRaises(PermissionDeniedError):
+            enforce_write(
+                "person", {"password_hash": "pbkdf2:..."}, action="更新",
+                row_identity={"name": "李四"},
+            )
+        # 无目标行身份（如 update() 按主键路径）→ 从严拒绝
+        with self.assertRaises(PermissionDeniedError):
+            enforce_write("person", {"password_hash": "pbkdf2:..."}, action="更新")
 
     def test_user_blocked_on_manager_field(self):
         """回归保护：普通用户更新管理权字段被拒，创建时初始指派放行"""

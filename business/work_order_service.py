@@ -628,6 +628,29 @@ class WorkOrderService:
         items = borrow_order_item_service.get_by_order(order_id)
         now = datetime.now().strftime("%Y/%m/%d %H:%M")
 
+        # 原子抢占：仅当审批状态仍为「待审批」时才写入「已批准」。
+        # 先抢占再执行领用——败北方不扣库存。旧实现为先扣库存再无条件
+        # 更新工单状态，撤回/重复审批并发时已撤回工单仍被执行领用、
+        # 状态被互相覆盖（QA 审查发现）。
+        claimed = borrow_order_service.update_where(
+            {"id": order_id, "approval_status": APPROVAL_PENDING},
+            {
+                "status": ORDER_STATUS_BORROWING,
+                "approval_status": APPROVAL_APPROVED,
+                "approval_time": now,
+                "approval_remark": remark,
+            },
+        )
+        if not claimed:
+            current = borrow_order_service.get_by_id(order_id)
+            return ServiceResult.fail(
+                message=(
+                    "该工单已被其他会话处理（当前审批状态："
+                    f"{getattr(current, 'approval_status', None) or '未知'}），请刷新后重试"
+                ),
+                error_code="APPROVAL_RACE_LOST",
+            )
+
         success_count = 0
         failures: List[str] = []
         for item in items:
@@ -657,18 +680,21 @@ class WorkOrderService:
                 failures.append(f"{item.bottle_number}：{result.message}")
 
         if success_count == 0:
-            # 一瓶都没领成（库存状态已变化）：保持待审批，提示发起人调整
+            # 一瓶都没领成（库存状态已变化）：恢复待审批，提示发起人调整。
+            # 明细保留「执行失败」终态，审批人重试时会重新逐瓶执行。
+            borrow_order_service.update_where(
+                {"id": order_id},
+                {
+                    "status": ORDER_STATUS_PENDING,
+                    "approval_status": APPROVAL_PENDING,
+                    "approval_time": None,
+                    "approval_remark": None,
+                },
+            )
             return ServiceResult.fail(
                 message="批准执行失败：" + "；".join(failures),
                 error_code="APPROVE_EXECUTE_FAILED",
             )
-
-        borrow_order_service.update(order_id, {
-            "status": ORDER_STATUS_BORROWING,
-            "approval_status": APPROVAL_APPROVED,
-            "approval_time": now,
-            "approval_remark": remark,
-        })
 
         # 标记实验进度：已借出试剂（仅课程领用）
         if order.course_name and order.item_name:
@@ -726,12 +752,25 @@ class WorkOrderService:
             )
 
         now = datetime.now().strftime("%Y/%m/%d %H:%M")
-        borrow_order_service.update(order_id, {
-            "status": ORDER_STATUS_REJECTED,
-            "approval_status": APPROVAL_REJECTED,
-            "approval_time": now,
-            "approval_remark": remark,
-        })
+        # 原子抢占：仅当审批状态仍为「待审批」才写入「已驳回」，
+        # 防止撤回/批准并发时状态互相覆盖（QA 审查发现）
+        if not borrow_order_service.update_where(
+            {"id": order_id, "approval_status": APPROVAL_PENDING},
+            {
+                "status": ORDER_STATUS_REJECTED,
+                "approval_status": APPROVAL_REJECTED,
+                "approval_time": now,
+                "approval_remark": remark,
+            },
+        ):
+            current = borrow_order_service.get_by_id(order_id)
+            return ServiceResult.fail(
+                message=(
+                    "该工单已被其他会话处理（当前审批状态："
+                    f"{getattr(current, 'approval_status', None) or '未知'}），请刷新后重试"
+                ),
+                error_code="APPROVAL_RACE_LOST",
+            )
         for item in borrow_order_item_service.get_by_order(order_id):
             borrow_order_item_service.update(item.id, {"status": "已驳回"})
 
@@ -786,12 +825,26 @@ class WorkOrderService:
                 error_code="WITHDRAW_FORBIDDEN",
             )
 
-        borrow_order_service.update(order_id, {
-            "status": ORDER_STATUS_WITHDRAWN,
-            "approval_status": APPROVAL_WITHDRAWN,
-            "approval_time": datetime.now().strftime("%Y/%m/%d %H:%M"),
-            "approval_remark": reason or "申请人撤回",
-        })
+        # 原子抢占：仅当审批状态仍为「待审批」才写入「已撤回」。
+        # 旧实现先校验再无条件更新，审批人几乎同时点「批准」时双方都能通过
+        # 校验，导致已撤回工单仍被执行领用（QA 审查发现）。
+        if not borrow_order_service.update_where(
+            {"id": order_id, "approval_status": APPROVAL_PENDING},
+            {
+                "status": ORDER_STATUS_WITHDRAWN,
+                "approval_status": APPROVAL_WITHDRAWN,
+                "approval_time": datetime.now().strftime("%Y/%m/%d %H:%M"),
+                "approval_remark": reason or "申请人撤回",
+            },
+        ):
+            current = borrow_order_service.get_by_id(order_id)
+            return ServiceResult.fail(
+                message=(
+                    "该工单已被其他会话处理（当前审批状态："
+                    f"{getattr(current, 'approval_status', None) or '未知'}），请刷新后重试"
+                ),
+                error_code="WITHDRAW_RACE_LOST",
+            )
         for item in borrow_order_item_service.get_by_order(order_id):
             borrow_order_item_service.update(item.id, {"status": "已撤回"})
 

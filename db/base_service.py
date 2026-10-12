@@ -221,7 +221,12 @@ class BaseService:
             return False
 
         # 集中式服务端写权限守卫（规则见 utils/permission_guard.py）
-        enforce_write(self.table_name, fields, action="更新")
+        # row_identity：目标行身份（update_by_field 传入匹配字段值），
+        # 用于守卫的「自助豁免」行级校验（只能改自己的密码，见 QA 审查 M8）
+        enforce_write(
+            self.table_name, fields, action="更新",
+            row_identity={field_name: value},
+        )
 
         self._validate_field_name(field_name)
 
@@ -235,6 +240,58 @@ class BaseService:
             return affected_rows > 0
         except Exception as e:
             logger.error(f"根据字段更新记录失败 [{self.table_name}]: {str(e)}", exception=e)
+            raise
+
+    def update_where(self, conditions: Dict, fields: Dict) -> bool:
+        """带条件更新：仅当所有条件均满足时才写入（原子抢占）
+
+        用于「先校验状态、再按状态写回」的并发防护（如工单审批/撤回/驳回）：
+        旧模式 check-then-act 中，审批人与申请人几乎同时操作时双方都能通过
+        状态校验，导致已撤回工单仍被执行领用、审批状态被互相覆盖
+        （QA 审查发现）。条件更新把「校验 + 写入」合并为单条原子 SQL。
+
+        Args:
+            conditions: WHERE 条件字典（字段名 → 期望值，AND 连接，值参数化）
+            fields: 要更新的字段字典
+
+        Returns:
+            是否更新成功（0 行受影响 = 条件不满足，未发生写入）
+        """
+        if not fields:
+            logger.warning(f"更新记录失败 [{self.table_name}]: 字段为空")
+            return False
+        if not conditions:
+            # 空条件会导致全表更新，直接拒绝（防止调用方遗漏条件）
+            logger.warning(f"条件更新失败 [{self.table_name}]: 条件为空，拒绝执行")
+            return False
+
+        # 集中式服务端写权限守卫（规则见 utils/permission_guard.py）
+        enforce_write(self.table_name, fields, action="更新")
+
+        # 校验字段名安全（SET 子句与 WHERE 子句均需校验）
+        for key in list(fields.keys()) + list(conditions.keys()):
+            self._validate_field_name(key)
+
+        set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
+        where_clause = ' AND '.join([f"{key} = ?" for key in conditions.keys()])
+        query = f"UPDATE {self.table_name} SET {set_clause} WHERE {where_clause}"
+
+        params = tuple(fields.values()) + tuple(conditions.values())
+
+        try:
+            affected_rows = self.db.execute_update(query, params)
+            if affected_rows:
+                logger.info(
+                    f"条件更新成功 [{self.table_name}] "
+                    f"条件: {list(conditions.keys())}"
+                )
+            else:
+                logger.warning(
+                    f"条件更新未命中 [{self.table_name}] 条件: {conditions}"
+                )
+            return affected_rows > 0
+        except Exception as e:
+            logger.error(f"条件更新记录失败 [{self.table_name}]: {str(e)}", exception=e)
             raise
 
     def delete(self, record_id: int) -> bool:

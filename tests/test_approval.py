@@ -251,6 +251,35 @@ class TestBorrowApproval(unittest.TestCase):
         order = borrow_order_service.get_by_id(order_id)
         self.assertEqual(order.approval_status, "已批准")
 
+    def test_update_where_stale_condition_and_race_guard(self):
+        """条件更新 + 并发败卫（QA 审查发现 M6）。
+
+        1. 条件不满足 → 不写入（原子抢占的基础）
+        2. 已撤回工单再「批准」→ 拒绝，且不扣库存
+        """
+        self._make_controlled("CN-111")
+        self._make_bottle("B9130", "管控试剂", 100.0, cas="CN-111")
+        created = self._create_controlled_course_order("B9130")
+        order_id = created.data["order_id"]
+
+        # 条件为「已批准」（实际是待审批）→ 未命中，不发生写入
+        self.assertFalse(borrow_order_service.update_where(
+            {"id": order_id, "approval_status": "已批准"},
+            {"status": "借用中"},
+        ))
+        order = borrow_order_service.get_by_id(order_id)
+        self.assertEqual(order.approval_status, "待审批")
+        self.assertEqual(order.status, "待审批")
+
+        # 申请人撤回后，审批人再批准：必须失败且库存不变
+        withdraw = work_order_service.withdraw_order(order_id, "李老师")
+        self.assertTrue(withdraw.is_success(), withdraw.message)
+        result = work_order_service.approve_order(order_id, "王管理员")
+        self.assertTrue(result.is_failure())
+
+        bottle = reagent_bottle_service.get_by_bottle_number("B9130")
+        self.assertAlmostEqual(float(bottle.remaining_quantity), 100.0)
+
     def test_reject_closes_order(self):
         """驳回：工单关闭、库存不变。"""
         self._make_controlled("CN-111")

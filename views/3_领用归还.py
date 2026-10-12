@@ -828,7 +828,20 @@ with tab_return:
                 st.markdown("---")
                 if st.button("提交归还", type="primary", use_container_width=True):
                     if not return_entries:
-                        st.warning("⚠️ 请至少勾选一瓶（比例为 0% 的将作为空瓶移入待报废清单）")
+                        st.warning("⚠️ 请至少勾选一瓶要归还的试剂")
+                    elif any(
+                        e["return_qty"] <= 0 and not e["discard"]
+                        for e in return_entries
+                    ):
+                        # 归还比例 0% 且未勾「空瓶」会把整瓶差额计为用量并
+                        # 结清明细（不可逆），多为误拖滑块，提交前显式拦截
+                        # （QA 审查发现）。仅做前端防护，服务端口径不变。
+                        st.error(
+                            "有勾选瓶的归还比例为 0% 且未勾选「空瓶」："
+                            "提交将把整瓶差额计为实际用量并结清明细。"
+                            "如试剂已用完，请勾选「空瓶（用完，移入待报废）」；"
+                            "否则请调整归还比例。"
+                        )
                     else:
                         result = work_order_service.return_items(
                             order_id, return_entries, user_name
