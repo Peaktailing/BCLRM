@@ -13,7 +13,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from business.bottle_state import BorrowableStatus, ExpiryStatus, ScrapStatus
+from types import SimpleNamespace
+
+from business.bottle_state import ScrapStatus, recompute_borrowable
 from business.manager_service import manager_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
@@ -163,20 +165,19 @@ with tab_scrap:
                         if _bottle.id not in _selected_ids:
                             continue
                         _qty = float(_bottle.remaining_quantity or 0)
-                        # 恢复使用：过期瓶不得回到「可借」池（领用时仍会被拦截，易造成误解）
-                        _still_expired = (
-                            getattr(_bottle, "expired_flag", None) == ExpiryStatus.EXPIRED
-                        )
-                        _borrowable_text = (
-                            BorrowableStatus.DEPLETED
-                            if (_qty <= 0 or _still_expired)
-                            else BorrowableStatus.BORROWABLE
-                        )
+                        # 恢复使用：可借性由 bottle_state.recompute_borrowable
+                        # 集中重算（量/过期/报废三要素）——过期瓶不得回到「可借」池
+                        _flag, _check = recompute_borrowable(SimpleNamespace(
+                            remaining_quantity=_qty,
+                            expired_flag=getattr(_bottle, "expired_flag", None),
+                            scrap_flag=None,  # 恢复后无报废标记
+                            borrowable_flag=getattr(_bottle, "borrowable_flag", None),
+                        ))
                         if reagent_bottle_service.update(_bottle.id, {
                             ReagentBottleField.SCRAP_FLAG: None,
                             # borrowable_check 是业务判定事实来源；flag 仅作展示兼容
-                            ReagentBottleField.BORROWABLE_CHECK: _borrowable_text == BorrowableStatus.BORROWABLE,
-                            ReagentBottleField.BORROWABLE_FLAG: _borrowable_text,
+                            ReagentBottleField.BORROWABLE_CHECK: _check,
+                            ReagentBottleField.BORROWABLE_FLAG: _flag,
                         }):
                             _ok += 1
                     logger.info("恢复使用完成", count=_ok)
