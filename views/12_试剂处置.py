@@ -241,6 +241,70 @@ with tab_transfer:
     if not is_admin:
         st.caption("只读视图：管理权流转需管理员及以上权限。")
 
+    # ---------- 🧹 批量指定管理人（导入后初始化用） ----------
+    with st.expander("🧹 批量指定管理人（导入 / 归属调整时使用）", expanded=False):
+        st.caption(
+            "用于数据重新导入后统一初始化保管权：逐瓶校验并记录变更历史，"
+            "已是该管理人的瓶会自动跳过。"
+        )
+        _scope = st.radio(
+            "范围",
+            ["仅未指定管理人的瓶", "全部瓶（按关键字过滤）"],
+            horizontal=True,
+            key="bulk_mgr_scope",
+        )
+        _kw = ""
+        if _scope == "全部瓶（按关键字过滤）":
+            _kw = st.text_input(
+                "试剂关键字（名称/编号，留空表示全部）", key="bulk_mgr_kw"
+            ).strip().lower()
+
+        _targets = []
+        for _b in _bottles:
+            _cur = manager_service.resolve_manager(getattr(_b, "manager", None))
+            if _scope == "仅未指定管理人的瓶":
+                if getattr(_b, "manager", None):
+                    continue
+            elif _kw:
+                if _kw not in (_b.reagent_name or "").lower() and _kw not in str(_b.bottle_number):
+                    continue
+            _targets.append(_b)
+
+        st.caption(f"命中 **{len(_targets)}** 瓶")
+        _bulk_candidates = manager_service.get_candidates().data or []
+        _c1, _c2 = st.columns([1, 2])
+        with _c1:
+            _bulk_mgr = st.selectbox(
+                "目标管理人*", options=[""] + _bulk_candidates, key="bulk_mgr_target"
+            )
+        with _c2:
+            _bulk_remark = st.text_input(
+                "备注（如：2026 重导初始化）", key="bulk_mgr_remark"
+            )
+        if st.button(
+            "🧹 执行批量指定",
+            type="primary",
+            use_container_width=True,
+            disabled=not is_admin,
+            key="bulk_mgr_run",
+        ):
+            if not _bulk_mgr:
+                st.error("请选择目标管理人")
+            elif not _targets:
+                st.warning("没有命中任何试剂瓶")
+            else:
+                _br = manager_service.bulk_assign_manager(
+                    [b.bottle_number for b in _targets],
+                    _bulk_mgr,
+                    st.session_state.get("user_name", ""),
+                    remark=_bulk_remark or None,
+                )
+                if _br.is_success():
+                    st.success(_br.message)
+                    st.rerun()
+                else:
+                    st.error(_br.message)
+
     _cand_result = manager_service.get_candidates()
     _candidates = _cand_result.data if _cand_result.is_success() else []
 

@@ -196,6 +196,64 @@ class ManagerService:
         )
 
 
+    @handle_exception(context="批量指定管理人")
+    def bulk_assign_manager(
+        self,
+        bottle_numbers: List[str],
+        new_manager: str,
+        operator: str,
+        remark: Optional[str] = None,
+    ) -> ServiceResult:
+        """批量指定管理人（导入后初始化 / 归属调整）
+
+        逐瓶复用 `transfer` 的校验（人员必须存在、非借用中），并逐瓶记录变更历史。
+        """
+        if not bottle_numbers:
+            return ServiceResult.fail(
+                message="没有需要指定的试剂瓶", error_code="EMPTY_SELECTION"
+            )
+        if not new_manager or not str(new_manager).strip():
+            return ServiceResult.fail(
+                message="请选择管理人", error_code="EMPTY_NEW_MANAGER"
+            )
+
+        new_manager = str(new_manager).strip()
+        if not self.person_service.get_by_name(new_manager):
+            return ServiceResult.fail(
+                message=f"用户「{new_manager}」不存在，无法作为管理人",
+                error_code="INVALID_NEW_MANAGER",
+            )
+
+        succeeded, failed, skipped = [], [], 0
+        for bottle_number in bottle_numbers:
+            bottle = self.bottle_service.get_by_bottle_number(bottle_number)
+            if not bottle:
+                failed.append(f"{bottle_number}: 试剂瓶不存在")
+                continue
+            if self.resolve_manager(
+                getattr(bottle, ReagentBottleField.MANAGER, None)
+            ) == new_manager:
+                skipped += 1
+                continue
+            result = self.transfer(
+                bottle_number, new_manager, operator,
+                reason="批量指定", remark=remark,
+            )
+            if result.is_success():
+                succeeded.append(bottle_number)
+            else:
+                failed.append(f"{bottle_number}: {result.message}")
+
+        parts = [f"已将 {len(succeeded)} 瓶的管理权指定为「{new_manager}」"]
+        if skipped:
+            parts.append(f"跳过 {skipped} 瓶（已是该管理人）")
+        if failed:
+            parts.append(f"失败 {len(failed)} 瓶：{'；'.join(failed[:5])}")
+        return ServiceResult.ok(
+            data={"succeeded": succeeded, "failed": failed, "skipped": skipped},
+            message="；".join(parts),
+        )
+
     @handle_exception(context="批量管理权流转")
     def transfer_batch(
         self,

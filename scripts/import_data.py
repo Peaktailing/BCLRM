@@ -4,6 +4,7 @@
 """
 import pandas as pd
 import os
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -329,6 +330,7 @@ def import_reagent_bottle(db, df):
             'borrowable_flag': str(row.get('可借标记', '可借')),
             'borrowable_check': 1 if str(row.get('可借标记', '可借')) == '可借' else 0,
             'barcode': str(row.get('条码', '')) if not pd.isna(row.get('条码')) else None,
+            'manager': manager,
         }
 
         try:
@@ -470,10 +472,25 @@ def import_consumable(db, df):
 
 
 def main():
-    """主函数：导入所有数据"""
+    """主函数：导入所有数据
+
+    支持命令行参数：
+      --manager <姓名>    为所有导入的试剂瓶指定管理人（保管权归属）；
+                          必须是人员表中已存在的用户。不指定时留空，
+                          系统按「无管理人 → 超级管理员」规则兜底。
+    """
     print("=" * 60)
     print("Excel 数据导入工具")
     print("=" * 60)
+
+    # 命令行参数
+    parser = argparse.ArgumentParser(description="试剂库数据导入")
+    parser.add_argument(
+        "--manager", default=None,
+        help="导入试剂瓶的管理人（姓名，须存在于人员表）",
+    )
+    args = parser.parse_args()
+    import_manager = (args.manager or "").strip() or None
 
     # Excel 文件路径
     excel_file = os.path.join(project_root, 'docs', '试剂库存管理-运行测试版V0.7.0.1-食品教研室.xlsx')
@@ -488,6 +505,17 @@ def main():
     db = Database()
     db.init_tables()
 
+    # 管理人必须是已存在的人员，否则会造成「管理人流失」（管理权流转/调配都依赖它）
+    if import_manager:
+        exists = db.execute_query(
+            "SELECT COUNT(*) c FROM person WHERE name = ?", (import_manager,)
+        )[0]['c']
+        if not exists:
+            print(f"错误: 管理人「{import_manager}」不存在于人员表，请先在系统设置中添加")
+            db.close()
+            return
+        print(f"试剂瓶管理人: {import_manager}")
+
     # 读取 Excel 文件
     print("\n正在读取 Excel 文件...")
     try:
@@ -496,6 +524,7 @@ def main():
     except Exception as e:
         print(f"错误: 无法读取 Excel 文件: {str(e)}")
         logger.error(f"读取Excel失败: {str(e)}", exception=e)
+        db.close()
         return
 
     # 导入基础数据表
@@ -508,13 +537,16 @@ def main():
     import_controlled_list(db, df)
 
     # 导入核心业务表
-    import_reagent_bottle(db, df)
+    import_reagent_bottle(db, df, manager=import_manager)
     import_borrow_record(db, df)
     import_return_record(db, df)
     import_consumable(db, df)
 
     print("\n" + "=" * 60)
-    print("数据导入完成！")
+    if import_manager:
+        print(f"数据导入完成！（试剂瓶管理人：{import_manager}）")
+    else:
+        print("数据导入完成！（未指定管理人，试剂瓶将按规则归属超级管理员）")
     print("=" * 60)
 
     # 关闭数据库连接
