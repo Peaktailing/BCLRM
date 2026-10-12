@@ -60,3 +60,54 @@ def is_borrowable(flag) -> bool:
 def is_expired(flag) -> bool:
     """判断过期状态是否为「已过期」。"""
     return flag == ExpiryStatus.EXPIRED
+
+
+def recompute_borrowable(bottle) -> tuple:
+    """集中「量 / 过期 / 报废」三要素重算可借状态（纯函数，不写库）。
+
+    规则：
+    - scrap_flag == 待报废 → flag=「空瓶」
+    - remaining_quantity <= 0（未报废）→ flag=「耗尽」
+    - 其余 → flag=「可借」
+    - borrowable_check：仅有量、未过期、未报废且 flag 为「可借」时为 True
+
+    注意：本函数不改写「已借出」（是否处于借出中由调用方结合借还流程判定），
+    已过期瓶的 flag 保持原判定结果、仅将 check 置 False（与 check_and_update
+    的既有约定一致：过期信息由 expired_flag 表达，视图层优先展示）。
+
+    Args:
+        bottle: 具备 remaining_quantity / expired_flag / scrap_flag /
+                borrowable_flag 属性的试剂瓶对象（ORM/Pydantic/轻量视图均可）
+
+    Returns:
+        tuple[str, bool]: (borrowable_flag, borrowable_check)
+    """
+    scrap = getattr(bottle, "scrap_flag", None) or ""
+    remaining = float(getattr(bottle, "remaining_quantity", 0) or 0)
+    expired = getattr(bottle, "expired_flag", None) == ExpiryStatus.EXPIRED
+
+    if scrap == ScrapStatus.PENDING:
+        flag = BorrowableStatus.EMPTY
+    elif remaining <= 0:
+        flag = BorrowableStatus.DEPLETED
+    else:
+        flag = BorrowableStatus.BORROWABLE
+
+    check = (
+        remaining > 0
+        and not expired
+        and not scrap
+        and flag == BorrowableStatus.BORROWABLE
+    )
+    return flag.value, check
+
+
+def is_borrowable_now(bottle) -> bool:
+    """判断试剂瓶当前是否真正可借（量 / 过期 / 报废 / flag 四要素综合）。
+
+    与 ``recompute_borrowable`` 的 check 判定一致，额外要求
+    ``borrowable_flag == 可借``，用于对存量脏行（check=1 但已过期/已报废）
+    做查询侧二次过滤。
+    """
+    flag, check = recompute_borrowable(bottle)
+    return check and flag == BorrowableStatus.BORROWABLE

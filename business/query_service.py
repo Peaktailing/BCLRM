@@ -11,7 +11,7 @@ from services.core.return_record_service import return_record_service
 from services.base.controlled_list_service import controlled_list_service
 from services.base.chemical_service import chemical_service
 from business.expiry_service import expiry_service
-from business.bottle_state import BorrowableStatus
+from business.bottle_state import BorrowableStatus, ExpiryStatus, is_borrowable_now
 from models.core.reagent_bottle import ReagentBottle
 from models.base.controlled_list import ControlledList
 from utils.field_mapper import ReagentBottleField, BorrowRecordField, ReturnRecordField
@@ -40,6 +40,21 @@ def _build_chemical_cache() -> Dict[str, Any]:
     except Exception as e:
         logger.warning("构建化学品缓存失败", exception=e)
     return cache
+
+
+def _derive_bottle_status(bottle) -> str:
+    """派生试剂瓶显示状态（业务层统一口径，供状态筛选过滤使用）。
+
+    优先级：已过期 > 可借（borrowable_check）> 耗尽（无量）> 已借出。
+    可对冲存量脏行：borrowable_check=1 但 expired_flag=已过期 的行派生为「已过期」。
+    """
+    if getattr(bottle, ReagentBottleField.EXPIRED_FLAG, None) == ExpiryStatus.EXPIRED:
+        return ExpiryStatus.EXPIRED
+    if getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None):
+        return BorrowableStatus.BORROWABLE
+    if float(getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0) or 0) <= 0:
+        return BorrowableStatus.DEPLETED
+    return BorrowableStatus.BORROWED
 
 
 class QueryService:
@@ -183,6 +198,11 @@ class QueryService:
             chemical_cache = _build_chemical_cache()
             for bottle in results:
                 expiry_service.check_and_update(bottle, chemical_cache=chemical_cache)
+
+        # 二次过滤：同步后按有效可借性（量/过期/报废）复核，
+        # 剔除 borrowable_check 存量脏值（=1 但已过期/已报废）的行
+        if borrowable_only and results:
+            results = [b for b in results if is_borrowable_now(b)]
 
         return ServiceResult.ok(
             data=results,
@@ -436,27 +456,33 @@ class QueryService:
                     # 多状态查询需要获取所有匹配的记录后在内存中过滤
                     pass
 
+        # 「已过期」不是 borrowable_check 可表达的布尔态，
+        # 必须走内存派生过滤（与页面 _derive_bottle_status 口径一致）
+        multi_status = isinstance(status, list) and len(status) > 1
+        expired_only = (
+            not borrowable_only
+            and (
+                effective_status == ExpiryStatus.EXPIRED
+                or (isinstance(status, list) and len(status) == 1 and status[0] == ExpiryStatus.EXPIRED)
+            )
+        )
+
         # 数据库层查询
-        if isinstance(status, list) and len(status) > 1:
-            # 多状态：先获取所有匹配的，然后过滤
+        if multi_status or expired_only:
+            # 多状态 / 已过期：先获取所有匹配的，然后内存过滤
             # 注意：这种情况下仍需要获取全量数据，但可以先用 keyword 和 reagent_name 过滤
             results = self.bottle_service.search_multi_condition(
                 keyword=keyword,
                 reagent_name=reagent_name,
                 status=None
             )
-            # Python 层过滤状态（使用 borrowable_check + remaining_quantity 派生）
-            effective_status_list = status
+            # Python 层过滤状态（业务层统一派生口径：已过期 > 可借 > 耗尽 > 已借出）
+            effective_status_list = (
+                status if isinstance(status, list) else [status]
+            )
             filtered_results = []
             for bottle in results:
-                bc = getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None)
-                rq = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0)
-                if bc:
-                    derived = "可借"
-                elif rq == 0:
-                    derived = "耗尽"
-                else:
-                    derived = "已借出"
+                derived = _derive_bottle_status(bottle)
                 if derived in effective_status_list:
                     filtered_results.append(bottle)
         else:
@@ -482,6 +508,11 @@ class QueryService:
             chemical_cache = _build_chemical_cache()
             for bottle in filtered_results:
                 expiry_service.check_and_update(bottle, chemical_cache=chemical_cache)
+
+        # 二次过滤：同步后按有效可借性（量/过期/报废）复核，
+        # 剔除 borrowable_check 存量脏值（=1 但已过期/已报废）的行
+        if borrowable_only and filtered_results:
+            filtered_results = [b for b in filtered_results if is_borrowable_now(b)]
 
         return ServiceResult.ok(
             data=filtered_results,

@@ -6,6 +6,7 @@ import streamlit as st
 from business.inventory_service import inventory_service
 from business.query_service import query_service
 from business.manager_service import manager_service
+from business.bottle_state import is_borrowable_now
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 
@@ -36,19 +37,29 @@ def main():
     result = query_service.get_all_reagents()
     reagents = result.data if result.is_success() else []
     
-    # 统计信息（基于 borrowable_check 派生）
+    # 统计信息（可借口径与查询层 is_borrowable_now 二次过滤对齐：
+    # 已过期 / 已报废 / 无量的瓶不计入可借）
     total_count = len(reagents)
-    borrowable_count = sum(1 for r in reagents if getattr(r, 'borrowable_check', False))
-    exhausted_count = sum(1 for r in reagents if not getattr(r, 'borrowable_check', True) and getattr(r, 'remaining_quantity', 0) == 0)
+    borrowable_count = sum(1 for r in reagents if is_borrowable_now(r))
+    exhausted_count = sum(
+        1 for r in reagents
+        if getattr(r, 'expired_flag', None) != '已过期'
+        and not getattr(r, 'scrap_flag', None)
+        and not is_borrowable_now(r)
+        and getattr(r, 'remaining_quantity', 0) == 0
+    )
+    expired_count = sum(1 for r in reagents if getattr(r, 'expired_flag', None) == '已过期')
     
     # 统计卡片
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("试剂瓶总数", total_count)
     with col2:
         st.metric("可借数量", borrowable_count)
     with col3:
         st.metric("已耗尽", exhausted_count)
+    with col4:
+        st.metric("已过期", expired_count)
     
     st.divider()
     
@@ -96,8 +107,8 @@ def main():
         help="输入关键词可模糊匹配试剂名称"
     )
     
-    # 状态筛选
-    status_filter = st.selectbox("状态筛选", ["全部", "可借", "已借出", "耗尽"])
+    # 状态筛选（已过期在业务层按 expired_flag 派生过滤）
+    status_filter = st.selectbox("状态筛选", ["全部", "可借", "已借出", "耗尽", "已过期"])
     
     # 额外的文本搜索（支持CAS号、编号等）
     extra_search = st.text_input("额外搜索（CAS号/编号）")

@@ -8,12 +8,13 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
 from services.core.borrow_record_service import borrow_record_service
 from business.expiry_service import expiry_service
-from business.bottle_state import borrowable_flag_on_return
+from business.bottle_state import recompute_borrowable
 from models.core.return_record import ReturnRecord
 from utils.id_generator import id_generator
 from utils.field_mapper import ReturnRecordField, ReagentBottleField, BorrowRecordField
 from utils.error_handler import logger, ServiceResult, handle_exception
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Optional, List
 from db.database import db
 
@@ -248,9 +249,17 @@ class ReturnService:
                     )
 
             # 8. 更新试剂瓶信息
+            #    可借状态由 bottle_state.recompute_borrowable 集中重算
+            #    （量/过期/报废三要素）：已过期或已报废的瓶归还后不得被重设「可借」。
+            #    以「归还后的剩余量」构造轻量视图参与重算，不改动原瓶对象。
             bottle_id = getattr(bottle, ReagentBottleField.ID, None)
-            borrowable_flag = borrowable_flag_on_return(remaining_qty)
-            borrowable_check = remaining_qty > 0
+            _post_return_view = SimpleNamespace(
+                remaining_quantity=remaining_qty,
+                expired_flag=getattr(bottle, "expired_flag", None),
+                scrap_flag=getattr(bottle, "scrap_flag", None),
+                borrowable_flag=getattr(bottle, "borrowable_flag", None),
+            )
+            borrowable_flag, borrowable_check = recompute_borrowable(_post_return_view)
 
             updates = {
                 ReagentBottleField.REMAINING_QUANTITY: remaining_qty,

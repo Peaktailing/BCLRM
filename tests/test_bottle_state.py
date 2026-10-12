@@ -4,6 +4,7 @@
 保证各业务入口（借出、归还、入库、查询）使用一致的规则。
 """
 import unittest
+from types import SimpleNamespace
 
 from business.bottle_state import (
     BorrowableStatus,
@@ -12,7 +13,9 @@ from business.bottle_state import (
     borrowable_flag_on_inbound,
     borrowable_flag_on_return,
     is_borrowable,
+    is_borrowable_now,
     is_expired,
+    recompute_borrowable,
 )
 
 
@@ -67,6 +70,73 @@ class TestBorrowablePredicates(unittest.TestCase):
         self.assertFalse(is_expired("正常"))
         self.assertFalse(is_expired("即将过期"))
         self.assertFalse(is_expired(None))
+
+
+class TestRecomputeBorrowable(unittest.TestCase):
+    """量/过期/报废三要素集中重算（recompute_borrowable / is_borrowable_now）。"""
+
+    @staticmethod
+    def _bottle(**kw) -> SimpleNamespace:
+        defaults = dict(
+            remaining_quantity=100.0,
+            expired_flag="正常",
+            scrap_flag=None,
+            borrowable_flag="可借",
+        )
+        defaults.update(kw)
+        return SimpleNamespace(**defaults)
+
+    def test_full_normal_bottle_is_borrowable(self):
+        """有量 + 正常 + 未报废 → 可借。"""
+        flag, check = recompute_borrowable(self._bottle())
+        self.assertEqual(flag, "可借")
+        self.assertTrue(check)
+        self.assertTrue(is_borrowable_now(self._bottle()))
+
+    def test_zero_qty_is_depleted(self):
+        """无量 → 耗尽、不可借。"""
+        flag, check = recompute_borrowable(self._bottle(remaining_quantity=0.0))
+        self.assertEqual(flag, "耗尽")
+        self.assertFalse(check)
+        self.assertFalse(is_borrowable_now(self._bottle(remaining_quantity=0.0)))
+
+    def test_expired_bottle_not_borrowable(self):
+        """已过期（有量）→ check 必须为 False，不得借出。"""
+        b = self._bottle(expired_flag="已过期")
+        flag, check = recompute_borrowable(b)
+        self.assertFalse(check)
+        self.assertFalse(is_borrowable_now(b))
+
+    def test_scrapped_bottle_not_borrowable(self):
+        """已报废（有量）→ 不可借。"""
+        b = self._bottle(scrap_flag="已报废")
+        flag, check = recompute_borrowable(b)
+        self.assertFalse(check)
+        self.assertFalse(is_borrowable_now(b))
+
+    def test_returned_borrowed_expired_not_revived(self):
+        """已借出 + 已过期瓶归还（有量）→ 不得被重设为可借（check=False）。"""
+        b = self._bottle(borrowable_flag="已借出", expired_flag="已过期")
+        flag, check = recompute_borrowable(b)
+        self.assertFalse(check)
+        self.assertFalse(is_borrowable_now(b))
+
+    def test_returned_borrowed_scrapped_not_revived(self):
+        """已借出 + 待报废瓶归还 → 不得被重设为可借，且转入空瓶态。"""
+        b = self._bottle(
+            borrowable_flag="已借出", remaining_quantity=0.0, scrap_flag="待报废"
+        )
+        flag, check = recompute_borrowable(b)
+        self.assertEqual(flag, "空瓶")
+        self.assertFalse(check)
+        self.assertFalse(is_borrowable_now(b))
+
+    def test_expiring_flag_still_borrowable(self):
+        """即将过期（未到期）仍可借。"""
+        b = self._bottle(expired_flag="即将过期")
+        flag, check = recompute_borrowable(b)
+        self.assertTrue(check)
+        self.assertTrue(is_borrowable_now(b))
 
 
 if __name__ == "__main__":

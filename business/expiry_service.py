@@ -15,7 +15,7 @@ from typing import Optional, Tuple, Dict, Any
 from models.core.reagent_bottle import ReagentBottle
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.base.chemical_service import chemical_service
-from business.bottle_state import BorrowableStatus, ExpiryStatus
+from business.bottle_state import BorrowableStatus, ExpiryStatus, recompute_borrowable
 from utils.error_handler import logger, ServiceResult, handle_exception
 from utils.field_mapper import ReagentBottleField
 
@@ -92,14 +92,14 @@ class ExpiryService:
             try:
                 fields = {ReagentBottleField.EXPIRED_FLAG: new_flag}
                 # 过期瓶必须同时退出「可借」集合（否则仍会出现在只显示可借的清单里）；
-                # 恢复正常且有剩余量、未报废时再恢复可借
+                # 恢复正常时由 recompute_borrowable 统一判定（有量、未报废才恢复可借），
+                # 且「已借出」瓶不得被恢复分支误置为可借（借还状态由借还流程管理）。
                 if new_flag == ExpiryStatus.EXPIRED:
                     fields[ReagentBottleField.BORROWABLE_CHECK] = 0
-                elif (
-                    float(getattr(bottle, "remaining_quantity", 0) or 0) > 0
-                    and not getattr(bottle, "scrap_flag", None)
-                ):
-                    fields[ReagentBottleField.BORROWABLE_CHECK] = 1
+                elif getattr(bottle, "borrowable_flag", None) != BorrowableStatus.BORROWED:
+                    _flag, check = recompute_borrowable(bottle)
+                    if check:
+                        fields[ReagentBottleField.BORROWABLE_CHECK] = 1
                 self.bottle_service.update_by_field(
                     field_name=ReagentBottleField.BOTTLE_NUMBER,
                     value=bottle.bottle_number,
@@ -141,20 +141,34 @@ class ExpiryService:
 
         for bottle in bottles:
             new_flag = self.check_bottle(bottle, chemical_cache)
+            fields = {}
             if new_flag != bottle.expired_flag:
-                try:
-                    self.bottle_service.update_by_field(
-                        field_name=ReagentBottleField.BOTTLE_NUMBER,
-                        value=bottle.bottle_number,
-                        fields={ReagentBottleField.EXPIRED_FLAG: new_flag},
-                    )
-                    update_count += 1
-                except Exception as e:
-                    logger.error(
-                        "过期状态同步失败",
-                        bottle_number=bottle.bottle_number,
-                        exception=e,
-                    )
+                fields[ReagentBottleField.EXPIRED_FLAG] = new_flag
+
+            # 可借性 check 以「量/过期/报废」三要素重算为准，顺带修正存量脏值
+            # （如 borrowable_check=1 但实际已过期/已报废的行）。
+            # 「已借出」瓶交由借还流程管理，此处不改写其可借性。
+            if getattr(bottle, "borrowable_flag", None) != BorrowableStatus.BORROWED:
+                _flag, check = recompute_borrowable(bottle)
+                current_check = bool(getattr(bottle, "borrowable_check", False))
+                if bool(check) != current_check:
+                    fields[ReagentBottleField.BORROWABLE_CHECK] = 1 if check else 0
+
+            if not fields:
+                continue
+            try:
+                self.bottle_service.update_by_field(
+                    field_name=ReagentBottleField.BOTTLE_NUMBER,
+                    value=bottle.bottle_number,
+                    fields=fields,
+                )
+                update_count += 1
+            except Exception as e:
+                logger.error(
+                    "过期状态同步失败",
+                    bottle_number=bottle.bottle_number,
+                    exception=e,
+                )
 
         logger.info("过期状态同步完成", total=len(bottles), updated=update_count)
         return ServiceResult.ok(data=update_count)
