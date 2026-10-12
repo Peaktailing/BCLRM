@@ -29,6 +29,15 @@ _dbmod.Database._instances[_default_db_path] = _test_db
 # 3) 重定向模块级全局实例（先于任何业务模块导入）
 _dbmod.db = _test_db
 
+# 4) 审计日志库同样重定向到临时文件，避免测试追加写入真实 db/operation_log.db
+#    （operation_log_service 与 init_log_db 均在调用时才读取 settings.DB_LOG_PATH，
+#    本模块先于任何业务测试模块执行，覆盖必然生效）
+import config.settings as _settings
+
+_LOG_TMP = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_LOG_TMP.close()
+_settings.DB_LOG_PATH = _LOG_TMP.name
+
 # 建立空表结构（幂等）
 _test_db.init_tables()
 
