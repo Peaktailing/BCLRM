@@ -8,7 +8,7 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
 from services.core.borrow_record_service import borrow_record_service
 from business.expiry_service import expiry_service
-from business.bottle_state import recompute_borrowable
+from business.bottle_state import BorrowableStatus, ScrapStatus, recompute_borrowable
 from models.core.return_record import ReturnRecord
 from utils.id_generator import id_generator
 from utils.field_mapper import ReturnRecordField, ReagentBottleField, BorrowRecordField
@@ -48,7 +48,8 @@ class ReturnService:
         bottle_number: str,
         return_user: str,
         remaining_qty: float,
-        skip_expiry_check: bool = False
+        skip_expiry_check: bool = False,
+        as_empty: bool = False
     ) -> ServiceResult:
         """试剂归还核心业务逻辑
 
@@ -60,6 +61,8 @@ class ReturnService:
             return_user: 归还人姓名
             remaining_qty: 归还时的剩余量
             skip_expiry_check: 是否跳过过期状态检查（用于批量归还时统一处理）
+            as_empty: 空瓶归还：剩余量记 0，瓶标记「空瓶」并进入待报废清单
+                （与归还记录、领用记录同事务原子提交，避免出现中间态）
 
         Returns:
             ServiceResult: 归还结果，成功时 data 包含归还记录信息，
@@ -95,6 +98,10 @@ class ReturnService:
                 message="剩余量不能为负数",
                 error_code="INVALID_REMAINING_QTY"
             )
+
+        # 空瓶归还：余量强制记 0，瓶转入「空瓶 + 待报废」（与归还记录同事务）
+        if as_empty:
+            remaining_qty = 0.0
 
         # 1. 查询试剂瓶
         bottle = self.bottle_service.get_by_bottle_number(bottle_number)
@@ -268,6 +275,11 @@ class ReturnService:
                 ReagentBottleField.BORROWABLE_FLAG: borrowable_flag,
                 ReagentBottleField.BORROWABLE_CHECK: borrowable_check
             }
+            # 空瓶迁移并入同一事务：标记「空瓶」并进入待报废清单
+            if as_empty:
+                borrowable_flag = BorrowableStatus.EMPTY.value
+                updates[ReagentBottleField.BORROWABLE_FLAG] = borrowable_flag
+                updates[ReagentBottleField.SCRAP_FLAG] = ScrapStatus.PENDING.value
             updated = self.bottle_service.update(bottle_id, updates)
             if not updated:
                 # 瓶更新失败主动抛异常，触发事务回滚（归还记录一并撤销）
@@ -362,7 +374,10 @@ class ReturnService:
             return_user = item.get("return_user", "")
             remaining_qty = item.get("remaining_qty", 0.0)
 
-            result = self.reagent_return(bottle_number, return_user, remaining_qty, skip_expiry_check=True)
+            result = self.reagent_return(
+                bottle_number, return_user, remaining_qty,
+                skip_expiry_check=True, as_empty=False,
+            )
 
             if result.success:
                 success_count += 1

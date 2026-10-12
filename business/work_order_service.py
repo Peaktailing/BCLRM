@@ -20,7 +20,6 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from business.borrow_service import borrow_service
-from business.bottle_state import BorrowableStatus, ScrapStatus
 from business.experiment_plan_service import experiment_plan_business
 from business.return_service import return_service
 from models.core.borrow_order import (
@@ -28,6 +27,7 @@ from models.core.borrow_order import (
     APPROVAL_NOT_REQUIRED,
     APPROVAL_PENDING,
     APPROVAL_REJECTED,
+    APPROVAL_WITHDRAWN,
     ITEM_STATUS_PENDING,
     ITEM_STATUS_RETURNED,
     ORDER_STATUS_BORROWING,
@@ -35,6 +35,7 @@ from models.core.borrow_order import (
     ORDER_STATUS_PENDING,
     ORDER_STATUS_RETURNED,
     ORDER_STATUS_REJECTED,
+    ORDER_STATUS_WITHDRAWN,
     ORDER_TYPE_COURSE,
     ORDER_TYPE_SPORADIC,
 )
@@ -48,7 +49,6 @@ from services.core.borrow_order_service import (
 from services.core.borrow_record_service import borrow_record_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from utils.error_handler import logger, ServiceResult, handle_exception
-from utils.field_mapper import ReagentBottleField
 
 # 允许发起工单的角色（管理员集合与权限服务保持一致）
 ADMIN_ROLES = {"super_admin", "admin"}
@@ -57,6 +57,50 @@ TEACHER_ROLES = {"super_admin", "admin", "teacher"}
 
 class WorkOrderService:
     """领用工单业务服务"""
+
+    # ------------------------------------------------------------------
+    # 审批人候选与角色辅助
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _role_of(name: Optional[str]) -> Optional[str]:
+        """查询人员角色（不在人员表中返回 None）"""
+        if not name:
+            return None
+        for p in person_service.get_all_persons():
+            if p.name == name:
+                return getattr(p, "role", None)
+        return None
+
+    def _is_admin_plus(self, name: Optional[str]) -> bool:
+        """管理员及以上（admin / super_admin）"""
+        return self._role_of(name) in ADMIN_ROLES
+
+    def is_super_admin(self, name: Optional[str]) -> bool:
+        """是否超级管理员（用于页面候选标注「应急」与脏配置提示）"""
+        return self._role_of(name) == "super_admin"
+
+    def list_approver_candidates(self, exclude_name: Optional[str] = None) -> List[str]:
+        """正常提交流程的合格审批人候选：管理员（admin）账号，排除发起人本人。
+
+        超管不出现在该候选集中（超管接管唯一入口是管理员通过
+        reassign_approver 应急改派，见 list_reassign_candidates）。
+        """
+        candidates = sorted({p.name for p in person_service.get_by_role("admin") if p.name})
+        if exclude_name:
+            candidates = [n for n in candidates if n != exclude_name]
+        return candidates
+
+    def list_reassign_candidates(self, exclude_name: Optional[str] = None) -> List[str]:
+        """应急重新指定审批人的候选集：admin + super_admin。
+
+        超管选项由页面标注「（应急）」；exclude_name 通常传工单申请人
+        （新审批人不能是申请人本人）。
+        """
+        names = {p.name for p in person_service.get_by_role("admin") if p.name}
+        names |= {p.name for p in person_service.get_by_role("super_admin") if p.name}
+        if exclude_name:
+            names.discard(exclude_name)
+        return sorted(names)
 
     # ------------------------------------------------------------------
     # 发起工单
@@ -72,6 +116,7 @@ class WorkOrderService:
         remark: Optional[str] = None,
         created_by: Optional[str] = None,
         project_id: Optional[int] = None,
+        approver_name: Optional[str] = None,
     ) -> ServiceResult:
         """发起领用工单
 
@@ -81,6 +126,9 @@ class WorkOrderService:
             cart_items: [{bottle_number, reagent_name, remaining_quantity}, ...]
             course: 课程对象（课程领用必填）
             exp_item: 实验项目对象（课程领用必填）
+            approver_name: 审批人（显式指定；课程领用未指定时退回课程绑定审批人）。
+                正常提交的合格审批人 = 管理员（admin）账号：排除超管、排除发起人本人；
+                超管接管只能由管理员通过 reassign_approver 应急改派。
         """
         if order_type not in (ORDER_TYPE_SPORADIC, ORDER_TYPE_COURSE):
             return ServiceResult.fail(message="工单类型不正确", error_code="INVALID_ORDER_TYPE")
@@ -100,7 +148,7 @@ class WorkOrderService:
         # ---------- 审批判定：任一试剂命中管控目录即需先审批 ----------
         needs_approval = False
         controlled_types = set()
-        approver_name = getattr(course, "approver", None) if course else None
+        course_approver = getattr(course, "approver", None) if course else None
 
         for entry in cart_items:
             _bottle = reagent_bottle_service.get_by_bottle_number(
@@ -117,23 +165,20 @@ class WorkOrderService:
                 )
 
         if needs_approval:
-            # 审批人：课程领用取课程绑定的审批管理员；零星领用由超级管理员审批
-            if not approver_name:
-                _supers = sorted(
-                    p.name for p in person_service.get_by_role("super_admin") if p.name
-                )
-                approver_name = _supers[0] if _supers else None
-            if not approver_name:
+            # 审批人：优先显式指定（页面下拉），课程领用未指定时退回课程绑定审批人。
+            # 不再自动取第一个超管：正常提交的合格审批人 = 管理员（admin）账号，
+            # 排除超管（超管接管唯一入口是管理员通过 reassign_approver 应急改派）。
+            effective_approver = approver_name or course_approver
+            if not effective_approver:
                 return ServiceResult.fail(
                     message=(
-                        "清单含管控化学品（"
+                        "请指定审批人（清单含管控化学品："
                         + "、".join(sorted(controlled_types))
-                        + "），但尚无审批人：课程领用请先在「课程管理」为该课程"
-                        "指定审批管理员；零星领用需要系统中存在超级管理员"
+                        + "）；课程领用可先在「课程管理」为该课程指定审批管理员"
                     ),
                     error_code="NO_APPROVER",
                 )
-            if approver_name == applicant:
+            if effective_approver == applicant:
                 return ServiceResult.fail(
                     message=(
                         "审批人不能是发起人本人：请调整该课程的审批管理员，"
@@ -141,6 +186,24 @@ class WorkOrderService:
                     ),
                     error_code="SELF_APPROVAL",
                 )
+            _approver_role = self._role_of(effective_approver)
+            if _approver_role == "super_admin":
+                return ServiceResult.fail(
+                    message=(
+                        "请选择管理员审批；应急情况可由管理员通过"
+                        "『重新指定审批人』改派超管接管"
+                    ),
+                    error_code="SUPER_ADMIN_APPROVER",
+                )
+            if _approver_role != "admin":
+                return ServiceResult.fail(
+                    message=(
+                        f"审批人「{effective_approver}」不是管理员账号，"
+                        "请选择管理员审批"
+                    ),
+                    error_code="INVALID_APPROVER_ROLE",
+                )
+            approver_name = effective_approver
 
             order_number = "BO" + datetime.now().strftime("%Y%m%d%H%M%S%f")
             from db.database import db
@@ -197,14 +260,20 @@ class WorkOrderService:
             )
 
             from utils.audit import audit
+            _operator = created_by or applicant
+            _proxy = (
+                f"；代 {applicant} 提交"
+                if created_by and created_by != applicant
+                else ""
+            )
             audit(
-                applicant,
+                _operator,
                 "提交审批",
                 target_type="order",
                 target_id=order_number,
                 detail=(
                     f"含管控化学品（{'、'.join(sorted(controlled_types))}），"
-                    f"等待 {approver_name} 审批"
+                    f"等待 {approver_name} 审批" + _proxy
                 ),
             )
             return ServiceResult.ok(
@@ -319,13 +388,20 @@ class WorkOrderService:
         )
 
         from utils.audit import audit
+        _operator = created_by or applicant
+        _proxy = (
+            f"；代 {applicant} 提交"
+            if created_by and created_by != applicant
+            else ""
+        )
         audit(
-            applicant,
+            _operator,
             "发起工单",
             target_type="order",
             target_id=order_number,
             detail=f"{order_type}，{len(success_items)} 瓶"
-                   + (f"；{len(failures)} 瓶失败" if failures else ""),
+                   + (f"；{len(failures)} 瓶失败" if failures else "")
+                   + _proxy,
         )
         message = f"工单 {order_number} 已创建（{len(success_items)} 瓶试剂）"
         if failures:
@@ -671,6 +747,139 @@ class WorkOrderService:
         )
 
     # ------------------------------------------------------------------
+    # 撤回 / 应急重新指定审批人
+    # ------------------------------------------------------------------
+    @handle_exception(context="撤回领用工单")
+    def withdraw_order(
+        self,
+        order_id: int,
+        operator: str,
+        reason: Optional[str] = None
+    ) -> ServiceResult:
+        """撤回待审批工单（仅 PENDING；申请人本人或管理员及以上）
+
+        Args:
+            operator: 操作人（申请人本人或 admin+）
+            reason: 撤回原因（可选）
+        """
+        order = borrow_order_service.get_by_id(order_id)
+        if not order:
+            return ServiceResult.fail(message="工单不存在", error_code="ORDER_NOT_FOUND")
+        if order.approval_status != APPROVAL_PENDING:
+            return ServiceResult.fail(
+                message=f"该工单当前审批状态为「{order.approval_status}」，无法撤回",
+                error_code="INVALID_APPROVAL_STATE",
+            )
+        if not (operator and order.applicant) or (
+            operator != order.applicant and not self._is_admin_plus(operator)
+        ):
+            return ServiceResult.fail(
+                message="只有申请人本人或管理员及以上可以撤回该工单",
+                error_code="WITHDRAW_FORBIDDEN",
+            )
+
+        borrow_order_service.update(order_id, {
+            "status": ORDER_STATUS_WITHDRAWN,
+            "approval_status": APPROVAL_WITHDRAWN,
+            "approval_time": datetime.now().strftime("%Y/%m/%d %H:%M"),
+            "approval_remark": reason or "申请人撤回",
+        })
+        for item in borrow_order_item_service.get_by_order(order_id):
+            borrow_order_item_service.update(item.id, {"status": "已撤回"})
+
+        logger.info(
+            "工单已撤回",
+            order_number=order.order_number,
+            operator=operator,
+        )
+
+        from utils.audit import audit
+        audit(
+            operator,
+            "撤回工单",
+            target_type="order",
+            target_id=order.order_number,
+            detail=(reason or "（无原因）") + f"；原审批人 {order.approver or '—'}",
+        )
+        return ServiceResult.ok(
+            data={"order_number": order.order_number},
+            message=f"工单 {order.order_number} 已撤回",
+        )
+
+    @handle_exception(context="应急重新指定审批人")
+    def reassign_approver(
+        self,
+        order_id: int,
+        new_approver: str,
+        operator: str,
+        reason: Optional[str] = None
+    ) -> ServiceResult:
+        """应急重新指定待审批工单的审批人（仅 PENDING；仅管理员及以上可操作）
+
+        这是超管接管的唯一正常入口：候选集 = admin + super_admin，
+        新审批人不能是申请人本人。审计固定标记「应急重新指定审批人」。
+
+        Args:
+            new_approver: 新审批人（admin 或 super_admin 角色）
+            operator: 操作人（必须为 admin+）
+            reason: 改派原因（可选）
+        """
+        order = borrow_order_service.get_by_id(order_id)
+        if not order:
+            return ServiceResult.fail(message="工单不存在", error_code="ORDER_NOT_FOUND")
+        if order.approval_status != APPROVAL_PENDING:
+            return ServiceResult.fail(
+                message=f"该工单当前审批状态为「{order.approval_status}」，无法重新指定审批人",
+                error_code="INVALID_APPROVAL_STATE",
+            )
+        if not self._is_admin_plus(operator):
+            return ServiceResult.fail(
+                message="只有管理员及以上可以重新指定审批人",
+                error_code="REASSIGN_FORBIDDEN",
+            )
+        if not new_approver:
+            return ServiceResult.fail(
+                message="请选择新的审批人", error_code="EMPTY_APPROVER"
+            )
+        if new_approver == order.applicant:
+            return ServiceResult.fail(
+                message="新审批人不能是申请人本人", error_code="SELF_APPROVAL"
+            )
+        if self._role_of(new_approver) not in ADMIN_ROLES:
+            return ServiceResult.fail(
+                message=f"新审批人「{new_approver}」不是管理员/超管账号",
+                error_code="INVALID_APPROVER_ROLE",
+            )
+
+        old_approver = order.approver
+        borrow_order_service.update(order_id, {"approver": new_approver})
+
+        logger.info(
+            "应急重新指定审批人",
+            order_number=order.order_number,
+            old_approver=old_approver,
+            new_approver=new_approver,
+            operator=operator,
+        )
+
+        from utils.audit import audit
+        audit(
+            operator,
+            "应急重新指定审批人",
+            target_type="order",
+            target_id=order.order_number,
+            detail=(
+                f"审批人 {old_approver or '—'} → {new_approver}"
+                f"（应急重新指定审批人）"
+                + (f"；原因：{reason}" if reason else "")
+            ),
+        )
+        return ServiceResult.ok(
+            data={"order_number": order.order_number, "approver": new_approver},
+            message=f"工单 {order.order_number} 审批人已改派为 {new_approver}",
+        )
+
+    # ------------------------------------------------------------------
     # 归还工单
     # ------------------------------------------------------------------
     @handle_exception(context="按工单归还")
@@ -734,14 +943,10 @@ class WorkOrderService:
                 bottle_number=item.bottle_number,
                 return_user=return_user,
                 remaining_qty=target_remaining,
+                as_empty=discard,
             )
             if result.is_success():
                 done.append((item, qty))
-                if discard and bottle is not None:
-                    reagent_bottle_service.update(bottle.id, {
-                        ReagentBottleField.BORROWABLE_FLAG: BorrowableStatus.EMPTY,
-                        ReagentBottleField.SCRAP_FLAG: ScrapStatus.PENDING,
-                    })
             else:
                 failures.append(f"{item.bottle_number}：{result.message}")
 

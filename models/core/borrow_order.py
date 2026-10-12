@@ -16,12 +16,14 @@ ORDER_STATUS_BORROWING = "借用中"
 ORDER_STATUS_PARTIAL = "部分归还"
 ORDER_STATUS_RETURNED = "已归还"
 ORDER_STATUS_REJECTED = "已驳回"
+ORDER_STATUS_WITHDRAWN = "已撤回"
 
 # 审批状态
 APPROVAL_NOT_REQUIRED = "无需审批"
 APPROVAL_PENDING = "待审批"
 APPROVAL_APPROVED = "已批准"
 APPROVAL_REJECTED = "已驳回"
+APPROVAL_WITHDRAWN = "已撤回"
 
 # 明细状态
 ITEM_STATUS_PENDING = "待归还"
@@ -41,7 +43,7 @@ class BorrowOrder:
     project_id: Optional[int] = None      # 非课程类实验项目
     course_name: Optional[str] = None     # 课程名快照
     item_name: Optional[str] = None       # 实验名快照
-    status: Optional[str] = None          # 待审批 / 借用中 / 部分归还 / 已归还 / 已驳回
+    status: Optional[str] = None          # 待审批 / 借用中 / 部分归还 / 已归还 / 已驳回 / 已撤回
     approval_status: Optional[str] = None  # 无需审批 / 待审批 / 已批准 / 已驳回
     approver: Optional[str] = None         # 审批人
     approval_time: Optional[str] = None    # 审批时间

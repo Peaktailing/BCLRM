@@ -9,6 +9,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -27,6 +28,7 @@ from services.base.experiment_item_service import experiment_item_service
 from services.core.borrow_order_service import borrow_order_service
 from services.core.borrow_record_service import borrow_record_service
 from services.core.reagent_bottle_service import reagent_bottle_service
+from services.core.return_record_service import return_record_service
 
 _TABLES = (
     "borrow_order_item", "borrow_order",
@@ -416,7 +418,11 @@ class TestWorkOrder(unittest.TestCase):
         self.assertAlmostEqual(after["remaining_qty"], 14.0)
 
     def test_zero_ratio_return_marks_empty_and_scrap(self):
-        """归还比例 0%（空瓶）：瓶记为空瓶并进入待报废清单，明细结清。"""
+        """归还比例 0%（空瓶）：瓶记为空瓶并进入待报废清单，明细结清。
+
+        空瓶四要素齐全：余量 0 + flag 空瓶 + scrap 待报废 + check False，
+        且全部与归还记录同事务落库（无后置独立更新的中间态）。
+        """
         self._make_bottle("B8001", "试剂甲", 100.0)
         created = work_order_service.create_order(
             order_type=ORDER_TYPE_SPORADIC,
@@ -440,9 +446,105 @@ class TestWorkOrder(unittest.TestCase):
         self.assertEqual(bottle.borrowable_flag, BorrowableStatus.EMPTY)
         self.assertEqual(bottle.scrap_flag, ScrapStatus.PENDING)
         self.assertAlmostEqual(float(bottle.remaining_quantity), 0.0)
+        self.assertFalse(bool(bottle.borrowable_check), "空瓶不得可借")
 
         after = work_order_service.get_order_items(order_id)[0]
         self.assertEqual(after["status"], "已归还")
+
+    def test_empty_return_atomic_on_migration_failure(self):
+        """空瓶迁移步故障 → 整体回滚：无归还记录、瓶状态未变、明细未结清。"""
+        self._make_bottle("B8101", "试剂甲", 100.0)
+        created = work_order_service.create_order(
+            order_type=ORDER_TYPE_SPORADIC,
+            applicant="张三",
+            cart_items=[
+                {"bottle_number": "B8101", "reagent_name": "试剂甲", "borrow_qty": 20.0}
+            ],
+        )
+        order_id = created.data["order_id"]
+        item = work_order_service.get_order_items(order_id)[0]
+
+        # 注入故障：瓶更新失败（返回 False）触发事务回滚
+        with mock.patch.object(reagent_bottle_service, "update", return_value=False):
+            result = work_order_service.return_items(
+                order_id,
+                [{"item_id": item["id"], "return_qty": 0.0, "discard": True}],
+                "张三",
+            )
+        self.assertTrue(result.is_failure(), "空瓶迁移失败应整体失败")
+
+        # 无归还记录
+        records = return_record_service.search_multi_condition(bottle_number="B8101")
+        self.assertEqual(records, [], "回滚后不应残留归还记录")
+
+        # 瓶状态未变（保持借出态，未进入空瓶/待报废）
+        bottle = reagent_bottle_service.get_by_bottle_number("B8101")
+        self.assertAlmostEqual(float(bottle.remaining_quantity), 80.0)
+        self.assertEqual(bottle.borrowable_flag, "已借出")
+        self.assertIsNone(bottle.scrap_flag)
+        self.assertFalse(bool(bottle.borrowable_check))
+
+        # 明细未结清
+        after = work_order_service.get_order_items(order_id)[0]
+        self.assertEqual(after["status"], "待归还")
+        self.assertAlmostEqual(after["returned_qty"], 0.0)
+
+    def test_mixed_empty_and_normal_with_partial_failure(self):
+        """混合边界：空瓶迁移失败 + 正常瓶归还成功 → 部分成功、状态部分归还。"""
+        self._make_bottle("B8102", "试剂甲", 100.0)
+        self._make_bottle("B8103", "试剂乙", 100.0)
+        created = work_order_service.create_order(
+            order_type=ORDER_TYPE_SPORADIC,
+            applicant="张三",
+            cart_items=[
+                {"bottle_number": "B8102", "reagent_name": "试剂甲", "borrow_qty": 10.0},
+                {"bottle_number": "B8103", "reagent_name": "试剂乙", "borrow_qty": 10.0},
+            ],
+        )
+        order_id = created.data["order_id"]
+        items = work_order_service.get_order_items(order_id)
+
+        bottle_first = reagent_bottle_service.get_by_bottle_number("B8102")
+        _real_update = reagent_bottle_service.update
+
+        def _flaky_update(bottle_id, fields):
+            # 仅空瓶迁移的那一瓶失败，其余正常
+            if bottle_id == bottle_first.id:
+                return False
+            return _real_update(bottle_id, fields)
+
+        with mock.patch.object(
+            reagent_bottle_service, "update", side_effect=_flaky_update
+        ):
+            result = work_order_service.return_items(
+                order_id,
+                [
+                    {"item_id": items[0]["id"], "return_qty": 0.0, "discard": True},
+                    {"item_id": items[1]["id"], "return_qty": 5.0},
+                ],
+                "张三",
+            )
+        self.assertTrue(result.is_success(), result.message)
+        self.assertEqual(len(result.data["failures"]), 1, "仅空瓶迁移的一瓶失败")
+        self.assertEqual(result.data["status"], ORDER_STATUS_PARTIAL)
+
+        # 失败瓶保持借出态、明细未结清
+        bottle_first = reagent_bottle_service.get_by_bottle_number("B8102")
+        self.assertEqual(bottle_first.borrowable_flag, "已借出")
+        self.assertIsNone(bottle_first.scrap_flag)
+        after_first = next(
+            i for i in work_order_service.get_order_items(order_id)
+            if i["bottle_number"] == "B8102"
+        )
+        self.assertEqual(after_first["status"], "待归还")
+
+        # 成功瓶正常归还
+        after_second = next(
+            i for i in work_order_service.get_order_items(order_id)
+            if i["bottle_number"] == "B8103"
+        )
+        self.assertEqual(after_second["status"], "已归还")
+        self.assertAlmostEqual(after_second["returned_qty"], 5.0)
 
     def test_mixed_empty_and_pending_items(self):
         """一瓶空瓶（0%）结清、另一瓶未勾选 → 工单为「部分归还」。"""

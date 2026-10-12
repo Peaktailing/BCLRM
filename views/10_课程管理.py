@@ -90,6 +90,19 @@ with tab_import:
                     "（与已有项目按「课程名 + 实验名」跨学年去重）"
                 )
 
+                # 默认审批人：课程领用时作为审批人默认预选（仅管理员账号可担任；
+                # 应急改派超管请由管理员在「领用归还 → 审批」中操作）
+                _admin_names = sorted(
+                    {p.name for p in person_service.get_by_role("admin") if p.name}
+                )
+                default_approver = st.selectbox(
+                    "默认审批人（可选，管理员账号）",
+                    options=[""] + _admin_names,
+                    index=0,
+                    help="落库课程「审批人」字段；领用含管控试剂时默认预选，可临时改选",
+                    key="import_default_approver",
+                )
+
                 if st.button("确认导入", type="primary", use_container_width=True):
                     result = course_import_service.import_courses(
                         courses,
@@ -97,6 +110,7 @@ with tab_import:
                         term=term.strip(),
                         college=college.strip() or None,
                         items=items,
+                        default_approver=default_approver or None,
                     )
                     if result.is_success():
                         st.success(f"✅ 导入完成：{result.message}")

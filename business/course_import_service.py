@@ -187,12 +187,15 @@ class CourseImportService:
         semester: str,
         term: str,
         college: Optional[str] = None,
-        items: Optional[List[Dict]] = None
+        items: Optional[List[Dict]] = None,
+        default_approver: Optional[str] = None,
     ) -> ServiceResult:
         """幂等导入课程与实验项目
 
         - 课程：按 (学年, 学期, 课程名称, 班级) 更新或新增
         - 实验项目：按 (学年, 课程名称, 实验名称) 更新或新增
+        - default_approver: 默认审批人（管理员账号），落库课程 approver 字段，
+          课程领用时作为审批人默认预选；已有课程不覆盖非空审批人
         """
         if not semester or not term:
             return ServiceResult.fail(
@@ -218,6 +221,8 @@ class CourseImportService:
                 "student_count": course.get("student_count"),
                 "location": course.get("location"),
                 "college": college,
+                # 分组表带审批人列则读取；否则用导入表单的「默认审批人」
+                "approver": course.get("approver") or default_approver,
             }
             key = (course.get("course_name"), course.get("class_name"))
             raw_key = (course.get("course_name"), course.get("raw_class_name"))

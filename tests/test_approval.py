@@ -11,10 +11,12 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests import TEST_DB
+from utils import audit as audit_module
 from business.purchase_service import purchase_service
 from business.work_order_service import work_order_service
 from services.base.controlled_list_service import controlled_list_service
@@ -31,7 +33,7 @@ _TABLES = (
     "borrow_order_item", "borrow_order",
     "borrow_record", "return_record", "reagent_bottle",
     "experiment_item", "experiment_course",
-    "controlled_list", "person",
+    "controlled_list", "person", "operation_log",
     "purchase_plan_item", "purchase_plan",
 )
 
@@ -61,6 +63,13 @@ class TestBorrowApproval(unittest.TestCase):
             "dangerous_type": "易制毒",
         })
 
+    def _make_person(self, name: str, role: str = "teacher"):
+        from services.base.person_service import person_service
+        person_service.create({
+            "name": name,
+            "role": role,
+        })
+
     def _make_bottle(self, bottle_number, reagent_name, remaining, cas="CN-000"):
         reagent_bottle_service.create({
             "bottle_number": bottle_number,
@@ -87,6 +96,10 @@ class TestBorrowApproval(unittest.TestCase):
 
     def _create_controlled_course_order(self, bottle_number, applicant="李老师",
                                         approver="王管理员"):
+        # 合格审批人须为人员表中的 admin 账号（正常提交排除超管）
+        self._make_person(applicant, "teacher")
+        if approver:
+            self._make_person(approver, "admin")
         course_id = self._make_course(approver=approver)
         item_id = self._make_item()
         created = work_order_service.create_order(
@@ -202,6 +215,208 @@ class TestBorrowApproval(unittest.TestCase):
 
         bottle = reagent_bottle_service.get_by_bottle_number("B9006")
         self.assertAlmostEqual(float(bottle.remaining_quantity), 100.0)
+
+    # ---------------- 审批人边界（决策 1）----------------
+    def test_sporadic_no_longer_auto_picks_super_admin(self):
+        """零星领用不再自动取第一个超管：未指定审批人 → NO_APPROVER。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9101", "管控试剂", 100.0, cas="CN-111")
+
+        result = work_order_service.create_order(
+            order_type="零星领用",
+            applicant="张三",
+            cart_items=[{"bottle_number": "B9101", "reagent_name": "管控试剂",
+                         "borrow_qty": 10.0}],
+        )
+        self.assertTrue(result.is_failure())
+        self.assertEqual(result.error_code, "NO_APPROVER")
+
+    def test_sporadic_manual_approver_persisted(self):
+        """零星领用手动指定管理员审批人并落库。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9102", "管控试剂", 100.0, cas="CN-111")
+        self._make_person("张三", "teacher")
+        self._make_person("王管理员", "admin")
+
+        result = work_order_service.create_order(
+            order_type="零星领用",
+            applicant="张三",
+            cart_items=[{"bottle_number": "B9102", "reagent_name": "管控试剂",
+                         "borrow_qty": 10.0}],
+            approver_name="王管理员",
+        )
+        self.assertTrue(result.is_success(), result.message)
+        order = borrow_order_service.get_by_id(result.data["order_id"])
+        self.assertEqual(order.approver, "王管理员")
+
+    def test_super_admin_as_approver_rejected(self):
+        """正常提交传超管审批 → 拒绝（超管接管只走应急改派）。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9103", "管控试剂", 100.0, cas="CN-111")
+        self._make_person("张三", "teacher")
+        self._make_person("超管甲", "super_admin")
+
+        result = work_order_service.create_order(
+            order_type="零星领用",
+            applicant="张三",
+            cart_items=[{"bottle_number": "B9103", "reagent_name": "管控试剂",
+                         "borrow_qty": 10.0}],
+            approver_name="超管甲",
+        )
+        self.assertTrue(result.is_failure())
+        self.assertEqual(result.error_code, "SUPER_ADMIN_APPROVER")
+
+    def test_non_admin_approver_rejected(self):
+        """审批人不是管理员账号（含不在人员表中的名字）→ 拒绝。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9104", "管控试剂", 100.0, cas="CN-111")
+        self._make_person("张三", "teacher")
+
+        result = work_order_service.create_order(
+            order_type="零星领用",
+            applicant="张三",
+            cart_items=[{"bottle_number": "B9104", "reagent_name": "管控试剂",
+                         "borrow_qty": 10.0}],
+            approver_name="查无此人",
+        )
+        self.assertTrue(result.is_failure())
+        self.assertEqual(result.error_code, "INVALID_APPROVER_ROLE")
+
+    def test_self_approval_still_rejected(self):
+        """自审批（审批人 == 申请人）维持拒绝。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9105", "管控试剂", 100.0, cas="CN-111")
+        self._make_person("李老师", "teacher")
+        self._make_person("王管理员", "admin")
+
+        result = work_order_service.create_order(
+            order_type="零星领用",
+            applicant="李老师",
+            cart_items=[{"bottle_number": "B9105", "reagent_name": "管控试剂",
+                         "borrow_qty": 10.0}],
+            approver_name="李老师",
+        )
+        self.assertTrue(result.is_failure())
+        self.assertEqual(result.error_code, "SELF_APPROVAL")
+
+    # ---------------- 撤回 ----------------
+    def test_withdraw_by_applicant(self):
+        """申请人本人可撤回 PENDING 工单：状态置「已撤回」。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9106", "管控试剂", 100.0, cas="CN-111")
+        created = self._create_controlled_course_order("B9106")
+        order_id = created.data["order_id"]
+
+        result = work_order_service.withdraw_order(order_id, "李老师")
+        self.assertTrue(result.is_success(), result.message)
+        order = borrow_order_service.get_by_id(order_id)
+        self.assertEqual(order.status, "已撤回")
+        self.assertEqual(order.approval_status, "已撤回")
+        # 库存不变
+        bottle = reagent_bottle_service.get_by_bottle_number("B9106")
+        self.assertAlmostEqual(float(bottle.remaining_quantity), 100.0)
+
+    def test_withdraw_permission(self):
+        """撤回权限：申请人本人或 admin+ 可撤回，其他人拒绝。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9107", "管控试剂", 100.0, cas="CN-111")
+        created = self._create_controlled_course_order("B9107")
+        order_id = created.data["order_id"]
+
+        # 无关人员拒绝
+        bad = work_order_service.withdraw_order(order_id, "路人甲")
+        self.assertTrue(bad.is_failure())
+        self.assertEqual(bad.error_code, "WITHDRAW_FORBIDDEN")
+
+        # 管理员可代撤
+        self._make_person("赵管理员", "admin")
+        ok = work_order_service.withdraw_order(order_id, "赵管理员")
+        self.assertTrue(ok.is_success(), ok.message)
+
+        # 已撤回后不可再撤
+        again = work_order_service.withdraw_order(order_id, "李老师")
+        self.assertTrue(again.is_failure())
+        self.assertEqual(again.error_code, "INVALID_APPROVAL_STATE")
+
+    # ---------------- 应急重新指定审批人 ----------------
+    def test_reassign_by_admin_updates_approver_and_audit(self):
+        """管理员应急改派：审批人更新、审计标记「应急重新指定审批人」。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9108", "管控试剂", 100.0, cas="CN-111")
+        created = self._create_controlled_course_order("B9108")
+        order_id = created.data["order_id"]
+        self._make_person("超管甲", "super_admin")
+
+        # 审计标记（审计日志已四库分离，这里 mock utils.audit 断言调用参数）
+        with mock.patch.object(audit_module, "audit") as _audit_mock:
+            result = work_order_service.reassign_approver(
+                order_id, "超管甲", "王管理员"
+            )
+        self.assertTrue(result.is_success(), result.message)
+        _audit_mock.assert_called_once()
+        _args, _kwargs = _audit_mock.call_args
+        self.assertEqual(_args[0], "王管理员")
+        self.assertEqual(_args[1], "应急重新指定审批人")
+        self.assertIn("应急重新指定审批人", _kwargs.get("detail") or "")
+
+        order = borrow_order_service.get_by_id(order_id)
+        self.assertEqual(order.approver, "超管甲")
+
+        # 改派后由新审批人审批
+        approved = work_order_service.approve_order(order_id, "超管甲")
+        self.assertTrue(approved.is_success(), approved.message)
+
+    def test_reassign_permission_and_self_check(self):
+        """应急改派权限：仅 admin+；新审批人不能是申请人。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9109", "管控试剂", 100.0, cas="CN-111")
+        created = self._create_controlled_course_order("B9109")
+        order_id = created.data["order_id"]
+
+        # 非管理员拒绝
+        bad = work_order_service.reassign_approver(order_id, "王管理员", "路人甲")
+        self.assertTrue(bad.is_failure())
+        self.assertEqual(bad.error_code, "REASSIGN_FORBIDDEN")
+
+        # 新审批人是申请人本人 → 拒绝
+        bad2 = work_order_service.reassign_approver(order_id, "李老师", "王管理员")
+        self.assertTrue(bad2.is_failure())
+        self.assertEqual(bad2.error_code, "SELF_APPROVAL")
+
+        # 非管理员/超管账号 → 拒绝
+        bad3 = work_order_service.reassign_approver(order_id, "查无此人", "王管理员")
+        self.assertTrue(bad3.is_failure())
+        self.assertEqual(bad3.error_code, "INVALID_APPROVER_ROLE")
+
+    # ---------------- 审计操作人（T10）----------------
+    def test_audit_operator_is_created_by(self):
+        """代发起时审计记录实际操作人 created_by，并注明「代 xx 提交」。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9110", "管控试剂", 100.0, cas="CN-111")
+        self._make_person("李老师", "teacher")
+        self._make_person("王管理员", "admin")
+        self._make_person("钱管理员", "admin")
+
+        # 审计日志已四库分离，这里 mock utils.audit 断言提交审批的审计参数
+        with mock.patch.object(audit_module, "audit") as _audit_mock:
+            created = work_order_service.create_order(
+                order_type="课程领用",
+                applicant="李老师",
+                cart_items=[{"bottle_number": "B9110", "reagent_name": "管控试剂",
+                             "borrow_qty": 10.0}],
+                course=experiment_course_service.get_by_id(
+                    self._make_course(approver="王管理员")
+                ),
+                exp_item=experiment_item_service.get_by_id(self._make_item()),
+                created_by="钱管理员",
+            )
+        self.assertTrue(created.is_success(), created.message)
+
+        _audit_mock.assert_called_once()
+        _args, _kwargs = _audit_mock.call_args
+        self.assertEqual(_args[0], "钱管理员", "审计应记录实际操作人 created_by")
+        self.assertEqual(_args[1], "提交审批")
+        self.assertIn("代 李老师 提交", _kwargs.get("detail") or "")
 
 
 class TestPurchaseApproval(unittest.TestCase):

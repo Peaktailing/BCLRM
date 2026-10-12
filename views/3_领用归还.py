@@ -189,6 +189,39 @@ with tab_borrow:
             accept_new_options=True,
         )
 
+        # 审批人（含管控化学品的工单需先审批；正常提交仅限管理员账号，
+        # 超管不参与正常审批，应急接管见审批页「重新指定审批人」）
+        _approver_candidates = work_order_service.list_approver_candidates(
+            exclude_name=applicant or None
+        )
+        _course_approver = getattr(course, "approver", None) if course else None
+        _default_approver = None
+        if order_type == "课程领用" and _course_approver:
+            if work_order_service.is_super_admin(_course_approver):
+                st.warning(
+                    f"该课程绑定的审批人「{_course_approver}」是超级管理员（历史配置），"
+                    "不作为默认预选：请在下方重新指定管理员审批；"
+                    "应急情况可由管理员通过『重新指定审批人』改派超管接管。"
+                )
+            elif _course_approver in _approver_candidates:
+                _default_approver = _course_approver
+            else:
+                st.warning(
+                    f"该课程绑定的审批人「{_course_approver}」不在管理员候选集中，"
+                    "请重新指定。"
+                )
+        approver_sel = st.selectbox(
+            "审批人*",
+            options=[""] + _approver_candidates,
+            index=(
+                _approver_candidates.index(_default_approver) + 1
+                if _default_approver else 0
+            ),
+            format_func=lambda n: "（请选择审批人）" if n == "" else n,
+            key="wo_approver",
+            help="含管控化学品的领用需管理员审批；审批人不能是领用人本人",
+        )
+
         # 关联实验项目（零星领用可选）
         selected_project = None
         if order_type == "零星领用":
@@ -364,6 +397,8 @@ with tab_borrow:
             if st.button("提交领用工单", type="primary", use_container_width=True):
                 if not applicant:
                     st.error("请选择领用人")
+                elif not approver_sel:
+                    st.error("请指定审批人（清单含管控化学品时需管理员审批）")
                 elif order_type == "课程领用" and (not course or not exp_item):
                     st.error("课程领用必须选择课程与实验项目")
                 else:
@@ -375,6 +410,7 @@ with tab_borrow:
                         exp_item=exp_item,
                         created_by=user_name,
                         project_id=selected_project.id if selected_project else None,
+                        approver_name=approver_sel or None,
                     )
                     if result.is_success():
                         st.success(f"✅ {result.message}")
@@ -384,66 +420,173 @@ with tab_borrow:
                         st.error(f"❌ {result.message}")
 
 # ==================== 1.5 审批（管控试剂工单） ====================
+def _render_order_items(order):
+    for item in work_order_service.get_order_items(order.id):
+        st.markdown(
+            f"- **{item['bottle_number']}**　{item['reagent_name'] or '-'}"
+            f"　领用量 {item['borrow_qty']:g}"
+        )
+
+
+def _render_withdraw_button(order):
+    """撤回按钮（仅申请人本人可见）"""
+    if st.button(
+        "↩️ 撤回工单",
+        use_container_width=True,
+        key=f"wd_{order.id}",
+        help="撤回后工单关闭，库存不变；如仍需领用请重新提交",
+    ):
+        _r = work_order_service.withdraw_order(order.id, user_name)
+        if _r.is_success():
+            st.warning(_r.message)
+            st.rerun()
+        else:
+            st.error(f"❌ {_r.message}")
+
+
+def _render_reassign_ui(order):
+    """应急重新指定审批人（仅管理员及以上可见；候选含超管并标注「应急」）"""
+    _reassign_candidates = work_order_service.list_reassign_candidates(
+        exclude_name=order.applicant
+    )
+    if not _reassign_candidates:
+        st.caption("系统中没有可改派的管理员/超管账号")
+        return
+    _new_appr = st.selectbox(
+        "重新指定审批人（应急）",
+        options=[""] + _reassign_candidates,
+        format_func=lambda n: "（请选择）" if n == ""
+        else (f"{n}（应急）" if work_order_service.is_super_admin(n) else n),
+        key=f"reassign_sel_{order.id}",
+    )
+    if st.button(
+        "🔧 确认重新指定",
+        use_container_width=True,
+        key=f"reassign_btn_{order.id}",
+    ):
+        if not _new_appr:
+            st.error("请先选择新的审批人")
+        else:
+            _r = work_order_service.reassign_approver(
+                order.id, _new_appr, user_name
+            )
+            if _r.is_success():
+                st.success(f"✅ {_r.message}")
+                st.rerun()
+            else:
+                st.error(f"❌ {_r.message}")
+
+
 with tab_approval:
-    _pending_orders = work_order_service.list_pending_approvals(user_name)
+    _all_pending = work_order_service.list_pending_approvals(None)
+    _my_approvals = [o for o in _all_pending if o.approver == user_name]
+    _my_submissions = [
+        o for o in _all_pending
+        if o.applicant == user_name and o.approver != user_name
+    ]
+    _admin_visible = [
+        o for o in _all_pending
+        if o not in _my_approvals and o not in _my_submissions
+    ]
 
     st.caption(
-        "仅显示指定审批人为你的工单（含管控化学品的领用需先审批）；"
-        "批准后系统自动执行领用并扣减库存，驳回则工单关闭。"
+        "含管控化学品的领用需先审批：批准后系统自动执行领用并扣减库存，"
+        "驳回则工单关闭；申请人可撤回自己的待审批工单。"
     )
 
-    if not _pending_orders:
+    # ---------- 待我审批 ----------
+    st.subheader("✅ 待我审批")
+    if not _my_approvals:
         st.info("暂无待你审批的工单")
-    else:
-        for order in _pending_orders:
+    for order in _my_approvals:
+        _is_mine = order.applicant == user_name
+        with st.expander(
+            f"{order.order_number}｜{order.order_type}｜申请人 {order.applicant}"
+            f"｜课程 {order.course_name or '—'}／实验 {order.item_name or '—'}",
+            expanded=len(_my_approvals) <= 3,
+        ):
+            st.caption(f"发起时间：{order.borrow_time or '—'}")
+            _render_order_items(order)
+
+            _appr_remark = st.text_input(
+                "审批意见（批准/驳回原因，可选）",
+                key=f"appr_remark_{order.id}",
+            )
+
+            if _is_mine:
+                st.caption("该工单由你发起：可撤回，或由你自己审批（指定审批人为你）。")
+                _c_ok, _c_no, _c_wd = st.columns(3)
+            else:
+                _c_ok, _c_no = st.columns(2)
+            with _c_ok:
+                if st.button(
+                    "✅ 批准并执行领用",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"appr_ok_{order.id}",
+                ):
+                    _r = work_order_service.approve_order(
+                        order.id, user_name, _appr_remark
+                    )
+                    if _r.is_success():
+                        st.success(f"✅ {_r.message}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {_r.message}")
+            with _c_no:
+                if st.button(
+                    "❌ 驳回",
+                    use_container_width=True,
+                    key=f"appr_no_{order.id}",
+                ):
+                    _r = work_order_service.reject_order(
+                        order.id, user_name, _appr_remark
+                    )
+                    if _r.is_success():
+                        st.warning(_r.message)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {_r.message}")
+            if _is_mine:
+                with _c_wd:
+                    _render_withdraw_button(order)
+
+            if is_admin:
+                st.markdown("---")
+                _render_reassign_ui(order)
+
+    # ---------- 我提交的（他人审批中，可撤回） ----------
+    if _my_submissions:
+        st.subheader("↩️ 我提交的待审批工单")
+        for order in _my_submissions:
+            with st.expander(
+                f"{order.order_number}｜{order.order_type}｜审批人 {order.approver or '—'}"
+                f"｜课程 {order.course_name or '—'}／实验 {order.item_name or '—'}",
+                expanded=False,
+            ):
+                st.caption(
+                    f"发起时间：{order.borrow_time or '—'}｜"
+                    f"当前审批人：{order.approver or '—'}（仅申请人本人可撤回）"
+                )
+                _render_order_items(order)
+                _render_withdraw_button(order)
+
+    # ---------- 管理视图：其余待审批工单（应急重新指定审批人） ----------
+    if is_admin and _admin_visible:
+        st.subheader("🔧 全部待审批工单（管理员）")
+        st.caption(
+            "可应急重新指定审批人（候选含超管并标注「应急」）；"
+            "审批操作仍由工单指定的审批人执行。"
+        )
+        for order in _admin_visible:
             with st.expander(
                 f"{order.order_number}｜{order.order_type}｜申请人 {order.applicant}"
-                f"｜课程 {order.course_name or '—'}／实验 {order.item_name or '—'}",
-                expanded=len(_pending_orders) <= 3,
+                f"｜审批人 {order.approver or '—'}",
+                expanded=False,
             ):
                 st.caption(f"发起时间：{order.borrow_time or '—'}")
-
-                for item in work_order_service.get_order_items(order.id):
-                    st.markdown(
-                        f"- **{item['bottle_number']}**　{item['reagent_name'] or '-'}"
-                        f"　领用量 {item['borrow_qty']:g}"
-                    )
-
-                _appr_remark = st.text_input(
-                    "审批意见（批准/驳回原因，可选）",
-                    key=f"appr_remark_{order.id}",
-                )
-
-                _c_ok, _c_no = st.columns(2)
-                with _c_ok:
-                    if st.button(
-                        "✅ 批准并执行领用",
-                        type="primary",
-                        use_container_width=True,
-                        key=f"appr_ok_{order.id}",
-                    ):
-                        _r = work_order_service.approve_order(
-                            order.id, user_name, _appr_remark
-                        )
-                        if _r.is_success():
-                            st.success(f"✅ {_r.message}")
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {_r.message}")
-                with _c_no:
-                    if st.button(
-                        "❌ 驳回",
-                        use_container_width=True,
-                        key=f"appr_no_{order.id}",
-                    ):
-                        _r = work_order_service.reject_order(
-                            order.id, user_name, _appr_remark
-                        )
-                        if _r.is_success():
-                            st.warning(_r.message)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {_r.message}")
+                _render_order_items(order)
+                _render_reassign_ui(order)
 
 # ==================== 2. 还入（按工单归还） ====================
 with tab_return:
