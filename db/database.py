@@ -1348,15 +1348,16 @@ def init_aux_databases() -> dict:
     """初始化三个辅助库（app 启动时调用，幂等）
 
     Returns:
-        各库状态字典，如 {"log": "db/operation_log.db", ...}
+        各库文件路径字典（取自 config.settings，与实际连接路径一致）
     """
+    from config.settings import DB_MAIN_PATH, DB_LOG_PATH, DB_ATTACH_PATH, DB_ARCHIVE_PATH
     init_log_db()
     init_attach_db()
     init_archive_db()
     logger.info("四库分离辅助库初始化完成（log/attach/archive）")
     return {
-        "main": "db/main.db",
-        "log": "db/operation_log.db",
-        "attach": "db/attach_cold.db",
-        "archive": "db/archive_cold.db",
+        "main": DB_MAIN_PATH,
+        "log": DB_LOG_PATH,
+        "attach": DB_ATTACH_PATH,
+        "archive": DB_ARCHIVE_PATH,
     }

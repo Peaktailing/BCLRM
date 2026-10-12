@@ -44,6 +44,7 @@ def _store_msds(uploaded_file, ref_id=None):
     except ValueError as e:
         st.error(f"MSDS附件保存失败：{e}")
         st.stop()
+        return None  # st.stop 正常情况下不会到达；显式返回避免静态检查告警与裸环境 fall-through
 
 
 def _clean_msds(msds_value):

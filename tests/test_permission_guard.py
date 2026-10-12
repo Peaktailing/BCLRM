@@ -33,12 +33,39 @@ class TestPermissionGuard(unittest.TestCase):
             enforce_write("controlled_list", {"name": "丙酮"}, action="新增")
 
     def test_user_blocked_on_approval_status(self):
-        """普通用户写审批状态字段被拒（任何表）"""
+        """普通用户写审批「决定值」被拒（任何场景）"""
         set_user("张三", "user")
         with self.assertRaises(PermissionDeniedError):
             enforce_write("borrow_order", {"approval_status": "已批准"}, action="更新")
         with self.assertRaises(PermissionDeniedError):
             enforce_write("purchase_plan", {"approval_status": "已驳回"}, action="更新")
+
+    def test_user_allowed_on_approval_initial_value(self):
+        """回归保护：创建/提交审批初值放行，不误伤教师课程领用"""
+        set_user("张三", "teacher")
+        # 教师创建领用工单（初值）
+        enforce_write("borrow_order", {"approval_status": "待审批", "status": "待审批"}, action="新增")
+        enforce_write("borrow_order", {"approval_status": "无需审批"}, action="新增")
+        # 提交审批（更新为待审批）
+        enforce_write("purchase_plan", {"approval_status": "待审批"}, action="更新")
+
+    def test_user_allowed_on_own_password_change(self):
+        """回归保护：普通用户仅改自己的密码（password_hash）放行"""
+        set_user("张三", "user")
+        enforce_write("person", {"password_hash": "pbkdf2:..."}, action="更新")
+        # 但 person 表其他字段仍拦（防提权/改他人）
+        with self.assertRaises(PermissionDeniedError):
+            enforce_write("person", {"role": "super_admin"}, action="更新")
+        with self.assertRaises(PermissionDeniedError):
+            enforce_write("person", {"password_hash": "x", "role": "admin"}, action="更新")
+
+    def test_user_blocked_on_manager_field(self):
+        """回归保护：普通用户更新管理权字段被拒，创建时初始指派放行"""
+        set_user("张三", "user")
+        with self.assertRaises(PermissionDeniedError):
+            enforce_write("reagent_bottle", {"manager": "李四"}, action="更新")
+        # 入库创建时的初始管理人指派（新增场景）放行
+        enforce_write("reagent_bottle", {"manager": "李四", "bottle_number": "B001"}, action="新增")
 
     def test_user_allowed_on_normal_fields(self):
         """普通用户正常业务写入放行（不误伤领用/归还/课程）"""

@@ -225,24 +225,28 @@ class ManagerService:
             )
 
         succeeded, failed, skipped = [], [], 0
-        for bottle_number in bottle_numbers:
-            bottle = self.bottle_service.get_by_bottle_number(bottle_number)
-            if not bottle:
-                failed.append(f"{bottle_number}: 试剂瓶不存在")
-                continue
-            if self.resolve_manager(
-                getattr(bottle, ReagentBottleField.MANAGER, None)
-            ) == new_manager:
-                skipped += 1
-                continue
-            result = self.transfer(
-                bottle_number, new_manager, operator,
-                reason="批量指定", remark=remark,
-            )
-            if result.is_success():
-                succeeded.append(bottle_number)
-            else:
-                failed.append(f"{bottle_number}: {result.message}")
+        from db.database import db as _db
+        # 外层单事务包裹：上千瓶批量时将逐瓶提交合并为一次 COMMIT，
+        # 显著减少 WAL fsync 次数（transfer 内部事务自动并入外层）
+        with _db.transaction():
+            for bottle_number in bottle_numbers:
+                bottle = self.bottle_service.get_by_bottle_number(bottle_number)
+                if not bottle:
+                    failed.append(f"{bottle_number}: 试剂瓶不存在")
+                    continue
+                if self.resolve_manager(
+                    getattr(bottle, ReagentBottleField.MANAGER, None)
+                ) == new_manager:
+                    skipped += 1
+                    continue
+                result = self.transfer(
+                    bottle_number, new_manager, operator,
+                    reason="批量指定", remark=remark,
+                )
+                if result.is_success():
+                    succeeded.append(bottle_number)
+                else:
+                    failed.append(f"{bottle_number}: {result.message}")
 
         parts = [f"已将 {len(succeeded)} 瓶的管理权指定为「{new_manager}」"]
         if skipped:

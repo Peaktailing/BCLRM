@@ -21,18 +21,37 @@ from utils.user_context import get_user_role
 ADMIN_ROLES = {"admin", "super_admin"}
 
 # 规则1：整表写保护 —— 这些表的任何写操作都要求管理员及以上
-#   person          用户与密码/角色管理
+#   person          用户与密码/角色管理（password_hash 自助豁免见 SELF_SERVICE_FIELDS）
 #   controlled_list 管控化学品名录（页面只读，仅数据维护时开放）
 ADMIN_WRITE_TABLES = {
     "person",
     "controlled_list",
 }
 
-# 规则2：字段级写保护 —— 任何表写入这些字段都要求管理员及以上
-#   approval_status 审批状态流转（待审批→已批准/已驳回）
-#   领用归还、课程用量等普通操作不碰该字段，不会被误伤
+# 自助豁免字段：仅写入这些字段时无需管理员（用户修改自己的密码）
+# 注意：页面「修改密码」入口只传当前登录用户名，改他人密码不走此入口
+SELF_SERVICE_FIELDS = {
+    "password_hash",
+}
+
+# 规则2：字段级写保护（**更新场景**；创建时的初始指派放行）
+#   manager 管理权变更（transfer/bulk_assign 等流转操作）
+#   普通用户的领用/归还/入库创建不写该字段，不会被误伤
 ADMIN_WRITE_FIELDS = {
+    "manager",
+}
+
+# 规则3：审批「决定值」保护（任何场景，按写入值判断）
+#   仅写入审批决定（已批准/已驳回）需要管理员；
+#   创建工单的初值（待审批/无需审批）与提交审批（待审批）放行，
+#   避免误伤教师课程领用等正常发起流程
+#   值需与 models/core/borrow_order.py 的 APPROVAL_* 常量保持同步
+ADMIN_DECISION_FIELDS = {
     "approval_status",
+}
+ADMIN_DECISION_VALUES = {
+    "已批准",
+    "已驳回",
 }
 
 
@@ -42,7 +61,7 @@ def enforce_write(table_name: str, fields: Optional[Dict] = None, action: str = 
     Args:
         table_name: 目标表名
         fields: 本次写入的字段字典（更新场景传入，创建场景可传 None）
-        action: 操作描述，用于错误提示
+        action: 操作描述（"新增"/"更新"/"删除"），用于区分创建初值与更新流转
 
     Raises:
         PermissionDeniedError: 当前登录角色无权执行该写操作
@@ -56,12 +75,29 @@ def enforce_write(table_name: str, fields: Optional[Dict] = None, action: str = 
         return
 
     if table_name in ADMIN_WRITE_TABLES:
+        # 自助豁免：仅写入自助字段（如修改自己的密码）时放行
+        if fields and set(fields.keys()) <= SELF_SERVICE_FIELDS:
+            return
         raise PermissionDeniedError(
             f"权限不足：{action}表「{table_name}」需要管理员及以上权限（当前角色：{role}）"
         )
 
-    if fields and ADMIN_WRITE_FIELDS.intersection(fields.keys()):
-        hit = ", ".join(sorted(ADMIN_WRITE_FIELDS.intersection(fields.keys())))
-        raise PermissionDeniedError(
-            f"权限不足：{action}「{hit}」等审批字段需要管理员及以上权限（当前角色：{role}）"
-        )
+    if not fields:
+        return
+
+    # 规则2：字段级保护（仅更新/删除场景；创建时的初始指派放行）
+    if action != "新增":
+        hit = ADMIN_WRITE_FIELDS.intersection(fields.keys())
+        if hit:
+            names = ", ".join(sorted(hit))
+            raise PermissionDeniedError(
+                f"权限不足：{action}「{names}」等管理权字段需要管理员及以上权限（当前角色：{role}）"
+            )
+
+    # 规则3：审批决定值保护（按写入值判断，创建/提交初值放行）
+    for field in ADMIN_DECISION_FIELDS.intersection(fields.keys()):
+        value = fields.get(field)
+        if value is not None and str(value) in ADMIN_DECISION_VALUES:
+            raise PermissionDeniedError(
+                f"权限不足：{action}「{field}」为审批决定（{value}）需要管理员及以上权限（当前角色：{role}）"
+            )

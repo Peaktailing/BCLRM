@@ -289,8 +289,14 @@ def import_controlled_list(db, df):
     print(f"管控化学品名录导入完成: {count} 条记录")
 
 
-def import_reagent_bottle(db, df):
-    """导入试剂瓶信息数据"""
+def import_reagent_bottle(db, df, manager=None):
+    """导入试剂瓶信息数据
+
+    Args:
+        db: 数据库连接
+        df: Excel 全量数据
+        manager: 管理人姓名（--manager 参数），写入每瓶 manager 字段
+    """
     print("\n正在导入试剂瓶信息表...")
     sheet_name = '试剂瓶信息表'
 
