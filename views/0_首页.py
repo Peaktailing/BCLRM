@@ -89,7 +89,20 @@ if st.session_state.get("user_role") == "super_admin":
 
 st.divider()
 
-# 用户使用手册（读取 docs/用户使用手册.md 渲染）
+# 库存概览（首屏：快速入口 + 库存概览，保持简洁）
+try:
+    result = dashboard_service.get_inventory_stats()
+    stats = result.data if result.is_success() else {}
+    st.markdown("### 📊 库存概览")
+    stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+    stat_col1.metric("试剂瓶总数", stats.get("total_bottles", 0))
+    stat_col2.metric("可借数量", stats.get("borrowable", 0))
+    stat_col3.metric("已借出", stats.get("borrowed", 0))
+    stat_col4.metric("已耗尽", stats.get("exhausted", 0))
+except Exception:
+    st.info("暂无法获取库存统计数据")
+
+# 用户使用手册（默认折叠，移至页面底部，避免占据首屏）
 @st.cache_data
 def _load_user_manual() -> str:
     """读取用户使用手册 Markdown 文本（文件内容缓存，改动手册后自动失效重读）"""
@@ -106,25 +119,11 @@ def _load_user_manual() -> str:
 
 _manual_md = _load_user_manual()
 if _manual_md:
-    with st.expander("📖 用户使用手册（点击展开 / 收起）", expanded=True):
+    st.divider()
+    with st.expander("📖 用户使用手册（点击展开 / 收起）", expanded=False):
         st.markdown(_manual_md)
 else:
     st.info("用户使用手册文件缺失（docs/用户使用手册.md），请联系管理员。")
-
-st.divider()
-
-# 快速统计
-try:
-    result = dashboard_service.get_inventory_stats()
-    stats = result.data if result.is_success() else {}
-    st.markdown("### 📊 库存概览")
-    stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
-    stat_col1.metric("试剂瓶总数", stats.get("total_bottles", 0))
-    stat_col2.metric("可借数量", stats.get("borrowable", 0))
-    stat_col3.metric("已借出", stats.get("borrowed", 0))
-    stat_col4.metric("已耗尽", stats.get("exhausted", 0))
-except Exception:
-    st.info("暂无法获取库存统计数据")
 
 # 系统说明
 st.divider()

@@ -29,6 +29,7 @@ from services.base.experiment_course_service import experiment_course_service
 from services.base.experiment_project_service import experiment_project_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.base.experiment_item_service import experiment_item_service
+from services.base.person_service import person_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from utils.error_handler import logger
@@ -139,6 +140,9 @@ with tab_borrow:
                                 if _cart_result.is_success():
                                     st.session_state.borrow_cart = _cart_result.data["cart"]
                                     st.session_state["wo_default_cart_msg"] = _cart_result.message
+                                    st.session_state["wo_cart_course_key"] = (
+                                        f"{course.course_name}|{exp_item.item_name}"
+                                    )
                                     st.rerun()
                                 else:
                                     st.error(f"❌ {_cart_result.message}")
@@ -164,6 +168,9 @@ with tab_borrow:
                                 if _default_result.is_success():
                                     st.session_state.borrow_cart = _default_result.data["cart"]
                                     st.session_state["wo_default_cart_msg"] = _default_result.message
+                                    st.session_state["wo_cart_course_key"] = (
+                                        f"{course.course_name}|{exp_item.item_name}"
+                                    )
                                     st.rerun()
                                 else:
                                     st.error(f"❌ {_default_result.message}")
@@ -178,15 +185,53 @@ with tab_borrow:
         if _default_msg:
             st.success(_default_msg)
 
-        # 领用人
+        # ---------- 课程/实验切换侦测（T7）：清单归属校验 ----------
+        # 当前目标归属键：课程领用 = 课程|实验；零星领用 = "零星"
+        _sel_key = (
+            f"{course.course_name}|{exp_item.item_name}"
+            if (order_type == "课程领用" and course and exp_item)
+            else ("零星" if order_type == "零星领用" else "")
+        )
+        _prev_sel_key = st.session_state.get("wo_last_course_key")
+        if (
+            st.session_state.get("borrow_cart")
+            and _prev_sel_key is not None
+            and _sel_key != _prev_sel_key
+        ):
+            st.warning(
+                "⚠️ 检测到课程/实验（或领用类型）已切换：当前领用清单可能不属于"
+                "新目标，建议清空后重新添加试剂。"
+            )
+            if st.button("🗑️ 确认清空清单", key="wo_switch_clear_cart"):
+                st.session_state.borrow_cart = []
+                st.session_state.pop("wo_cart_course_key", None)
+                st.session_state["wo_last_course_key"] = _sel_key
+                st.rerun()
+        st.session_state["wo_last_course_key"] = _sel_key
+
+        # 领用人（候选 = 已建档人员 ∪ 历史领用人 并集，分组标注；不可自由输入，
+        # 无匹配请先在「系统设置 → 人员管理」建档）
         _user_result = borrow_service.get_all_borrow_users()
-        user_list = _user_result.data if _user_result.is_success() else []
+        history_users = _user_result.data if _user_result.is_success() else []
+        _person_names = sorted(
+            {p.name for p in person_service.get_all_persons() if p.name}
+        )
+        _person_set = set(_person_names)
+        _all_user_options = sorted(_person_set | {u for u in history_users if u})
+
+        def _fmt_user(name: str) -> str:
+            if name == "":
+                return "（请选择领用人）"
+            if name in _person_set:
+                return f"{name}（已建档）"
+            return f"{name}（历史记录）"
+
         applicant = st.selectbox(
             "领用人*",
-            options=[""] + user_list,
-            placeholder="选择或输入领用人",
+            options=[""] + _all_user_options,
+            format_func=_fmt_user,
             key="wo_applicant",
-            accept_new_options=True,
+            help="如目标人员不在列表中，请先在「系统设置 → 人员管理」建档",
         )
 
         # 审批人（含管控化学品的工单需先审批；正常提交仅限管理员账号，
@@ -277,11 +322,15 @@ with tab_borrow:
                 },
                 hide_index=True,
                 use_container_width=True,
-                num_rows="dynamic",
+                num_rows="fixed",
                 key="wo_reagent_table",
             )
 
-            selected_bottles = [row["_bottle_number"] for row in edited_data if row["选择"]]
+            # 防御：_bottle_number / 选择 缺失（如历史会话残留行）时跳过，避免 KeyError
+            selected_bottles = [
+                row["_bottle_number"] for row in edited_data
+                if row.get("选择") and row.get("_bottle_number")
+            ]
             if selected_bottles:
                 if st.button(f"添加 {len(selected_bottles)} 瓶试剂到领用清单", use_container_width=True):
                     for bottle_number in selected_bottles:
@@ -401,6 +450,13 @@ with tab_borrow:
                     st.error("请指定审批人（清单含管控化学品时需管理员审批）")
                 elif order_type == "课程领用" and (not course or not exp_item):
                     st.error("课程领用必须选择课程与实验项目")
+                elif st.session_state.get("wo_cart_course_key") and (
+                    st.session_state.get("wo_cart_course_key") != _sel_key
+                ):
+                    st.error(
+                        "领用清单来自其他课程/实验（或零星模式），"
+                        "请清空清单后按当前课程/实验重新添加"
+                    )
                 else:
                     result = work_order_service.create_order(
                         order_type=order_type,
@@ -415,6 +471,7 @@ with tab_borrow:
                     if result.is_success():
                         st.success(f"✅ {result.message}")
                         st.session_state.borrow_cart = []
+                        st.session_state.pop("wo_cart_course_key", None)
                         st.rerun()
                     else:
                         st.error(f"❌ {result.message}")

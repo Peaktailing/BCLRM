@@ -189,6 +189,7 @@ def require_auth():
                         st.error(result.message or "密码更新失败")
 
         if st.button("登出", use_container_width=True):
+            clear_business_session_state(st.session_state)
             st.session_state["logged_in"] = False
             st.session_state.pop("user_name", None)
             st.session_state.pop("is_admin", None)
@@ -270,3 +271,44 @@ def is_logged_in() -> bool:
         True 表示已登录
     """
     return st.session_state.get("logged_in", False)
+
+
+# ---------------------------------------------------------------------------
+# 登出业务会话清理（纯函数，便于单测）
+# ---------------------------------------------------------------------------
+
+#: 登出时必须保留的登录态键（登出分支自行清理这些键）
+_LOGIN_SESSION_KEYS = frozenset({
+    "logged_in",
+    "user_name",
+    "is_admin",
+    "user_role",
+    "last_activity",
+})
+
+
+def clear_business_session_state(session) -> list:
+    """清空会话中的业务键，保留登录态相关键（纯函数，便于单测）。
+
+    业务键包括领用清单（borrow_cart）、需求调配明细（dmd_lines）、
+    各页面的表单/控件草稿等。登出时若不清理，下一个用户登录后会
+    看到上一用户的清单与草稿（串号风险）。
+
+    Args:
+        session: 类 dict 的会话容器（st.session_state 或普通 dict）
+
+    Returns:
+        list: 被清理的键名（排序后），便于测试与审计
+    """
+    removed = []
+    for key in list(session.keys()):
+        key_text = str(key)
+        if key_text in _LOGIN_SESSION_KEYS or key_text.startswith("login_"):
+            # 登录态与登录表单控件键保留，由登出分支/登录流程处理
+            continue
+        try:
+            del session[key]
+        except Exception:
+            continue
+        removed.append(key_text)
+    return sorted(removed)
