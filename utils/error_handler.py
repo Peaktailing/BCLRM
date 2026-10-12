@@ -124,6 +124,24 @@ class NotFoundError(ReagentException):
         super().__init__(message, error_code, details)
 
 
+class PermissionDeniedError(ReagentException):
+    """服务端权限拒绝异常
+
+    由集中式权限守卫（utils/permission_guard.py）在数据库写入前抛出，
+    经 handle_exception 转换为 ServiceResult.fail 返回给页面。
+    """
+
+    def __init__(self, message: str, error_code: str = "PERMISSION_DENIED", details: Optional[dict] = None):
+        """初始化权限拒绝异常
+
+        Args:
+            message: 拒绝原因描述
+            error_code: 错误码，默认为 PERMISSION_DENIED
+            details: 详细信息字典
+        """
+        super().__init__(message, error_code, details)
+
+
 # ============================================================================
 # 错误日志记录器
 # ============================================================================

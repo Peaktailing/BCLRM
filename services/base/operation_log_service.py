@@ -9,11 +9,15 @@ from utils.error_handler import logger
 
 
 class OperationLogService(BaseService):
-    """审计日志表服务"""
+    """审计日志表服务（写入/查询独立日志库 operation_log.db，四库分离）"""
 
     def __init__(self):
-        super().__init__("operation_log")
-        logger.info("审计日志服务初始化完成")
+        from config.settings import DB_LOG_PATH
+        from db.database import init_log_db
+        # 日志库自动建表（幂等），保证脚本/测试等未走 app 启动的场景也能写日志
+        log_db = init_log_db()
+        super().__init__("operation_log", db=log_db)
+        logger.info(f"审计日志服务初始化完成（{DB_LOG_PATH}）")
 
     def list_logs(
         self,

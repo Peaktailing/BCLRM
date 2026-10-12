@@ -3,12 +3,11 @@
 化学品信息管理的UI页面，仅负责展示和用户交互，不包含任何业务逻辑。
 所有业务逻辑调用 business/chemical_service.py 中的函数。
 """
-import os
-
 import streamlit as st
 from business.chemical_service import chemical_manage_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
+from utils.attachment_store import attachment_store
 from utils.formula_utils import format_formula
 from utils.error_handler import logger
 
@@ -20,29 +19,79 @@ FALLBACK_UNSEALED = 730
 FALLBACK_SEALED = 365
 
 
-def _safe_filename(uploaded_file) -> str or None:
-    """安全处理上传文件名，防止路径遍历攻击
-
-    使用 os.path.basename() 剥离所有路径组件，仅保留文件名。
-    同时校验扩展名是否在允许列表中。
+def _store_msds(uploaded_file, ref_id=None):
+    """保存 MSDS 附件到附件库（物理文件 + 索引）
 
     Args:
-        uploaded_file: Streamlit UploadedFile 对象，或 None
+        uploaded_file: Streamlit 上传的文件对象，None 返回 None
+        ref_id: 关联的化学品名称（用于附件索引）
 
     Returns:
-        安全的文件名，或 None
+        存储文件名（写入 chemical_info.msds 字段），无文件返回 None。
+        校验失败时显示错误并中止本次提交（st.stop）。
     """
     if uploaded_file is None:
         return None
-    raw_name = uploaded_file.name or ""
-    # 剥离路径组件，仅保留文件名
-    safe_name = os.path.basename(raw_name)
-    # 校验扩展名
-    if safe_name:
-        ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
-        if ext not in MSDS_FILE_TYPES:
-            return None
-    return safe_name or None
+    try:
+        return attachment_store.save(
+            uploaded_file,
+            category="msds",
+            allowed_exts=MSDS_FILE_TYPES,
+            max_mb=MSDS_MAX_SIZE_MB,
+            ref_type="chemical",
+            ref_id=ref_id,
+        )
+    except ValueError as e:
+        st.error(f"MSDS附件保存失败：{e}")
+        st.stop()
+
+
+def _clean_msds(msds_value):
+    """规范化 MSDS 字段值
+
+    历史数据存在三类脏值：字符串 'nan'（批量导入污染）、None、空串，
+    统一归一为 None；旧系统 URL 格式（含 /api/attachments/）原样保留以便识别。
+
+    Args:
+        msds_value: chemical_info.msds 原始值
+
+    Returns:
+        可用的存储文件名 / 旧系统附件串，或 None
+    """
+    if msds_value is None:
+        return None
+    value = str(msds_value).strip()
+    if not value or value.lower() == "nan":
+        return None
+    return value
+
+
+def _download_msds(msds_value):
+    """渲染当前 MSDS 附件的下载入口
+
+    Args:
+        msds_value: chemical_info.msds 存储值（存储文件名 / 旧系统附件串 / 历史脏值）
+    """
+    value = _clean_msds(msds_value)
+    if not value:
+        return
+    # 历史旧系统附件（CodeBuddy 导入的 URL 格式），文件不在本地附件目录
+    if "/api/attachments/" in value:
+        legacy_name = value.split(" /")[0].strip()
+        st.caption(f"MSDS：{legacy_name}（历史旧系统附件，文件未迁移到本地，如需查看请重新上传）")
+        return
+    content = attachment_store.load(value)
+    if content is None:
+        st.caption(f"MSDS：{value}（历史文件缺失）")
+        return
+    display_name = attachment_store.original_name(value) or value
+    st.download_button(
+        f"📥 下载 MSDS（{display_name}）",
+        data=content,
+        file_name=display_name,
+        use_container_width=True,
+        key=f"dl_msds_{value}",
+    )
 
 
 def _compute_default_shelf_life(type_names_list):
@@ -221,7 +270,7 @@ def main():
                 st.error("请至少选择一个试剂类型")
             else:
                 reagent_type_str = ", ".join(selected_types_add)
-                msds_value = _safe_filename(msds)
+                msds_value = _store_msds(msds, ref_id=name)
                 _result = chemical_manage_service.create_chemical(
                     name=name,
                     display_name=display_name,
@@ -268,6 +317,9 @@ def main():
             selected_chemical = chemical_options[selected_chemical_to_edit]
             # 直接使用下拉选中的对象，避免按名称二次查询造成错位
             chem = selected_chemical
+
+            # 当前 MSDS 附件下载入口（表单外，Streamlit 表单内不支持下载按钮）
+            _download_msds(getattr(chem, 'msds', None))
 
             # 解析当前试剂类型为列表
             current_types = _parse_reagent_type_str(getattr(chem, 'reagent_type', '')) if chem else []
@@ -354,7 +406,17 @@ def main():
                         st.error("请至少选择一个试剂类型")
                     else:
                         reagent_type_str = ", ".join(selected_types_edit)
-                        edit_msds_value = _safe_filename(edit_msds) if edit_msds else getattr(selected_chemical, 'msds', None)
+                        if edit_msds:
+                            # 上传新附件：真实存储，删除旧文件
+                            edit_msds_value = _store_msds(
+                                edit_msds,
+                                ref_id=getattr(selected_chemical, 'name', ''),
+                            )
+                            _old_msds = _clean_msds(getattr(selected_chemical, 'msds', None))
+                            if _old_msds and _old_msds != edit_msds_value:
+                                attachment_store.delete(_old_msds)
+                        else:
+                            edit_msds_value = _clean_msds(getattr(selected_chemical, 'msds', None))
                         _result = chemical_manage_service.update_chemical(
                             record_id=getattr(selected_chemical, 'id', ''),
                             name=edit_name,

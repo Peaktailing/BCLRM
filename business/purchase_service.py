@@ -243,6 +243,13 @@ class PurchaseService:
                 if existing:
                     plan_id = existing.id
                     plan_number = existing.plan_number
+                    # 覆盖前先保留人工修改过的明细（is_manual=1），
+                    # 覆盖生成时采购量/供应商/备注继续沿用并保持「已改」标记
+                    manual_map = {
+                        (i.item_id, i.reagent_name): i
+                        for i in purchase_plan_item_service.get_by_plan(plan_id)
+                        if getattr(i, "is_manual", 0)
+                    }
                     purchase_plan_service.update(plan_id, {
                         "source_semester": source_semester,
                         "source_student_count": source_students,
@@ -254,6 +261,7 @@ class PurchaseService:
                     purchase_plan_item_service.delete_by_plan(plan_id)
                     action = "已覆盖更新"
                 else:
+                    manual_map = {}
                     # 含微秒，避免同一秒内连续生成多份采购单时单号冲突
                     plan_number = "CP" + datetime.now().strftime("%Y%m%d%H%M%S%f")
                     plan_id = purchase_plan_service.create({
@@ -902,6 +910,8 @@ class PurchaseService:
     def inbound_plan(
         self, plan_id: int, manager: Optional[str] = None,
         operator: Optional[str] = None,
+        production_date: Optional[str] = None,
+        storage_location: Optional[str] = None,
     ) -> ServiceResult:
         """按采购单批量入库：为每个未入库明细生成一瓶试剂（仅「已到货」可入库）
 
@@ -971,10 +981,17 @@ class PurchaseService:
                 failed.append(f"{item.reagent_name}: {result.message}")
 
         items_after = purchase_plan_item_service.get_by_plan(plan_id)
-        # 空明细的采购单不应被判定为「已入库」
-        all_done = bool(items_after) and all(
-            getattr(i, "bottle_number", None) for i in items_after
-        )
+
+        def _item_settled(item) -> bool:
+            """明细是否已处置完成：已入库，或采购量为 0（无需采购，视为已处置）"""
+            if getattr(item, "bottle_number", None):
+                return True
+            pq = item.purchase_quantity
+            return pq is not None and float(pq) <= 0
+
+        # 空明细的采购单不应被判定为「已入库」；
+        # 采购量为 0 的明细不应永久阻塞采购单完成
+        all_done = bool(items_after) and all(_item_settled(i) for i in items_after)
         if all_done:
             purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_INBOUND})
 

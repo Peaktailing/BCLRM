@@ -6,6 +6,7 @@ import re
 from typing import List, Dict, Optional, Any
 from db.database import Database
 from utils.error_handler import logger
+from utils.permission_guard import enforce_write
 
 # SQL 标识符安全校验正则：仅允许 字母/数字/下划线，必须以字母或下划线开头
 _FIELD_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
@@ -145,6 +146,9 @@ class BaseService:
             logger.warning(f"创建记录失败 [{self.table_name}]: 字段为空")
             return None
 
+        # 集中式服务端写权限守卫（规则见 utils/permission_guard.py）
+        enforce_write(self.table_name, fields, action="新增")
+
         # 校验所有字段名安全
         for key in fields.keys():
             self._validate_field_name(key)
@@ -175,6 +179,9 @@ class BaseService:
         if not fields:
             logger.warning(f"更新记录失败 [{self.table_name}]: 字段为空")
             return False
+
+        # 集中式服务端写权限守卫（规则见 utils/permission_guard.py）
+        enforce_write(self.table_name, fields, action="更新")
 
         # 校验所有字段名安全
         for key in fields.keys():
@@ -213,6 +220,9 @@ class BaseService:
             logger.warning(f"更新记录失败 [{self.table_name}]: 字段为空")
             return False
 
+        # 集中式服务端写权限守卫（规则见 utils/permission_guard.py）
+        enforce_write(self.table_name, fields, action="更新")
+
         self._validate_field_name(field_name)
 
         set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
@@ -236,6 +246,9 @@ class BaseService:
         Returns:
             是否成功
         """
+        # 集中式服务端写权限守卫（规则见 utils/permission_guard.py）
+        enforce_write(self.table_name, action="删除")
+
         query = f"DELETE FROM {self.table_name} WHERE id = ?"
 
         try:
@@ -260,6 +273,9 @@ class BaseService:
         Returns:
             是否成功
         """
+        # 集中式服务端写权限守卫（规则见 utils/permission_guard.py）
+        enforce_write(self.table_name, action="删除")
+
         self._validate_field_name(field_name)
         query = f"DELETE FROM {self.table_name} WHERE {field_name} = ?"
 

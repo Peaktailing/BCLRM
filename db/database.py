@@ -797,6 +797,11 @@ class Database:
         try:
             cursor = self.connection.cursor()
 
+            # 数据清洗：历史批量导入将 NaN 写成字符串 'nan'，规范为 NULL（幂等）
+            cursor.execute("UPDATE chemical_info SET msds = NULL WHERE msds = 'nan'")
+            if cursor.rowcount:
+                logger.info(f"迁移完成：清洗 chemical_info.msds 'nan' 污染值 {cursor.rowcount} 条")
+
             # 迁移：reagent_bottle 表增加 expired_flag 字段
             cursor.execute("PRAGMA table_info(reagent_bottle)")
             columns = {row[1] for row in cursor.fetchall()}
@@ -1247,3 +1252,111 @@ class Database:
 
 # 全局主数据库实例（向后兼容）
 db = Database()
+
+
+# ============================================================================
+# 四库分离：辅助库初始化（日志库 / 附件索引库 / 归档冷库）
+# app.py 启动时调用 init_aux_databases()，各初始化函数幂等、可重复执行
+# ============================================================================
+
+def init_log_db() -> Database:
+    """初始化审计日志库（operation_log.db），并迁移主库历史日志
+
+    幂等：表已存在则跳过建表；主库 operation_log 有历史数据且
+    日志库为空时一次性迁移（迁移后主库表保留只读，兼容旧查询入口）。
+    """
+    from config.settings import DB_LOG_PATH, DB_MAIN_PATH
+    log_db = Database(DB_LOG_PATH)
+    cursor = log_db.connection.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS operation_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator TEXT,
+            action TEXT,
+            target_type TEXT,
+            target_id TEXT,
+            detail TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_time ON operation_log(created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_action ON operation_log(action)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_operator ON operation_log(operator)")
+
+    # 一次性历史迁移：日志库为空且主库有数据时复制
+    cursor.execute("SELECT COUNT(*) FROM operation_log")
+    if cursor.fetchone()[0] == 0:
+        main_db = Database(DB_MAIN_PATH)
+        if main_db.table_exists("operation_log"):
+            rows = main_db.execute_query("SELECT * FROM operation_log ORDER BY id")
+            if rows:
+                cursor.executemany(
+                    "INSERT INTO operation_log (id, operator, action, target_type, target_id, detail, created_at)"
+                    " VALUES (:id, :operator, :action, :target_type, :target_id, :detail, :created_at)",
+                    rows,
+                )
+                logger.info(f"审计日志历史迁移完成: {len(rows)} 条 → {DB_LOG_PATH}")
+    log_db.connection.commit()
+    return log_db
+
+
+def init_attach_db() -> Database:
+    """初始化附件索引库（attach_cold.db）
+
+    附件物理文件存放在 attachments/ 目录，本库仅存文件索引元数据，
+    与业务库解耦，附件下载不依赖主业务库在线。
+    """
+    from config.settings import DB_ATTACH_PATH
+    attach_db = Database(DB_ATTACH_PATH)
+    attach_db.connection.cursor().execute("""
+        CREATE TABLE IF NOT EXISTS attachment_index (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stored_name TEXT NOT NULL UNIQUE,
+            original_name TEXT,
+            category TEXT,
+            ref_type TEXT,
+            ref_id TEXT,
+            size_bytes INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    attach_db.connection.commit()
+    return attach_db
+
+
+def init_archive_db() -> Database:
+    """初始化归档冷库（archive_cold.db）
+
+    记录归档批次元数据；具体的过期数据搬运逻辑见 docs/架构演进规划.md。
+    """
+    from config.settings import DB_ARCHIVE_PATH
+    archive_db = Database(DB_ARCHIVE_PATH)
+    archive_db.connection.cursor().execute("""
+        CREATE TABLE IF NOT EXISTS archive_batch (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_table TEXT NOT NULL,
+            row_count INTEGER,
+            archive_year TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    archive_db.connection.commit()
+    return archive_db
+
+
+def init_aux_databases() -> dict:
+    """初始化三个辅助库（app 启动时调用，幂等）
+
+    Returns:
+        各库状态字典，如 {"log": "db/operation_log.db", ...}
+    """
+    init_log_db()
+    init_attach_db()
+    init_archive_db()
+    logger.info("四库分离辅助库初始化完成（log/attach/archive）")
+    return {
+        "main": "db/main.db",
+        "log": "db/operation_log.db",
+        "attach": "db/attach_cold.db",
+        "archive": "db/archive_cold.db",
+    }

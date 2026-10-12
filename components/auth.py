@@ -17,6 +17,7 @@ from config.settings import SESSION_TIMEOUT_MINUTES, DEFAULT_INITIAL_PASSWORD
 from business.permission_service import permission_service
 from services.base.person_service import person_service
 from utils.password_utils import verify_password
+from utils.user_context import set_user, clear_user
 
 # 登录安全策略
 MAX_LOGIN_ATTEMPTS = 5      # 连续失败次数上限
@@ -110,6 +111,8 @@ def render_login_form():
         st.session_state["is_admin"] = bool(permission_service.is_admin(user_name).data)
         st.session_state["user_role"] = permission_service.get_user_role(user_name).data or "user"
         st.session_state["last_activity"] = time.time()
+        # 写入服务端权限守卫上下文（utils/user_context.py）
+        set_user(user_name, st.session_state["user_role"])
 
         from utils.audit import audit
         audit(user_name, "登录", target_type="user", target_id=user_name)
@@ -142,8 +145,15 @@ def require_auth():
         st.session_state["last_activity"] = time.time()
 
     if not st.session_state["logged_in"]:
+        clear_user()
         render_login_form()
         return False
+
+    # 同步服务端权限守卫上下文：每次页面刷新都以会话身份为准
+    set_user(
+        st.session_state.get("user_name", ""),
+        st.session_state.get("user_role", "user"),
+    )
 
     # 显示当前用户信息和登出按钮
     with st.sidebar:
@@ -184,6 +194,7 @@ def require_auth():
             st.session_state.pop("is_admin", None)
             st.session_state.pop("user_role", None)
             st.session_state.pop("last_activity", None)
+            clear_user()
             st.rerun()
 
     return True

@@ -159,8 +159,21 @@ class TestPurchaseService(unittest.TestCase):
         self._make_order("BO103", "试剂甲", 20.0, 0.0, course_b, "课程B", item_b, "实验一",
                          bottle_number="B0003")
 
-        purchase_service.generate_course_plan("课程A", "2025-2026", "2026-2027", 30)
-        purchase_service.generate_course_plan("课程B", "2025-2026", "2026-2027", 30)
+        pa = purchase_service.generate_course_plan("课程A", "2025-2026", "2026-2027", 30)
+        pb = purchase_service.generate_course_plan("课程B", "2025-2026", "2026-2027", 30)
+        self.assertTrue(pa.is_success(), pa.message)
+        self.assertTrue(pb.is_success(), pb.message)
+
+        # v0.8.9 起草稿（待采购）不参与汇总
+        draft = purchase_service.summarize("2026-2027")
+        self.assertTrue(draft.is_success(), draft.message)
+        self.assertEqual(len(draft.data), 0, "草稿采购单不应纳入汇总")
+
+        # 提交后才纳入汇总
+        sa = purchase_service.submit_plan(pa.data["plan_id"], submitted_by="测试")
+        sb = purchase_service.submit_plan(pb.data["plan_id"], submitted_by="测试")
+        self.assertTrue(sa.is_success(), sa.message)
+        self.assertTrue(sb.is_success(), sb.message)
 
         result = purchase_service.summarize("2026-2027")
         self.assertTrue(result.is_success(), result.message)

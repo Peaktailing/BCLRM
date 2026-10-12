@@ -26,8 +26,11 @@ def _ensure_database():
     """启动时确保数据库表结构与迁移为最新（幂等，仅执行一次）
 
     避免因新增字段未迁移导致相关功能（如领用量写入）失败。
+    同时初始化四库分离的辅助库（日志库/附件索引库/归档冷库）。
     """
+    from db.database import init_aux_databases
     db.init_tables()
+    init_aux_databases()
 
 
 _ensure_database()
@@ -35,6 +38,8 @@ _ensure_database()
 
 def _login_page():
     """未登录时展示的登录页"""
+    from utils.user_context import clear_user
+    clear_user()  # 未登录状态：清空服务端权限守卫上下文
     st.markdown(f"## 🧪 {SYSTEM_NAME}")
     st.markdown("请先登录后使用系统。")
     render_login_form()

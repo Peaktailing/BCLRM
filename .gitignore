@@ -223,6 +223,9 @@ __marimo__/
 *.swo
 *~
 
+# AI 编码工具本地配置
+.codebuddy/
+
 # Database files
 *.db
 *.sqlite
