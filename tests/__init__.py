@@ -38,6 +38,10 @@ _LOG_TMP = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 _LOG_TMP.close()
 _settings.DB_LOG_PATH = _LOG_TMP.name
 
+# 5) 主库默认路径同样重定向：init_log_db 的迁移源等按 DB_MAIN_PATH 新建连接，
+#    统一指向测试库，避免相对路径在非仓库根目录运行时生成杂散 db/main.db
+_settings.DB_MAIN_PATH = _TMP.name
+
 # 建立空表结构（幂等）
 _test_db.init_tables()
 

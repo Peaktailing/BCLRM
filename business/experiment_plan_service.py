@@ -20,6 +20,11 @@ from models.base.experiment_plan import (
     STATUS_NOT_BORROWED,
     STATUS_RETURNED,
 )
+from models.core.borrow_order import (
+    ORDER_STATUS_BORROWING,
+    ORDER_STATUS_PARTIAL,
+    ORDER_STATUS_RETURNED,
+)
 from services.base.experiment_course_service import experiment_course_service
 from services.base.experiment_plan_service import (
     experiment_default_usage_service,
@@ -121,9 +126,16 @@ class ExperimentPlanBusinessService:
         student_count: Optional[int] = None
     ) -> ServiceResult:
         """把最近一次课程领用工单的明细折算为「人均用量」写入默认用量"""
+        # 仅取实际执行过领用的工单：待审批/已驳回/已撤回从未扣库存，
+        # 其明细数量不是真实历史用量（QA 审查发现）
+        _effective = (
+            ORDER_STATUS_BORROWING, ORDER_STATUS_PARTIAL, ORDER_STATUS_RETURNED,
+        )
         orders = [
             order for order in borrow_order_service.get_all_parsed()
-            if order.course_name == course_name and order.item_name == item_name
+            if order.course_name == course_name
+            and order.item_name == item_name
+            and getattr(order, "status", None) in _effective
         ]
         if not orders:
             return ServiceResult.fail(

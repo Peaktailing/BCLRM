@@ -30,6 +30,7 @@ from models.core.borrow_order import (
     APPROVAL_WITHDRAWN,
     ITEM_STATUS_PENDING,
     ITEM_STATUS_RETURNED,
+    ITEM_STATUS_FAILED,
     ORDER_STATUS_BORROWING,
     ORDER_STATUS_PARTIAL,
     ORDER_STATUS_PENDING,
@@ -49,6 +50,7 @@ from services.core.borrow_order_service import (
 from services.core.borrow_record_service import borrow_record_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from utils.error_handler import logger, ServiceResult, handle_exception
+from utils.field_mapper import BorrowRecordField
 
 # 允许发起工单的角色（管理员集合与权限服务保持一致）
 ADMIN_ROLES = {"super_admin", "admin"}
@@ -461,12 +463,19 @@ class WorkOrderService:
     # 历史工单 → 默认领用清单
     # ------------------------------------------------------------------
     def find_latest_history_order(self, course_name: str, item_name: Optional[str] = None):
-        """查找该「课程（+实验）」最近一次课程领用工单"""
+        """查找该「课程（+实验）」最近一次课程领用工单
+
+        仅取实际执行过领用的工单（借用中/部分归还/已归还）：待审批/已驳回/
+        已撤回从未扣库存，其明细数量不是真实历史用量，不能作为默认清单基准
+        （QA 审查发现）。
+        """
+        _effective = (ORDER_STATUS_BORROWING, ORDER_STATUS_PARTIAL, ORDER_STATUS_RETURNED)
         orders = [
             order for order in borrow_order_service.get_all_parsed()
             if order.order_type == ORDER_TYPE_COURSE
             and order.course_name == course_name
             and (item_name is None or order.item_name == item_name)
+            and getattr(order, "status", None) in _effective
         ]
         if not orders:
             return None
@@ -632,20 +641,19 @@ class WorkOrderService:
             if result.is_success():
                 success_count += 1
                 borrow_order_item_service.update(item.id, {"status": ITEM_STATUS_PENDING})
-                # 审批信息精确回写本工单产生的领用流水：按「领用人 + 领用时间」定位，
-                # 避免按瓶号回写把该瓶历史领用记录一并标记为已审批
-                from db.database import db as _db
-                _db.execute_update(
-                    "UPDATE borrow_record SET approver = ?, approved = 1 "
-                    "WHERE bottle_number = ? AND user = ? AND borrow_time >= ?",
-                    (
-                        approver_name,
-                        item.bottle_number,
-                        order.applicant or "",
-                        order.borrow_time or "",
-                    ),
-                )
+                # 审批信息按主键精确回写本次领用产生的流水（record_id 由
+                # reagent_borrow 返回）。旧实现按「瓶号+领用人+时间窗」宽匹配，
+                # 同瓶同人存在多张待审批工单时会互相覆盖审批留痕（QA 审查发现）
+                _record_id = (result.data or {}).get("record_id")
+                if _record_id:
+                    borrow_record_service.update(_record_id, {
+                        BorrowRecordField.APPROVER: approver_name,
+                        BorrowRecordField.APPROVED: 1,
+                    })
             else:
+                # 批准时执行失败的明细置终态「执行失败」：该瓶从未借出，
+                # 不得进入待还列表，否则按流程"归还"会凭空虚增库存（QA 审查发现）
+                borrow_order_item_service.update(item.id, {"status": ITEM_STATUS_FAILED})
                 failures.append(f"{item.bottle_number}：{result.message}")
 
         if success_count == 0:
@@ -913,7 +921,9 @@ class WorkOrderService:
             item = items.get(entry.get("item_id"))
             if item is None:
                 continue
-            if item.status == ITEM_STATUS_RETURNED:
+            # 仅「待归还」明细可归还：跳过已归还及「执行失败」（该瓶从未借出）
+            # 等终态，防止把未借出的瓶走归还路径造成库存虚增（QA 审查发现）
+            if item.status != ITEM_STATUS_PENDING:
                 continue
 
             remaining = float(item.borrow_qty or 0) - float(item.returned_qty or 0)
@@ -975,8 +985,12 @@ class WorkOrderService:
             })
 
         # 刷新工单整体状态
+        # 「执行失败」明细（批准时该瓶已被借走/耗尽等，从未实际借出）视为已了结，
+        # 不阻塞工单在其余明细归还后正常闭环（QA 审查发现）
         all_items = borrow_order_item_service.get_by_order(order_id)
-        if all_items and all(i.status == ITEM_STATUS_RETURNED for i in all_items):
+        if all_items and all(
+            i.status in (ITEM_STATUS_RETURNED, ITEM_STATUS_FAILED) for i in all_items
+        ):
             new_status = ORDER_STATUS_RETURNED
         elif any(
             i.status == ITEM_STATUS_RETURNED or float(i.returned_qty or 0) > 0

@@ -110,4 +110,10 @@ def is_borrowable_now(bottle) -> bool:
     做查询侧二次过滤。
     """
     flag, check = recompute_borrowable(bottle)
-    return check and flag == BorrowableStatus.BORROWABLE
+    # 存量标志必须同为「可借」：已借出但有剩余量的瓶经 recompute 恒返回
+    # (可借, True)，若不校验存量 flag 会被误计入「可借数量」，与首页
+    # dashboard（基于存量 borrowable_check）口径冲突（QA 审查发现）
+    return (
+        check
+        and getattr(bottle, "borrowable_flag", None) == BorrowableStatus.BORROWABLE
+    )

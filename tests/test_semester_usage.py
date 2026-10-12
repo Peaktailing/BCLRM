@@ -148,6 +148,36 @@ class TestUsageCalculation(unittest.TestCase):
             semester_stats_service.get_usage_summary("2026-2027").data["total_usage"], 20.0
         )
 
+    def test_non_effective_orders_excluded(self):
+        """待审批/已驳回/已撤回工单从未扣库存，不得计入用量（QA 审查发现）。
+
+        collect() 与 usage_by_month() 是学期用量与采购人均测算的数据源，
+        漏接 is_effective_order 过滤会把未生效工单的领用量全额计入。
+        """
+        # 生效工单：领用 10，归还 2 → 用量 8
+        self._make_order("BO100", "试剂甲", 10.0, 2.0)
+        # 非生效工单：即便存在未还量也不得计入
+        for number, status in (("BO101", "待审批"), ("BO102", "已驳回"),
+                               ("BO103", "已撤回")):
+            oid = borrow_order_service.create({
+                "order_number": number,
+                "order_type": "零星领用",
+                "applicant": "李四",
+                "borrow_time": "2025/10/16 10:00",
+                "status": status,
+            })
+            borrow_order_item_service.create({
+                "order_id": oid,
+                "bottle_number": "B0002",
+                "reagent_name": "试剂甲",
+                "borrow_qty": 50.0,
+                "returned_qty": 0.0,
+                "status": "待归还",
+            })
+
+        summary = semester_stats_service.get_usage_summary().data
+        self.assertAlmostEqual(summary["total_usage"], 8.0)
+
     def test_list_semesters(self):
         self._make_order("BO006", "试剂甲", 10.0, 10.0, borrow_time="2025/11/01 10:00")
         semesters = semester_stats_service.list_semesters().data

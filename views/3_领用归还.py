@@ -25,6 +25,7 @@ from business.demand_service import demand_service
 from business.allocation_service import allocation_service
 from services.core.allocation_order_service import allocation_order_service
 from services.core.reagent_demand_service import reagent_demand_service
+from services.base.controlled_list_service import controlled_list_service
 from services.base.experiment_course_service import experiment_course_service
 from services.base.experiment_project_service import experiment_project_service
 from services.core.reagent_bottle_service import reagent_bottle_service
@@ -256,7 +257,7 @@ with tab_borrow:
                     "请重新指定。"
                 )
         approver_sel = st.selectbox(
-            "审批人*",
+            "审批人（清单含管控化学品时必选）",
             options=[""] + _approver_candidates,
             index=(
                 _approver_candidates.index(_default_approver) + 1
@@ -264,7 +265,8 @@ with tab_borrow:
             ),
             format_func=lambda n: "（请选择审批人）" if n == "" else n,
             key="wo_approver",
-            help="含管控化学品的领用需管理员审批；审批人不能是领用人本人",
+            help="仅清单含管控化学品时需要审批（管理员审批，审批人不能是领用人本人）；"
+                 "普通工单无需审批，可不选",
         )
 
         # 关联实验项目（零星领用可选）
@@ -443,11 +445,26 @@ with tab_borrow:
                     st.rerun()
 
             st.markdown("---")
+
+            def _cart_has_controlled() -> bool:
+                """清单是否含管控化学品（与后端 create_order 审批判定口径一致：
+                有 CAS 按 CAS 匹配，无 CAS 按名称兜底）。
+                仅管控工单需要审批人：普通工单后端不落库审批人，强制选择纯属摩擦，
+                且候选为空时会硬阻断提交（QA 审查发现）。"""
+                for entry in st.session_state.borrow_cart:
+                    cas = entry.get("cas_number")
+                    if cas and controlled_list_service.get_by_cas_number(cas):
+                        return True
+                    name = entry.get("reagent_name")
+                    if name and controlled_list_service.get_by_name(name):
+                        return True
+                return False
+
             if st.button("提交领用工单", type="primary", use_container_width=True):
                 if not applicant:
                     st.error("请选择领用人")
-                elif not approver_sel:
-                    st.error("请指定审批人（清单含管控化学品时需管理员审批）")
+                elif _cart_has_controlled() and not approver_sel:
+                    st.error("清单含管控化学品，请指定审批人（管理员账号）")
                 elif order_type == "课程领用" and (not course or not exp_item):
                     st.error("课程领用必须选择课程与实验项目")
                 elif st.session_state.get("wo_cart_course_key") and (
@@ -713,7 +730,12 @@ with tab_return:
             st.warning("权限不足：只有管理员及以上或该工单的原领用人可以归还")
         else:
             items = work_order_service.get_order_items(order_id)
-            pending = [item for item in items if item["status"] != "已归还"]
+            # 「执行失败」明细（批准时该瓶从未借出）不进入待还列表，
+            # 防止按流程归还从未借出的瓶造成库存虚增（QA 审查发现）
+            pending = [
+                item for item in items
+                if item["status"] not in ("已归还", "执行失败")
+            ]
             done_items = [item for item in items if item["status"] == "已归还"]
 
             st.caption(

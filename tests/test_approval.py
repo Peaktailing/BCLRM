@@ -17,12 +17,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests import TEST_DB
 from utils import audit as audit_module
+from business.borrow_service import borrow_service
 from business.purchase_service import purchase_service
 from business.work_order_service import work_order_service
 from services.base.controlled_list_service import controlled_list_service
 from services.base.experiment_course_service import experiment_course_service
 from services.base.experiment_item_service import experiment_item_service
-from services.core.borrow_order_service import borrow_order_service
+from services.core.borrow_order_service import (
+    borrow_order_item_service,
+    borrow_order_service,
+)
 from services.core.purchase_plan_service import (
     purchase_plan_item_service,
     purchase_plan_service,
@@ -197,6 +201,55 @@ class TestBorrowApproval(unittest.TestCase):
         self.assertAlmostEqual(float(bottle.remaining_quantity), 90.0)
 
         self.assertEqual(work_order_service.list_pending_approvals("王管理员"), [])
+
+    def test_approve_partial_failure_marks_items_failed(self):
+        """批准时个别瓶执行失败（如已被借走）→ 失败明细置终态「执行失败」。
+
+        该瓶从未实际借出，若保留「待归还」状态会出现在待还列表，
+        按流程归还将凭空虚增库存（QA 审查发现）。
+        """
+        self._make_controlled("CN-111")
+        self._make_bottle("B9120", "管控试剂", 100.0, cas="CN-111")
+        self._make_bottle("B9121", "管控试剂", 100.0, cas="CN-111")
+        self._make_person("李老师", "teacher")
+        self._make_person("王管理员", "admin")
+        course_id = self._make_course(approver="王管理员")
+        item_id = self._make_item()
+
+        created = work_order_service.create_order(
+            order_type="课程领用",
+            applicant="李老师",
+            cart_items=[
+                {"bottle_number": "B9120", "reagent_name": "管控试剂",
+                 "borrow_qty": 10.0},
+                {"bottle_number": "B9121", "reagent_name": "管控试剂",
+                 "borrow_qty": 10.0},
+            ],
+            course=experiment_course_service.get_by_id(course_id),
+            exp_item=experiment_item_service.get_by_id(item_id),
+        )
+        self.assertTrue(created.is_success(), created.message)
+        order_id = created.data["order_id"]
+
+        ok = mock.Mock(is_success=mock.Mock(return_value=True),
+                       data={"record_id": 9001})
+        fail = mock.Mock(is_success=mock.Mock(return_value=False),
+                         message="该试剂已被其他用户领用")
+        with mock.patch.object(
+            borrow_service, "reagent_borrow",
+            side_effect=[ok, fail],
+        ):
+            result = work_order_service.approve_order(order_id, "王管理员")
+
+        self.assertTrue(result.is_success(), result.message)
+        statuses = {
+            i.bottle_number: i.status
+            for i in borrow_order_item_service.get_by_order(order_id)
+        }
+        self.assertEqual(statuses["B9120"], "待归还")
+        self.assertEqual(statuses["B9121"], "执行失败")
+        order = borrow_order_service.get_by_id(order_id)
+        self.assertEqual(order.approval_status, "已批准")
 
     def test_reject_closes_order(self):
         """驳回：工单关闭、库存不变。"""

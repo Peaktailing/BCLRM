@@ -114,6 +114,18 @@ class TestRecomputeBorrowable(unittest.TestCase):
         self.assertFalse(check)
         self.assertFalse(is_borrowable_now(b))
 
+    def test_borrowed_bottle_with_qty_not_borrowable_now(self):
+        """已借出但有剩余量 → is_borrowable_now 必须为 False（QA 审查发现）。
+
+        recompute 不改写「已借出」，但可借判定必须结合存量 flag，
+        否则库存页「可借数量」会把借出中的瓶计入，与首页口径冲突。
+        """
+        b = self._bottle(borrowable_flag="已借出")
+        flag, check = recompute_borrowable(b)
+        self.assertEqual(flag, "可借")          # 重算不改写已借出（约定）
+        self.assertTrue(check)
+        self.assertFalse(is_borrowable_now(b))  # 存量 flag=已借出 → 不可借
+
     def test_returned_borrowed_expired_not_revived(self):
         """已借出 + 已过期瓶归还（有量）→ 不得被重设为可借（check=False）。"""
         b = self._bottle(borrowable_flag="已借出", expired_flag="已过期")

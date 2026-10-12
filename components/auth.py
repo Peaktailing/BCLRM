@@ -139,6 +139,9 @@ def require_auth():
     if st.session_state.get("logged_in"):
         last = st.session_state.get("last_activity", 0)
         if last and (time.time() - last) > SESSION_TIMEOUT_MINUTES * 60:
+            # 超时登出与手动登出口径一致：清理业务会话键（领用清单/需求清单等），
+            # 防止共用浏览器时下一位登录者继承前一位用户的草稿（QA 审查发现）
+            clear_business_session_state(st.session_state)
             st.session_state["logged_in"] = False
             st.warning(f"会话已超时（{SESSION_TIMEOUT_MINUTES} 分钟未操作），请重新登录")
             st.rerun()

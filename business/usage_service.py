@@ -62,6 +62,10 @@ class UsageService:
         aggregated: Dict[tuple, Dict] = {}
 
         for order in orders:
+            # 仅统计实际执行过领用的工单（借用中/部分归还/已归还）：
+            # 待审批/已驳回/已撤回从未扣库存，计入会虚增用量与采购人均测算
+            if not is_effective_order(order):
+                continue
             if only_course and not order.course_id:
                 continue
             if course_name and order.course_name != course_name:
@@ -157,6 +161,9 @@ class UsageService:
         by_month: Dict[str, float] = defaultdict(float)
 
         for order in orders:
+            # 与 collect() 口径一致：排除待审批/已驳回/已撤回等未生效工单
+            if not is_effective_order(order):
+                continue
             if semester and date_to_semester(getattr(order, "borrow_time", None)) != semester:
                 continue
             dt = parse_date(getattr(order, "borrow_time", None))
