@@ -89,7 +89,7 @@ if detail_rows:
     _df_detail["实验 · 试剂"] = _df_detail["实验"] + " · " + _df_detail["试剂"]
     st.bar_chart(
         _df_detail[["实验 · 试剂", "平均用量"]],
-        x="实验 · 试剂", y="平均用量", color="#9C27B0", use_container_width=True
+        x="实验 · 试剂", y="平均用量", color="#E1251B", use_container_width=True
     )
 else:
     st.info("暂无用量数据（需领用时关联课程与实验，且存在用量）")
@@ -102,7 +102,7 @@ user_rows = _user_result.data if _user_result.is_success() else []
 if user_rows:
     st.dataframe(user_rows, use_container_width=True, hide_index=True)
     df_user = pd.DataFrame(user_rows)[["领用人", "用量"]]
-    st.bar_chart(df_user, x="领用人", y="用量", color="#4CAF50", use_container_width=True)
+    st.bar_chart(df_user, x="领用人", y="用量", color="#00B42A", use_container_width=True)
 else:
     st.info("暂无用量数据（需要存在「领用 → 归还」记录）")
 
@@ -115,7 +115,7 @@ course_rows = _course_result.data if _course_result.is_success() else []
 if course_rows:
     st.dataframe(course_rows, use_container_width=True, hide_index=True)
     df_course = pd.DataFrame(course_rows)[["课程", "用量"]]
-    st.bar_chart(df_course, x="课程", y="用量", color="#FF9800", use_container_width=True)
+    st.bar_chart(df_course, x="课程", y="用量", color="#FF7D00", use_container_width=True)
 else:
     st.info("暂无课程用量数据（需领用时关联实验课程，且完成归还）")
 
@@ -129,6 +129,6 @@ if month_data:
     df_month = pd.DataFrame(
         [{"月份": month, "用量": value} for month, value in month_data.items()]
     )
-    st.bar_chart(df_month, x="月份", y="用量", color="#2196F3", use_container_width=True)
+    st.bar_chart(df_month, x="月份", y="用量", color="#0FC6C2", use_container_width=True)
 else:
     st.info("暂无按月用量数据")

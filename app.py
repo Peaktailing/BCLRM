@@ -12,6 +12,7 @@
 import streamlit as st
 from config.settings import SYSTEM_NAME
 from components.auth import is_logged_in, render_login_form
+from components.theme import apply_theme
 from db.database import db
 
 st.set_page_config(
@@ -19,6 +20,9 @@ st.set_page_config(
     page_icon="🧪",
     layout="wide"
 )
+
+# 品牌换肤：设计包 token（assets/design/）注入一次，对全部页面与侧边栏生效
+apply_theme()
 
 
 @st.cache_resource

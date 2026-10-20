@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BCLRM 试剂库管理系统 - 数据看板</title>
+    <style id="theme-vars">
+/* ================================================
+   BCLRM 试剂库管理系统 - 品牌样式 (JD 风格)
+   主色: 京东红 #E1251B  |  侧边栏: 深灰 #1D2129
+   ================================================ */
+
+:root {
+  /* === Brand Primary === */
+  --color-primary: #E1251B;
+  --color-primary-hover: #C91A12;
+  --color-primary-active: #A8140E;
+  --color-primary-light: #FFF1F0;
+  --color-primary-50: #FEF2F2;
+  --color-primary-100: #FDE8E8;
+  --color-primary-200: #FBC4C4;
+  --color-primary-500: #E1251B;
+  --color-primary-600: #C91A12;
+  --color-primary-700: #A8140E;
+  --color-primary-800: #8B110B;
+  --color-primary-900: #6E0E08;
+
+  /* === Neutral === */
+  --color-neutral-0: #FFFFFF;
+  --color-neutral-50: #F7F8FA;
+  --color-neutral-100: #F2F3F5;
+  --color-neutral-200: #E5E6EB;
+  --color-neutral-300: #C9CDD4;
+  --color-neutral-400: #86909C;
+  --color-neutral-500: #4E5969;
+  --color-neutral-600: #1D2129;
+  --color-neutral-700: #17171A;
+  --color-neutral-800: #111114;
+  --color-neutral-900: #0A0A0B;
+
+  /* === Surface & Background === */
+  --color-bg-main: #F7F8FA;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-muted: #F2F3F5;
+  --color-bg-sidebar: #1D2129;
+
+  /* === Text === */
+  --color-text-primary: #1D2129;
+  --color-text-secondary: #4E5969;
+  --color-text-tertiary: #86909C;
+  --color-text-placeholder: #C9CDD4;
+  --color-text-inverse: #FFFFFF;
+  --color-text-brand: #E1251B;
+
+  /* === Border === */
+  --color-border: #E5E6EB;
+  --color-border-light: #F2F3F5;
+  --color-border-dark: #C9CDD4;
+
+  /* === State === */
+  --state-success: #00B42A;
+  --state-success-bg: #E8FFEA;
+  --state-warning: #FF7D00;
+  --state-warning-bg: #FFF7E8;
+  --state-error: #F53F3F;
+  --state-error-bg: #FFECE8;
+  --state-info: #0FC6C2;
+  --state-info-bg: #E8FFFB;
+
+  /* === Radius === */
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* === Shadow === */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.05);
+
+  /* === Spacing === */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 48px;
+
+  /* === Typography === */
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  --text-4xl: 28px;
+  --text-5xl: 32px;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* === Layout === */
+  --sidebar-width: 220px;
+  --header-height: 56px;
+  --content-max-width: 1400px;
+}
+
+/* === Dark Mode === */
+html.dark {
+  --color-bg-main: #0A0A0B;
+  --color-bg-surface: #17171A;
+  --color-bg-elevated: #1D2129;
+  --color-bg-muted: #24272E;
+  --color-bg-sidebar: #0A0A0B;
+
+  --color-text-primary: #F2F3F5;
+  --color-text-secondary: #C9CDD4;
+  --color-text-tertiary: #86909C;
+  --color-text-placeholder: #4E5969;
+  --color-text-inverse: #1D2129;
+
+  --color-border: #24272E;
+  --color-border-light: #1D2129;
+  --color-border-dark: #4E5969;
+
+  --color-primary-light: #2A1515;
+  --color-primary-50: #1D0F0E;
+
+  --state-success-bg: #0D2818;
+  --state-warning-bg: #2B1D0A;
+  --state-error-bg: #2B1010;
+  --state-info-bg: #0D2222;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.25);
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <style type="text/tailwindcss">
+  
+  @layer base {
+    body { background: #ffffff; color: #0f172a; }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body>
+  <!-- Mobile sidebar overlay backdrop -->
+  <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden" onclick="document.getElementById('sidebar').classList.add('-translate-x-full'); this.classList.add('hidden');"></div>
+
+  <!-- Left Sidebar -->
+  <aside id="sidebar"
+    class="fixed top-0 left-0 z-50 h-full flex flex-col -translate-x-full lg:translate-x-0 transition-transform duration-200"
+    style="width: var(--sidebar-width); background-color: var(--color-bg-sidebar);">
+
+    <!-- Logo Area -->
+    <div class="flex items-center gap-2.5 px-5 py-4 shrink-0" style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div class="flex items-center justify-center shrink-0" style="width: 32px; height: 32px; background-color: var(--color-primary); border-radius: var(--radius-md);">
+        <i data-lucide="flask-conical" style="width: 18px; height: 18px; color: var(--color-text-inverse);"></i>
+      </div>
+      <div class="min-w-0">
+        <div class="truncate text-base font-semibold tracking-wide" style="color: var(--color-text-inverse); font-family: var(--font-sans);">BCLRM</div>
+        <div class="truncate text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">试剂库管理系统</div>
+      </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <nav class="flex-1 overflow-y-auto py-3 px-2">
+      <ul class="flex flex-col gap-0.5">
+
+        <!-- 首页 -->
+        <li>
+          <a href="#home" data-nav-key="home" data-dom-id="nav-home"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="home" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">首页</span>
+          </a>
+        </li>
+
+        <!-- 实时库存 -->
+        <li>
+          <a href="#inventory" data-nav-key="inventory" data-dom-id="nav-inventory"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="package" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">实时库存</span>
+          </a>
+        </li>
+
+        <!-- 试剂入库 -->
+        <li>
+          <a href="#stock-in" data-nav-key="stock-in" data-dom-id="nav-stock-in"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="plus-circle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">试剂入库</span>
+          </a>
+        </li>
+
+        <!-- 领用归还 -->
+        <li>
+          <a href="#borrow-return" data-nav-key="borrow-return" data-dom-id="nav-borrow-return"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="arrow-right-left" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">领用归还</span>
+          </a>
+        </li>
+
+        <!-- 综合查询 -->
+        <li>
+          <a href="#query" data-nav-key="query" data-dom-id="nav-query"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="search" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">综合查询</span>
+          </a>
+        </li>
+
+        <!-- 数据看板 (active) -->
+        <li>
+          <a href="#dashboard" data-nav-key="dashboard" data-dom-id="nav-dashboard" data-active="true"
+            class="nav-active group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-inverse); border-left: 3px solid var(--color-primary); background-color: rgba(255,255,255,0.08);">
+            <i data-lucide="bar-chart-3" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">数据看板</span>
+          </a>
+        </li>
+
+        <!-- 化学品信息 -->
+        <li>
+          <a href="#chemical-info" data-nav-key="chemical-info" data-dom-id="nav-chemical-info"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="flask-conical" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">化学品信息</span>
+          </a>
+        </li>
+
+        <!-- 管控化学品目录 -->
+        <li>
+          <a href="#controlled-list" data-nav-key="controlled-list" data-dom-id="nav-controlled-list"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="shield-alert" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">管控化学品目录</span>
+          </a>
+        </li>
+
+        <!-- 系统设置 -->
+        <li>
+          <a href="#settings" data-nav-key="settings" data-dom-id="nav-settings"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="settings" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">系统设置</span>
+          </a>
+        </li>
+
+      </ul>
+    </nav>
+
+    <!-- Version -->
+    <div class="shrink-0 px-5 py-3" style="border-top: 1px solid rgba(255,255,255,0.08);">
+      <span class="text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">v0.2.0</span>
+    </div>
+  </aside>
+
+  <!-- Main Layout Wrapper -->
+  <div id="main-wrapper" class="flex flex-col min-h-screen lg:ml-[var(--sidebar-width)]">
+
+    <!-- Top Header Bar -->
+    <header class="sticky top-0 z-30 flex items-center justify-between shrink-0 px-4 lg:px-6"
+      style="height: var(--header-height); background-color: var(--color-bg-surface); border-bottom: 1px solid var(--color-border);">
+
+      <!-- Left: Hamburger + Breadcrumb -->
+      <div class="flex items-center gap-3 min-w-0 flex-1">
+        <!-- Mobile hamburger toggle -->
+        <button class="lg:hidden flex items-center justify-center shrink-0 cursor-pointer"
+          style="width: 36px; height: 36px; border-radius: var(--radius-md); color: var(--color-text-secondary);"
+          onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full'); document.getElementById('sidebar-backdrop').classList.toggle('hidden');">
+          <i data-lucide="menu" style="width: 22px; height: 22px;"></i>
+        </button>
+        <!-- Breadcrumb -->
+        <nav class="flex items-center gap-1.5 min-w-0 text-sm" style="color: var(--color-text-secondary); font-family: var(--font-sans);">
+          <span class="truncate">首页</span>
+          <span style="color: var(--color-text-tertiary);">/</span>
+          <span class="truncate" style="color: var(--color-text-primary);">数据看板</span>
+        </nav>
+      </div>
+
+      <!-- Right: Notification + User -->
+      <div class="flex items-center gap-4 shrink-0">
+        <button class="relative flex items-center justify-center cursor-pointer"
+          style="width: 36px; height: 36px; border-radius: var(--radius-md); color: var(--color-text-secondary);"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          <i data-lucide="bell" style="width: 20px; height: 20px;"></i>
+          <span class="absolute top-1 right-1 flex items-center justify-center" style="width: 8px; height: 8px; background-color: var(--color-primary); border-radius: 50%; border: 2px solid var(--color-bg-surface);"></span>
+        </button>
+        <div class="flex items-center gap-2 cursor-pointer py-1 px-2 rounded-md transition-colors duration-150"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          <div class="flex items-center justify-center shrink-0" style="width: 32px; height: 32px; background-color: var(--color-primary); border-radius: 50%; color: var(--color-text-inverse); font-size: 13px; font-weight: 600; font-family: var(--font-sans);">
+            管
+          </div>
+          <span class="hidden sm:inline truncate text-sm" style="color: var(--color-text-primary); font-family: var(--font-sans);">管理员</span>
+          <i data-lucide="chevron-down" class="hidden sm:inline" style="width: 16px; height: 16px; color: var(--color-text-tertiary);"></i>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-3 lg:p-5 min-h-0" style="background-color: var(--color-bg-main);">
+
+      <!-- Page Title + Period Selector -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <h1 class="text-xl font-semibold truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">数据看板</h1>
+        <div class="flex items-center gap-2 shrink-0">
+          <i data-lucide="clock" style="width: 16px; height: 16px; color: var(--color-text-tertiary);"></i>
+          <select id="period-selector" class="px-3 py-1.5 rounded-md text-sm cursor-pointer outline-none" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans);">
+            <option value="week">本周</option>
+            <option value="month" selected>本月</option>
+            <option value="quarter">本季度</option>
+            <option value="year">本年</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- KPI Cards Row -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-4">
+
+        <!-- KPI: 本月入库 -->
+        <div class="rounded-lg p-4" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="flex items-center justify-center shrink-0" style="width: 40px; height: 40px; border-radius: var(--radius-md); background-color: rgba(15,198,194,0.1);">
+              <i data-lucide="arrow-up-right" style="width: 20px; height: 20px; color: #0FC6C2;"></i>
+            </div>
+            <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">本月入库</span>
+          </div>
+          <div class="flex items-baseline gap-2 mb-1">
+            <span class="text-2xl font-bold whitespace-nowrap" style="color: var(--color-text-primary); font-family: var(--font-sans);">47</span>
+            <span class="text-sm whitespace-nowrap" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">瓶</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <i data-lucide="trending-up" style="width: 14px; height: 14px; color: #22c55e;"></i>
+            <span class="text-xs whitespace-nowrap" style="color: #22c55e; font-family: var(--font-sans);">12% <span style="color: var(--color-text-tertiary);">vs上月</span></span>
+          </div>
+        </div>
+
+        <!-- KPI: 本月领用 -->
+        <div class="rounded-lg p-4" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="flex items-center justify-center shrink-0" style="width: 40px; height: 40px; border-radius: var(--radius-md); background-color: rgba(225,37,27,0.1);">
+              <i data-lucide="arrow-down-right" style="width: 20px; height: 20px; color: #E1251B;"></i>
+            </div>
+            <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">本月领用</span>
+          </div>
+          <div class="flex items-baseline gap-2 mb-1">
+            <span class="text-2xl font-bold whitespace-nowrap" style="color: var(--color-text-primary); font-family: var(--font-sans);">89</span>
+            <span class="text-sm whitespace-nowrap" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">瓶</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <i data-lucide="trending-up" style="width: 14px; height: 14px; color: #22c55e;"></i>
+            <span class="text-xs whitespace-nowrap" style="color: #22c55e; font-family: var(--font-sans);">5% <span style="color: var(--color-text-tertiary);">vs上月</span></span>
+          </div>
+        </div>
+
+        <!-- KPI: 本月归还 -->
+        <div class="rounded-lg p-4" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="flex items-center justify-center shrink-0" style="width: 40px; height: 40px; border-radius: var(--radius-md); background-color: rgba(15,198,194,0.1);">
+              <i data-lucide="arrow-up-right" style="width: 20px; height: 20px; color: #0FC6C2;"></i>
+            </div>
+            <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">本月归还</span>
+          </div>
+          <div class="flex items-baseline gap-2 mb-1">
+            <span class="text-2xl font-bold whitespace-nowrap" style="color: var(--color-text-primary); font-family: var(--font-sans);">72</span>
+            <span class="text-sm whitespace-nowrap" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">瓶</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <i data-lucide="trending-down" style="width: 14px; height: 14px; color: #E1251B;"></i>
+            <span class="text-xs whitespace-nowrap" style="color: #E1251B; font-family: var(--font-sans);">8% <span style="color: var(--color-text-tertiary);">vs上月</span></span>
+          </div>
+        </div>
+
+        <!-- KPI: 即将过期 -->
+        <div class="rounded-lg p-4" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="flex items-center justify-center shrink-0" style="width: 40px; height: 40px; border-radius: var(--radius-md); background-color: rgba(225,37,27,0.1);">
+              <i data-lucide="clock" style="width: 20px; height: 20px; color: #E1251B;"></i>
+            </div>
+            <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">即将过期</span>
+          </div>
+          <div class="flex items-baseline gap-2 mb-1">
+            <span class="text-2xl font-bold whitespace-nowrap" style="color: var(--color-text-primary); font-family: var(--font-sans);">23</span>
+            <span class="text-sm whitespace-nowrap" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">瓶</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <i data-lucide="trending-down" style="width: 14px; height: 14px; color: #22c55e;"></i>
+            <span class="text-xs whitespace-nowrap" style="color: #22c55e; font-family: var(--font-sans);">15% <span style="color: var(--color-text-tertiary);">vs上月</span></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Charts Grid (2 columns) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4 mb-4">
+
+        <!-- Left: 库存趋势 Line Chart -->
+        <div class="rounded-lg p-4 lg:p-5" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="bar-chart-3" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+            <h2 class="text-base font-semibold truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">库存趋势</h2>
+          </div>
+          <div style="position: relative; width: 100%; height: 280px;">
+            <canvas id="trendChart" style="width: 100%; height: 100%;"></canvas>
+          </div>
+        </div>
+
+        <!-- Right: 试剂类型分布 Doughnut Chart -->
+        <div class="rounded-lg p-4 lg:p-5" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="pie-chart" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+            <h2 class="text-base font-semibold truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">试剂类型分布</h2>
+          </div>
+          <div class="flex flex-col sm:flex-row items-center gap-4">
+            <div style="position: relative; width: 200px; height: 200px; flex-shrink: 0;">
+              <canvas id="typeChart" style="width: 100%; height: 100%;"></canvas>
+            </div>
+            <div class="flex flex-col gap-2.5 min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="shrink-0" style="width: 12px; height: 12px; border-radius: 2px; background-color: #E1251B;"></span>
+                <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">无机</span>
+                <span class="text-sm font-semibold whitespace-nowrap ml-auto" style="color: var(--color-text-primary); font-family: var(--font-sans);">35%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="shrink-0" style="width: 12px; height: 12px; border-radius: 2px; background-color: #0FC6C2;"></span>
+                <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">有机</span>
+                <span class="text-sm font-semibold whitespace-nowrap ml-auto" style="color: var(--color-text-primary); font-family: var(--font-sans);">28%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="shrink-0" style="width: 12px; height: 12px; border-radius: 2px; background-color: #3B82F6;"></span>
+                <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">生化</span>
+                <span class="text-sm font-semibold whitespace-nowrap ml-auto" style="color: var(--color-text-primary); font-family: var(--font-sans);">20%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="shrink-0" style="width: 12px; height: 12px; border-radius: 2px; background-color: #F59E0B;"></span>
+                <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">标准品</span>
+                <span class="text-sm font-semibold whitespace-nowrap ml-auto" style="color: var(--color-text-primary); font-family: var(--font-sans);">12%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="shrink-0" style="width: 12px; height: 12px; border-radius: 2px; background-color: #8B5CF6;"></span>
+                <span class="text-sm truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">其他</span>
+                <span class="text-sm font-semibold whitespace-nowrap ml-auto" style="color: var(--color-text-primary); font-family: var(--font-sans);">5%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Row (2 columns) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
+
+        <!-- Left: 存储位置统计 -->
+        <div class="rounded-lg p-4 lg:p-5" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="bar-chart-3" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+            <h2 class="text-base font-semibold truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">存储位置统计</h2>
+          </div>
+          <div class="flex flex-col gap-3">
+            <!-- 常温A区: 234 -->
+            <div class="flex items-center gap-3">
+              <span class="text-sm shrink-0 whitespace-nowrap truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans); width: 80px;">常温A区</span>
+              <div class="flex-1 h-5 rounded-sm overflow-hidden" style="background-color: var(--color-bg-main);">
+                <div class="h-full rounded-sm" style="width: 100%; background: linear-gradient(90deg, #E1251B, #FF6B6B);"></div>
+              </div>
+              <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans); width: 40px; text-align: right;">234</span>
+            </div>
+            <!-- 常温B区: 189 -->
+            <div class="flex items-center gap-3">
+              <span class="text-sm shrink-0 whitespace-nowrap truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans); width: 80px;">常温B区</span>
+              <div class="flex-1 h-5 rounded-sm overflow-hidden" style="background-color: var(--color-bg-main);">
+                <div class="h-full rounded-sm" style="width: 80.8%; background: linear-gradient(90deg, #E1251B, #FF6B6B);"></div>
+              </div>
+              <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans); width: 40px; text-align: right;">189</span>
+            </div>
+            <!-- 冷藏区: 156 -->
+            <div class="flex items-center gap-3">
+              <span class="text-sm shrink-0 whitespace-nowrap truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans); width: 80px;">冷藏区</span>
+              <div class="flex-1 h-5 rounded-sm overflow-hidden" style="background-color: var(--color-bg-main);">
+                <div class="h-full rounded-sm" style="width: 66.7%; background: linear-gradient(90deg, #E1251B, #FF6B6B);"></div>
+              </div>
+              <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans); width: 40px; text-align: right;">156</span>
+            </div>
+            <!-- 冷冻区: 87 -->
+            <div class="flex items-center gap-3">
+              <span class="text-sm shrink-0 whitespace-nowrap truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans); width: 80px;">冷冻区</span>
+              <div class="flex-1 h-5 rounded-sm overflow-hidden" style="background-color: var(--color-bg-main);">
+                <div class="h-full rounded-sm" style="width: 37.2%; background: linear-gradient(90deg, #E1251B, #FF6B6B);"></div>
+              </div>
+              <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans); width: 40px; text-align: right;">87</span>
+            </div>
+            <!-- 危险品柜: 68 -->
+            <div class="flex items-center gap-3">
+              <span class="text-sm shrink-0 whitespace-nowrap truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans); width: 80px;">危险品柜</span>
+              <div class="flex-1 h-5 rounded-sm overflow-hidden" style="background-color: var(--color-bg-main);">
+                <div class="h-full rounded-sm" style="width: 29.1%; background: linear-gradient(90deg, #E1251B, #FF6B6B);"></div>
+              </div>
+              <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans); width: 40px; text-align: right;">68</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: 领用排行 -->
+        <div class="rounded-lg p-4 lg:p-5" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="trending-up" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+            <h2 class="text-base font-semibold truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">领用排行</h2>
+          </div>
+          <div class="flex flex-col gap-3.5">
+            <!-- 1. 乙醇 (无水) - 23次 -->
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center shrink-0" style="width: 22px; height: 22px; border-radius: var(--radius-md); background-color: #E1251B; color: #fff; font-size: 12px; font-weight: 700; font-family: var(--font-sans);">1</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">乙醇 (无水)</span>
+                  <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans);">23次</span>
+                </div>
+                <div class="h-2 rounded-full overflow-hidden" style="background-color: var(--color-bg-main);">
+                  <div class="h-full rounded-full" style="width: 100%; background-color: #E1251B;"></div>
+                </div>
+              </div>
+            </div>
+            <!-- 2. 丙酮 - 18次 -->
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center shrink-0" style="width: 22px; height: 22px; border-radius: var(--radius-md); background-color: #E1251B; color: #fff; font-size: 12px; font-weight: 700; font-family: var(--font-sans);">2</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">丙酮</span>
+                  <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans);">18次</span>
+                </div>
+                <div class="h-2 rounded-full overflow-hidden" style="background-color: var(--color-bg-main);">
+                  <div class="h-full rounded-full" style="width: 78.3%; background-color: #E1251B;"></div>
+                </div>
+              </div>
+            </div>
+            <!-- 3. 盐酸 - 15次 -->
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center shrink-0" style="width: 22px; height: 22px; border-radius: var(--radius-md); background-color: #E1251B; color: #fff; font-size: 12px; font-weight: 700; font-family: var(--font-sans);">3</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">盐酸</span>
+                  <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans);">15次</span>
+                </div>
+                <div class="h-2 rounded-full overflow-hidden" style="background-color: var(--color-bg-main);">
+                  <div class="h-full rounded-full" style="width: 65.2%; background-color: #E1251B;"></div>
+                </div>
+              </div>
+            </div>
+            <!-- 4. 氢氧化钠 - 12次 -->
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center shrink-0" style="width: 22px; height: 22px; border-radius: var(--radius-md); background-color: rgba(225,37,27,0.5); color: #fff; font-size: 12px; font-weight: 700; font-family: var(--font-sans);">4</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">氢氧化钠</span>
+                  <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans);">12次</span>
+                </div>
+                <div class="h-2 rounded-full overflow-hidden" style="background-color: var(--color-bg-main);">
+                  <div class="h-full rounded-full" style="width: 52.2%; background-color: #E1251B;"></div>
+                </div>
+              </div>
+            </div>
+            <!-- 5. 甲醇 - 9次 -->
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center shrink-0" style="width: 22px; height: 22px; border-radius: var(--radius-md); background-color: rgba(225,37,27,0.5); color: #fff; font-size: 12px; font-weight: 700; font-family: var(--font-sans);">5</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">甲醇</span>
+                  <span class="text-sm font-semibold whitespace-nowrap shrink-0" style="color: var(--color-text-primary); font-family: var(--font-sans);">9次</span>
+                </div>
+                <div class="h-2 rounded-full overflow-hidden" style="background-color: var(--color-bg-main);">
+                  <div class="h-full rounded-full" style="width: 39.1%; background-color: #E1251B;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <style>
+    /* Active nav state */
+    .nav-active {
+      color: var(--color-text-inverse) !important;
+      background-color: rgba(255,255,255,0.08) !important;
+      border-left-color: var(--color-primary) !important;
+    }
+  </style>
+
+  <script>
+    // Trend Line Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+        datasets: [
+          {
+            label: '入库量',
+            data: [32, 38, 41, 35, 42, 47],
+            borderColor: '#0FC6C2',
+            backgroundColor: 'rgba(15,198,194,0.08)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#0FC6C2',
+            pointBorderColor: '#0FC6C2',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            borderWidth: 2
+          },
+          {
+            label: '领用量',
+            data: [65, 72, 68, 78, 85, 89],
+            borderColor: '#E1251B',
+            backgroundColor: 'rgba(225,37,27,0.08)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#E1251B',
+            pointBorderColor: '#E1251B',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            align: 'end',
+            labels: {
+              boxWidth: 12,
+              boxHeight: 12,
+              padding: 16,
+              usePointStyle: false,
+              font: { size: 12 }
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            padding: 10,
+            cornerRadius: 6
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 12 } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(0,0,0,0.06)' },
+            ticks: { font: { size: 12 } }
+          }
+        },
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        }
+      }
+    });
+
+    // Type Doughnut Chart
+    const typeCtx = document.getElementById('typeChart').getContext('2d');
+    new Chart(typeCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['无机', '有机', '生化', '标准品', '其他'],
+        datasets: [{
+          data: [35, 28, 20, 12, 5],
+          backgroundColor: ['#E1251B', '#0FC6C2', '#3B82F6', '#F59E0B', '#8B5CF6'],
+          borderColor: '#ffffff',
+          borderWidth: 2,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: '55%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            padding: 10,
+            cornerRadius: 6,
+            callbacks: {
+              label: function(context) {
+                return context.label + ': ' + context.parsed + '%';
+              }
+            }
+          }
+        }
+      }
+    });
+  </script>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

@@ -39,16 +39,26 @@ streamlit run app.py
 ## 目录结构
 
 ```
-app.py               # 入口（st.navigation 多页面路由）
+app.py               # 入口（st.navigation 多页面路由）+ 品牌换肤 apply_theme()
 views/               # Streamlit 页面（每页一个文件）
+components/          # 认证、侧边栏、品牌主题（theme.py 注入 assets/design 样式）
+assets/design/       # 设计 token（tokens.css）与 Streamlit 换肤层（streamlit.css）
 business/            # 业务服务层（领用、采购、调配、审批等）
 services/            # 数据服务层（继承 BaseService，统一 CRUD 与标识符校验）
 models/              # 数据模型（dataclass / pydantic）
 db/                  # SQLite 封装（单例、事务、建表与迁移）
 utils/               # 字段常量、编号生成、密码、审计等工具
 docs/                # 使用手册、更新日志、业务流转、评审文档
+docs/design_mockups/ # 设计包原稿（9 个 HTML 页面，品牌样式的视觉依据）
 scripts/             # 初始化、导入等离线脚本
 ```
+
+## 品牌样式
+
+- 主色 `#E1251B`、侧边栏深灰 `#1D2129`，token 唯一来源：`assets/design/tokens.css`
+- Streamlit 原生主题参数在 `.streamlit/config.toml`（改完需重启应用生效）
+- DOM 级换肤在 `assets/design/streamlit.css`（改完刷新页面即生效），由 `components/theme.py` 注入
+- 页面里需要状态徽标时用 `from components.theme import badge`，配合 `st.markdown(..., unsafe_allow_html=True)`
 
 ## 安全设计要点
 

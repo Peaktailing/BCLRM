@@ -88,7 +88,7 @@ def main():
     if borrow_stats.get("user_stats"):
         top_users = sorted(borrow_stats["user_stats"].items(), key=lambda x: x[1], reverse=True)[:5]
         df_users = pd.DataFrame(top_users, columns=['领用人', '领用次数'])
-        st.bar_chart(df_users, x='领用人', y='领用次数', color='#4CAF50', use_container_width=True)
+        st.bar_chart(df_users, x='领用人', y='领用次数', color='#00B42A', use_container_width=True)
     else:
         st.info("暂无领用数据")
     
@@ -96,7 +96,7 @@ def main():
     st.subheader("试剂分布（按供应商）")
     if supplier_stats:
         df_suppliers = pd.DataFrame(list(supplier_stats.items()), columns=['供应商', '数量'])
-        st.bar_chart(df_suppliers, x='供应商', y='数量', color='#FF9800', use_container_width=True)
+        st.bar_chart(df_suppliers, x='供应商', y='数量', color='#FF7D00', use_container_width=True)
     else:
         st.info("暂无供应商数据")
     
@@ -104,7 +104,7 @@ def main():
     st.subheader("存储位置分布")
     if location_stats:
         df_locations = pd.DataFrame(list(location_stats.items()), columns=['存储位置', '数量'])
-        st.bar_chart(df_locations, x='存储位置', y='数量', color='#2196F3', use_container_width=True)
+        st.bar_chart(df_locations, x='存储位置', y='数量', color='#0FC6C2', use_container_width=True)
     else:
         st.info("暂无存储位置数据")
 

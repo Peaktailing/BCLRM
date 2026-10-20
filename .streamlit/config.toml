@@ -11,10 +11,42 @@ enableXsrfProtection = true
 showErrorDetails = false
 toolbarMode = "minimal"
 
+# 品牌主题：对齐设计包「BCLRM 品牌样式 (JD 风格)」
+# token 唯一来源：assets/design/tokens.css（由 components/theme.py 注入为 CSS 变量）
 [theme]
 base = "light"
-primaryColor = "#FF6B6B"
+primaryColor = "#E1251B"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F8F9FA"
-textColor = "#262730"
-font = "sans serif"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1D2129"
+borderColor = "#E5E6EB"
+linkColor = "#E1251B"
+baseRadius = "0.375rem"
+buttonRadius = "0.375rem"
+baseFontSize = 14
+font = "sans-serif"
+headingFont = "sans-serif"
+headingFontSizes = ["24px", "20px", "16px", "15px", "14px", "13px"]
+headingFontWeights = [600, 600, 600, 600, 500, 500]
+metricValueFontSize = "24px"
+metricValueFontWeight = 600
+showWidgetBorder = true
+dataframeHeaderBackgroundColor = "#F7F8FA"
+greenColor = "#00B42A"
+orangeColor = "#FF7D00"
+redColor = "#F53F3F"
+blueColor = "#0FC6C2"
+chartCategoricalColors = ["#E1251B", "#0FC6C2", "#FF7D00", "#1D2129", "#00B42A", "#86909C", "#F53F3F", "#C9CDD4"]
+
+# 侧边栏为设计稿的深灰底 + 反白文字
+# 注意：base = "light" 时侧边栏取 [theme.light.sidebar]，因此写嵌套段
+[theme.light.sidebar]
+primaryColor = "#E1251B"
+backgroundColor = "#1D2129"
+secondaryBackgroundColor = "#2B3139"
+textColor = "#F2F3F5"
+borderColor = "#3A414B"
+linkColor = "#FFFFFF"
+baseRadius = "0.375rem"
+buttonRadius = "0.375rem"
+font = "sans-serif"

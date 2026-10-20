@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BCLRM 试剂库管理系统 - 综合查询</title>
+    <style id="theme-vars">
+/* ================================================
+   BCLRM 试剂库管理系统 - 品牌样式 (JD 风格)
+   主色: 京东红 #E1251B  |  侧边栏: 深灰 #1D2129
+   ================================================ */
+
+:root {
+  /* === Brand Primary === */
+  --color-primary: #E1251B;
+  --color-primary-hover: #C91A12;
+  --color-primary-active: #A8140E;
+  --color-primary-light: #FFF1F0;
+  --color-primary-50: #FEF2F2;
+  --color-primary-100: #FDE8E8;
+  --color-primary-200: #FBC4C4;
+  --color-primary-500: #E1251B;
+  --color-primary-600: #C91A12;
+  --color-primary-700: #A8140E;
+  --color-primary-800: #8B110B;
+  --color-primary-900: #6E0E08;
+
+  /* === Neutral === */
+  --color-neutral-0: #FFFFFF;
+  --color-neutral-50: #F7F8FA;
+  --color-neutral-100: #F2F3F5;
+  --color-neutral-200: #E5E6EB;
+  --color-neutral-300: #C9CDD4;
+  --color-neutral-400: #86909C;
+  --color-neutral-500: #4E5969;
+  --color-neutral-600: #1D2129;
+  --color-neutral-700: #17171A;
+  --color-neutral-800: #111114;
+  --color-neutral-900: #0A0A0B;
+
+  /* === Surface & Background === */
+  --color-bg-main: #F7F8FA;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-muted: #F2F3F5;
+  --color-bg-sidebar: #1D2129;
+
+  /* === Text === */
+  --color-text-primary: #1D2129;
+  --color-text-secondary: #4E5969;
+  --color-text-tertiary: #86909C;
+  --color-text-placeholder: #C9CDD4;
+  --color-text-inverse: #FFFFFF;
+  --color-text-brand: #E1251B;
+
+  /* === Border === */
+  --color-border: #E5E6EB;
+  --color-border-light: #F2F3F5;
+  --color-border-dark: #C9CDD4;
+
+  /* === State === */
+  --state-success: #00B42A;
+  --state-success-bg: #E8FFEA;
+  --state-warning: #FF7D00;
+  --state-warning-bg: #FFF7E8;
+  --state-error: #F53F3F;
+  --state-error-bg: #FFECE8;
+  --state-info: #0FC6C2;
+  --state-info-bg: #E8FFFB;
+
+  /* === Radius === */
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* === Shadow === */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.05);
+
+  /* === Spacing === */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 48px;
+
+  /* === Typography === */
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  --text-4xl: 28px;
+  --text-5xl: 32px;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* === Layout === */
+  --sidebar-width: 220px;
+  --header-height: 56px;
+  --content-max-width: 1400px;
+}
+
+/* === Dark Mode === */
+html.dark {
+  --color-bg-main: #0A0A0B;
+  --color-bg-surface: #17171A;
+  --color-bg-elevated: #1D2129;
+  --color-bg-muted: #24272E;
+  --color-bg-sidebar: #0A0A0B;
+
+  --color-text-primary: #F2F3F5;
+  --color-text-secondary: #C9CDD4;
+  --color-text-tertiary: #86909C;
+  --color-text-placeholder: #4E5969;
+  --color-text-inverse: #1D2129;
+
+  --color-border: #24272E;
+  --color-border-light: #1D2129;
+  --color-border-dark: #4E5969;
+
+  --color-primary-light: #2A1515;
+  --color-primary-50: #1D0F0E;
+
+  --state-success-bg: #0D2818;
+  --state-warning-bg: #2B1D0A;
+  --state-error-bg: #2B1010;
+  --state-info-bg: #0D2222;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.25);
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  
+  @layer base {
+    body { background: #ffffff; color: #0f172a; }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body>
+  <!-- Mobile sidebar overlay backdrop -->
+  <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden" onclick="document.getElementById('sidebar').classList.add('-translate-x-full'); this.classList.add('hidden');"></div>
+
+  <!-- Left Sidebar -->
+  <aside id="sidebar"
+    class="fixed top-0 left-0 z-50 h-full flex flex-col -translate-x-full lg:translate-x-0 transition-transform duration-200"
+    style="width: var(--sidebar-width); background-color: var(--color-bg-sidebar);">
+
+    <!-- Logo Area -->
+    <div class="flex items-center gap-2.5 px-5 py-4 shrink-0" style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div class="flex items-center justify-center shrink-0" style="width: 32px; height: 32px; background-color: var(--color-primary); border-radius: var(--radius-md);">
+        <i data-lucide="flask-conical" style="width: 18px; height: 18px; color: var(--color-text-inverse);"></i>
+      </div>
+      <div class="min-w-0">
+        <div class="truncate text-base font-semibold tracking-wide" style="color: var(--color-text-inverse); font-family: var(--font-sans);">BCLRM</div>
+        <div class="truncate text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">试剂库管理系统</div>
+      </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <nav class="flex-1 overflow-y-auto py-3 px-2">
+      <ul class="flex flex-col gap-0.5">
+
+        <!-- 首页 -->
+        <li>
+          <a href="#home" data-nav-key="home" data-dom-id="nav-home"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="home" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">首页</span>
+          </a>
+        </li>
+
+        <!-- 实时库存 -->
+        <li>
+          <a href="#inventory" data-nav-key="inventory" data-dom-id="nav-inventory"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="package" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">实时库存</span>
+          </a>
+        </li>
+
+        <!-- 试剂入库 -->
+        <li>
+          <a href="#stock-in" data-nav-key="stock-in" data-dom-id="nav-stock-in"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="plus-circle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">试剂入库</span>
+          </a>
+        </li>
+
+        <!-- 领用归还 -->
+        <li>
+          <a href="#borrow-return" data-nav-key="borrow-return" data-dom-id="nav-borrow-return"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="arrow-right-left" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">领用归还</span>
+          </a>
+        </li>
+
+        <!-- 综合查询 (active) -->
+        <li>
+          <a href="#query" data-nav-key="query" data-dom-id="nav-query" data-active="true"
+            class="nav-active group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-inverse); border-left: 3px solid var(--color-primary); background-color: rgba(255,255,255,0.08);"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="search" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">综合查询</span>
+          </a>
+        </li>
+
+        <!-- 数据看板 -->
+        <li>
+          <a href="#dashboard" data-nav-key="dashboard" data-dom-id="nav-dashboard"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="bar-chart-3" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">数据看板</span>
+          </a>
+        </li>
+
+        <!-- 化学品信息 -->
+        <li>
+          <a href="#chemical-info" data-nav-key="chemical-info" data-dom-id="nav-chemical-info"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="flask-conical" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">化学品信息</span>
+          </a>
+        </li>
+
+        <!-- 管控化学品目录 -->
+        <li>
+          <a href="#controlled-list" data-nav-key="controlled-list" data-dom-id="nav-controlled-list"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="shield-alert" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">管控化学品目录</span>
+          </a>
+        </li>
+
+        <!-- 系统设置 -->
+        <li>
+          <a href="#settings" data-nav-key="settings" data-dom-id="nav-settings"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="settings" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">系统设置</span>
+          </a>
+        </li>
+
+      </ul>
+    </nav>
+
+    <!-- Version -->
+    <div class="shrink-0 px-5 py-3" style="border-top: 1px solid rgba(255,255,255,0.08);">
+      <span class="text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">v0.2.0</span>
+    </div>
+  </aside>
+
+  <!-- Main Layout Wrapper -->
+  <div id="main-wrapper" class="flex flex-col min-h-screen lg:ml-[var(--sidebar-width)]">
+
+    <!-- Top Header Bar -->
+    <header class="sticky top-0 z-30 flex items-center justify-between shrink-0 px-4 lg:px-6"
+      style="height: var(--header-height); background-color: var(--color-bg-surface); border-bottom: 1px solid var(--color-border);">
+
+      <!-- Left: Hamburger + Breadcrumb -->
+      <div class="flex items-center gap-3 min-w-0 flex-1">
+        <!-- Mobile hamburger toggle -->
+        <button class="lg:hidden flex items-center justify-center shrink-0 cursor-pointer"
+          style="width: 36px; height: 36px; border-radius: var(--radius-md); color: var(--color-text-secondary);"
+          onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full'); document.getElementById('sidebar-backdrop').classList.toggle('hidden');">
+          <i data-lucide="menu" style="width: 22px; height: 22px;"></i>
+        </button>
+        <!-- Breadcrumb -->
+        <nav id="breadcrumb" class="flex items-center gap-1.5 min-w-0 text-sm" style="color: var(--color-text-secondary); font-family: var(--font-sans);">
+          <i data-lucide="home" style="width: 14px; height: 14px;"></i>
+          <span style="color: var(--color-text-tertiary);">/</span>
+          <span class="truncate" style="color: var(--color-text-primary);">综合查询</span>
+        </nav>
+      </div>
+
+      <!-- Right: Notification + User -->
+      <div class="flex items-center gap-4 shrink-0">
+        <!-- Notification bell -->
+        <button class="relative flex items-center justify-center cursor-pointer"
+          style="width: 36px; height: 36px; border-radius: var(--radius-md); color: var(--color-text-secondary);"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          <i data-lucide="bell" style="width: 20px; height: 20px;"></i>
+          <span class="absolute top-1 right-1 flex items-center justify-center" style="width: 8px; height: 8px; background-color: var(--color-primary); border-radius: 50%; border: 2px solid var(--color-bg-surface);"></span>
+        </button>
+
+        <!-- User avatar -->
+        <div class="flex items-center gap-2 cursor-pointer py-1 px-2 rounded-md transition-colors duration-150"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          <div class="flex items-center justify-center shrink-0" style="width: 32px; height: 32px; background-color: var(--color-primary); border-radius: 50%; color: var(--color-text-inverse); font-size: 13px; font-weight: 600; font-family: var(--font-sans);">
+            管
+          </div>
+          <span class="hidden sm:inline truncate text-sm" style="color: var(--color-text-primary); font-family: var(--font-sans);">管理员</span>
+          <i data-lucide="chevron-down" class="hidden sm:inline" style="width: 16px; height: 16px; color: var(--color-text-tertiary);"></i>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-3 lg:p-5 min-h-0" style="background-color: var(--color-bg-main);">
+
+      <!-- Page Title -->
+      <div class="mb-4">
+        <h1 class="truncate text-xl font-semibold" style="color: var(--color-text-primary); font-family: var(--font-sans);">综合查询</h1>
+        <p class="truncate text-sm mt-1" style="color: var(--color-text-secondary); font-family: var(--font-sans);">多条件查询试剂信息、领用记录和历史操作</p>
+      </div>
+
+      <!-- Query Type Tabs -->
+      <div class="flex items-center gap-1 mb-4 p-1 rounded-lg" style="background-color: var(--color-bg-surface); display: inline-flex;">
+        <button class="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150"
+          style="background-color: var(--color-primary); color: var(--color-text-inverse); font-family: var(--font-sans);">
+          <i data-lucide="search" style="width: 14px; height: 14px;"></i>
+          试剂查询
+        </button>
+        <button class="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150"
+          style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          领用记录
+        </button>
+        <button class="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150"
+          style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          归还记录
+        </button>
+        <button class="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150"
+          style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          操作日志
+        </button>
+      </div>
+
+      <!-- Advanced Filter Panel -->
+      <div class="rounded-lg p-4 lg:p-5 mb-4" style="background-color: var(--color-bg-surface);">
+        <!-- Row 1: Quick Search -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div class="flex-1 relative min-w-0">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style="width: 16px; height: 16px; color: var(--color-text-tertiary);"></i>
+            <input type="text" placeholder="输入试剂名称、CAS号、编号进行搜索..."
+              class="w-full pl-9 pr-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+              style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+              onfocus="this.style.borderColor='var(--color-primary)'"
+              onblur="this.style.borderColor='var(--color-border)'">
+          </div>
+          <button class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150 shrink-0"
+            style="background-color: var(--color-primary); color: var(--color-text-inverse); font-family: var(--font-sans);">
+            <i data-lucide="search" style="width: 14px; height: 14px;"></i>
+            查询
+          </button>
+        </div>
+
+        <!-- Expand/Collapse Toggle -->
+        <div class="flex items-center gap-1.5 mt-3 cursor-pointer select-none"
+          id="filter-toggle"
+          onclick="const panel=document.getElementById('advanced-filters');const icon=document.getElementById('filter-toggle-icon');if(panel.classList.contains('hidden')){panel.classList.remove('hidden');icon.setAttribute('data-lucide','chevron-up');}else{panel.classList.add('hidden');icon.setAttribute('data-lucide','chevron-down');}lucide.createIcons();">
+          <i data-lucide="chevron-down" id="filter-toggle-icon" style="width: 14px; height: 14px; color: var(--color-text-tertiary);"></i>
+          <span class="text-xs" style="color: var(--color-text-secondary); font-family: var(--font-sans);">展开更多筛选</span>
+        </div>
+
+        <!-- Row 2: Advanced Filters (collapsible) -->
+        <div id="advanced-filters" class="hidden mt-3 pt-3" style="border-top: 1px solid var(--color-border);">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <!-- 试剂类型 -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium whitespace-nowrap" style="color: var(--color-text-secondary); font-family: var(--font-sans);">试剂类型</label>
+              <select class="w-full px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                onfocus="this.style.borderColor='var(--color-primary)'"
+                onblur="this.style.borderColor='var(--color-border)'">
+                <option>全部类型</option>
+                <option>无机试剂</option>
+                <option>有机试剂</option>
+                <option>分析试剂</option>
+                <option>生化试剂</option>
+                <option>标准品</option>
+              </select>
+            </div>
+
+            <!-- 纯度/规格 -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium whitespace-nowrap" style="color: var(--color-text-secondary); font-family: var(--font-sans);">纯度/规格</label>
+              <select class="w-full px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                onfocus="this.style.borderColor='var(--color-primary)'"
+                onblur="this.style.borderColor='var(--color-border)'">
+                <option>全部规格</option>
+                <option>优级纯 (GR)</option>
+                <option>分析纯 (AR)</option>
+                <option>化学纯 (CP)</option>
+                <option>实验纯 (LR)</option>
+              </select>
+            </div>
+
+            <!-- 存储位置 -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium whitespace-nowrap" style="color: var(--color-text-secondary); font-family: var(--font-sans);">存储位置</label>
+              <select class="w-full px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                onfocus="this.style.borderColor='var(--color-primary)'"
+                onblur="this.style.borderColor='var(--color-border)'">
+                <option>全部位置</option>
+                <option>A区-易燃品柜</option>
+                <option>B区-酸碱柜</option>
+                <option>C区-普通试剂架</option>
+                <option>D区-冷藏柜</option>
+                <option>E区-毒麻品柜</option>
+              </select>
+            </div>
+
+            <!-- 库存状态 -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium whitespace-nowrap" style="color: var(--color-text-secondary); font-family: var(--font-sans);">库存状态</label>
+              <select class="w-full px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                onfocus="this.style.borderColor='var(--color-primary)'"
+                onblur="this.style.borderColor='var(--color-border)'">
+                <option>全部状态</option>
+                <option>充足</option>
+                <option>偏低</option>
+                <option>耗尽</option>
+              </select>
+            </div>
+
+            <!-- 供应商 -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium whitespace-nowrap" style="color: var(--color-text-secondary); font-family: var(--font-sans);">供应商</label>
+              <select class="w-full px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                onfocus="this.style.borderColor='var(--color-primary)'"
+                onblur="this.style.borderColor='var(--color-border)'">
+                <option>全部供应商</option>
+                <option>国药集团</option>
+                <option>西格玛奥德里奇</option>
+                <option>阿拉丁试剂</option>
+                <option>麦克林试剂</option>
+              </select>
+            </div>
+
+            <!-- 有效期状态 -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium whitespace-nowrap" style="color: var(--color-text-secondary); font-family: var(--font-sans);">有效期状态</label>
+              <select class="w-full px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                onfocus="this.style.borderColor='var(--color-primary)'"
+                onblur="this.style.borderColor='var(--color-border)'">
+                <option>全部</option>
+                <option>正常</option>
+                <option>即将过期</option>
+                <option>已过期</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Date Range Row -->
+          <div class="flex flex-col sm:flex-row items-start sm:items-end gap-3 mt-3">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium whitespace-nowrap" style="color: var(--color-text-secondary); font-family: var(--font-sans);">入库日期范围</label>
+              <div class="flex items-center gap-2">
+                <input type="date" value="2026-01-01"
+                  class="px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                  style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                  onfocus="this.style.borderColor='var(--color-primary)'"
+                  onblur="this.style.borderColor='var(--color-border)'">
+                <span class="text-xs whitespace-nowrap" style="color: var(--color-text-tertiary);">至</span>
+                <input type="date" value="2026-06-29"
+                  class="px-3 py-2 rounded-md text-sm outline-none transition-colors duration-150"
+                  style="border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans); background-color: var(--color-bg-main);"
+                  onfocus="this.style.borderColor='var(--color-primary)'"
+                  onblur="this.style.borderColor='var(--color-border)'">
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex items-center gap-3 mt-4">
+            <button class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150 shrink-0"
+              style="background-color: #F53F3F; color: #FFFFFF; font-family: var(--font-sans);"
+              onmouseenter="this.style.opacity='0.9'"
+              onmouseleave="this.style.opacity='1'">
+              <i data-lucide="search" style="width: 14px; height: 14px;"></i>
+              搜索
+            </button>
+            <button class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150 shrink-0"
+              style="border: 1px solid var(--color-border); color: var(--color-text-secondary); font-family: var(--font-sans); background-color: var(--color-bg-surface);"
+              onmouseenter="this.style.borderColor='var(--color-primary)';this.style.color='var(--color-primary)'"
+              onmouseleave="this.style.borderColor='var(--color-border)';this.style.color='var(--color-text-secondary)'">
+              <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
+              重置
+            </button>
+            <button class="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-colors duration-150 shrink-0"
+              style="color: var(--color-text-tertiary); font-family: var(--font-sans);"
+              onclick="document.getElementById('advanced-filters').classList.add('hidden');document.getElementById('filter-toggle-icon').setAttribute('data-lucide','chevron-down');lucide.createIcons();">
+              <i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>
+              收起筛选
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results Summary -->
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="filter" style="width: 14px; height: 14px; color: var(--color-text-tertiary);"></i>
+          <span class="text-sm" style="color: var(--color-text-secondary); font-family: var(--font-sans);">共 <span class="font-semibold" style="color: var(--color-text-primary);">156</span> 条结果</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="flex items-center justify-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap cursor-pointer transition-colors duration-150"
+            style="border: 1px solid var(--color-border); color: var(--color-text-secondary); font-family: var(--font-sans); background-color: var(--color-bg-surface);"
+            onmouseenter="this.style.borderColor='var(--color-primary)';this.style.color='var(--color-primary)'"
+            onmouseleave="this.style.borderColor='var(--color-border)';this.style.color='var(--color-text-secondary)'">
+            <i data-lucide="download" style="width: 12px; height: 12px;"></i>
+            导出
+          </button>
+        </div>
+      </div>
+
+      <!-- Results Table -->
+      <div class="rounded-lg overflow-hidden" style="background-color: var(--color-bg-surface);">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" style="font-family: var(--font-sans); border-collapse: separate; border-spacing: 0;">
+            <thead>
+              <tr>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">试剂编号</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs min-w-[120px]" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">试剂名称</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">CAS号</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">类型</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">规格</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">库存量</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">存储位置</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">供应商</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">有效期至</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">状态</th>
+                <th class="text-left whitespace-nowrap px-3 py-2.5 font-medium text-xs" style="color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface);">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1: Normal, sufficient stock -->
+              <tr>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">R-2026-0012</td>
+                <td class="px-3 py-3 truncate min-w-[120px]" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">乙醇 (无水)</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">64-17-5</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">有机试剂</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">分析纯 500mL</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">24 瓶</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">A区-易燃品柜</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">国药集团</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">2027-03-15</td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);"><span class="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium" style="background-color: rgba(0,180,42,0.08); color: #00B42A;">正常</span></td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);">
+                  <div class="flex items-center gap-2">
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">详情</a>
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">领用</a>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 2: Expiring soon -->
+              <tr>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">R-2026-0045</td>
+                <td class="px-3 py-3 truncate min-w-[120px]" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">盐酸 (分析纯)</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">7647-01-0</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">无机试剂</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">分析纯 500mL</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">8 瓶</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">B区-酸碱柜</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">西格玛</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">2026-07-20</td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);"><span class="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium" style="background-color: rgba(255,125,0,0.08); color: #FF7D00;">即将过期</span></td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);">
+                  <div class="flex items-center gap-2">
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">详情</a>
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">领用</a>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 3: Low stock -->
+              <tr>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">R-2026-0078</td>
+                <td class="px-3 py-3 truncate min-w-[120px]" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">氢氧化钠</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">1310-73-2</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">无机试剂</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">分析纯 500g</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">2 瓶</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">B区-酸碱柜</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">阿拉丁</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">2027-08-10</td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);"><span class="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium" style="background-color: rgba(255,125,0,0.08); color: #FF7D00;">偏低</span></td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);">
+                  <div class="flex items-center gap-2">
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">详情</a>
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">领用</a>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 4: Expired -->
+              <tr>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">R-2025-0103</td>
+                <td class="px-3 py-3 truncate min-w-[120px]" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">丙酮 (分析纯)</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">67-64-1</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">有机试剂</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">分析纯 2.5L</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary); border-bottom: 1px solid var(--color-border);">5 瓶</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">A区-易燃品柜</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">麦克林</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border);">2026-03-01</td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);"><span class="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium" style="background-color: rgba(245,63,63,0.08); color: #F53F3F;">已过期</span></td>
+                <td class="whitespace-nowrap px-3 py-3" style="border-bottom: 1px solid var(--color-border);">
+                  <div class="flex items-center gap-2">
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">详情</a>
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">处置</a>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Row 5: Depleted -->
+              <tr>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary);">R-2025-0198</td>
+                <td class="px-3 py-3 truncate min-w-[120px]" style="color: var(--color-text-primary);">硫酸铜 (五水)</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary);">7758-99-8</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary);">无机试剂</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary);">分析纯 500g</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-primary);">0 瓶</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary);">C区-普通试剂架</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary);">国药集团</td>
+                <td class="whitespace-nowrap px-3 py-3 truncate" style="color: var(--color-text-secondary);">2027-12-31</td>
+                <td class="whitespace-nowrap px-3 py-3"><span class="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium" style="background-color: rgba(142,151,173,0.12); color: var(--color-text-tertiary);">耗尽</span></td>
+                <td class="whitespace-nowrap px-3 py-3">
+                  <div class="flex items-center gap-2">
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">详情</a>
+                    <a href="#" class="text-xs whitespace-nowrap" style="color: var(--color-primary); font-family: var(--font-sans);">补货</a>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+        <span class="text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">第 1-5 条，共 156 条</span>
+        <div class="flex items-center gap-1">
+          <button class="flex items-center justify-center w-8 h-8 rounded-md cursor-pointer transition-colors duration-150"
+            style="color: var(--color-text-tertiary); font-family: var(--font-sans);"
+            onmouseenter="this.style.backgroundColor='var(--color-bg-surface)'"
+            onmouseleave="this.style.backgroundColor='transparent'">
+            <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i>
+          </button>
+          <button class="flex items-center justify-center w-8 h-8 rounded-md text-sm font-medium cursor-pointer transition-colors duration-150"
+            style="background-color: var(--color-primary); color: var(--color-text-inverse); font-family: var(--font-sans);">1</button>
+          <button class="flex items-center justify-center w-8 h-8 rounded-md text-sm cursor-pointer transition-colors duration-150"
+            style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+            onmouseenter="this.style.backgroundColor='var(--color-bg-surface)'"
+            onmouseleave="this.style.backgroundColor='transparent'">2</button>
+          <button class="flex items-center justify-center w-8 h-8 rounded-md text-sm cursor-pointer transition-colors duration-150"
+            style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+            onmouseenter="this.style.backgroundColor='var(--color-bg-surface)'"
+            onmouseleave="this.style.backgroundColor='transparent'">3</button>
+          <button class="flex items-center justify-center w-8 h-8 rounded-md text-sm cursor-pointer transition-colors duration-150"
+            style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+            onmouseenter="this.style.backgroundColor='var(--color-bg-surface)'"
+            onmouseleave="this.style.backgroundColor='transparent'">4</button>
+          <span class="flex items-center justify-center w-8 h-8 text-sm" style="color: var(--color-text-tertiary);">...</span>
+          <button class="flex items-center justify-center w-8 h-8 rounded-md text-sm cursor-pointer transition-colors duration-150"
+            style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+            onmouseenter="this.style.backgroundColor='var(--color-bg-surface)'"
+            onmouseleave="this.style.backgroundColor='transparent'">16</button>
+          <button class="flex items-center justify-center w-8 h-8 rounded-md cursor-pointer transition-colors duration-150"
+            style="color: var(--color-text-secondary); font-family: var(--font-sans);"
+            onmouseenter="this.style.backgroundColor='var(--color-bg-surface)'"
+            onmouseleave="this.style.backgroundColor='transparent'">
+            <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+          </button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <style>
+    .nav-active {
+      color: var(--color-text-inverse) !important;
+      background-color: rgba(255,255,255,0.08) !important;
+      border-left-color: var(--color-primary) !important;
+    }
+  </style>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

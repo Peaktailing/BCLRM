@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BCLRM 试剂库管理系统 - 试剂入库</title>
+    <style id="theme-vars">
+/* ================================================
+   BCLRM 试剂库管理系统 - 品牌样式 (JD 风格)
+   主色: 京东红 #E1251B  |  侧边栏: 深灰 #1D2129
+   ================================================ */
+
+:root {
+  /* === Brand Primary === */
+  --color-primary: #E1251B;
+  --color-primary-hover: #C91A12;
+  --color-primary-active: #A8140E;
+  --color-primary-light: #FFF1F0;
+  --color-primary-50: #FEF2F2;
+  --color-primary-100: #FDE8E8;
+  --color-primary-200: #FBC4C4;
+  --color-primary-500: #E1251B;
+  --color-primary-600: #C91A12;
+  --color-primary-700: #A8140E;
+  --color-primary-800: #8B110B;
+  --color-primary-900: #6E0E08;
+
+  /* === Neutral === */
+  --color-neutral-0: #FFFFFF;
+  --color-neutral-50: #F7F8FA;
+  --color-neutral-100: #F2F3F5;
+  --color-neutral-200: #E5E6EB;
+  --color-neutral-300: #C9CDD4;
+  --color-neutral-400: #86909C;
+  --color-neutral-500: #4E5969;
+  --color-neutral-600: #1D2129;
+  --color-neutral-700: #17171A;
+  --color-neutral-800: #111114;
+  --color-neutral-900: #0A0A0B;
+
+  /* === Surface & Background === */
+  --color-bg-main: #F7F8FA;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-muted: #F2F3F5;
+  --color-bg-sidebar: #1D2129;
+
+  /* === Text === */
+  --color-text-primary: #1D2129;
+  --color-text-secondary: #4E5969;
+  --color-text-tertiary: #86909C;
+  --color-text-placeholder: #C9CDD4;
+  --color-text-inverse: #FFFFFF;
+  --color-text-brand: #E1251B;
+
+  /* === Border === */
+  --color-border: #E5E6EB;
+  --color-border-light: #F2F3F5;
+  --color-border-dark: #C9CDD4;
+
+  /* === State === */
+  --state-success: #00B42A;
+  --state-success-bg: #E8FFEA;
+  --state-warning: #FF7D00;
+  --state-warning-bg: #FFF7E8;
+  --state-error: #F53F3F;
+  --state-error-bg: #FFECE8;
+  --state-info: #0FC6C2;
+  --state-info-bg: #E8FFFB;
+
+  /* === Radius === */
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* === Shadow === */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.05);
+
+  /* === Spacing === */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 48px;
+
+  /* === Typography === */
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  --text-4xl: 28px;
+  --text-5xl: 32px;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* === Layout === */
+  --sidebar-width: 220px;
+  --header-height: 56px;
+  --content-max-width: 1400px;
+}
+
+/* === Dark Mode === */
+html.dark {
+  --color-bg-main: #0A0A0B;
+  --color-bg-surface: #17171A;
+  --color-bg-elevated: #1D2129;
+  --color-bg-muted: #24272E;
+  --color-bg-sidebar: #0A0A0B;
+
+  --color-text-primary: #F2F3F5;
+  --color-text-secondary: #C9CDD4;
+  --color-text-tertiary: #86909C;
+  --color-text-placeholder: #4E5969;
+  --color-text-inverse: #1D2129;
+
+  --color-border: #24272E;
+  --color-border-light: #1D2129;
+  --color-border-dark: #4E5969;
+
+  --color-primary-light: #2A1515;
+  --color-primary-50: #1D0F0E;
+
+  --state-success-bg: #0D2818;
+  --state-warning-bg: #2B1D0A;
+  --state-error-bg: #2B1010;
+  --state-info-bg: #0D2222;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.25);
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+
+  @layer base {
+    body { background: #ffffff; color: #0f172a; }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body>
+  <!-- Mobile sidebar overlay backdrop -->
+  <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden" onclick="document.getElementById('sidebar').classList.add('-translate-x-full'); this.classList.add('hidden');"></div>
+
+  <!-- Left Sidebar -->
+  <aside id="sidebar"
+    class="fixed top-0 left-0 z-50 h-full flex flex-col -translate-x-full lg:translate-x-0 transition-transform duration-200"
+    style="width: var(--sidebar-width); background-color: var(--color-bg-sidebar);">
+
+    <!-- Logo Area -->
+    <div class="flex items-center gap-2.5 px-5 py-4 shrink-0" style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+      <div class="flex items-center justify-center shrink-0" style="width: 32px; height: 32px; background-color: var(--color-primary); border-radius: var(--radius-md);">
+        <i data-lucide="flask-conical" style="width: 18px; height: 18px; color: var(--color-text-inverse);"></i>
+      </div>
+      <div class="min-w-0">
+        <div class="truncate text-base font-semibold tracking-wide" style="color: var(--color-text-inverse); font-family: var(--font-sans);">BCLRM</div>
+        <div class="truncate text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">试剂库管理系统</div>
+      </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <nav class="flex-1 overflow-y-auto py-3 px-2">
+      <ul class="flex flex-col gap-0.5">
+
+        <!-- 首页 -->
+        <li>
+          <a href="#home" data-nav-key="home" data-dom-id="nav-home"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="home" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">首页</span>
+          </a>
+        </li>
+
+        <!-- 实时库存 -->
+        <li>
+          <a href="#inventory" data-nav-key="inventory" data-dom-id="nav-inventory"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="package" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">实时库存</span>
+          </a>
+        </li>
+
+        <!-- 试剂入库 -->
+        <li>
+          <a href="#stock-in" data-nav-key="stock-in" data-dom-id="nav-stock-in" data-active="true"
+            class="nav-active group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-inverse); border-left: 3px solid var(--color-primary); background-color: rgba(255,255,255,0.08);"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="plus-circle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">试剂入库</span>
+          </a>
+        </li>
+
+        <!-- 领用归还 -->
+        <li>
+          <a href="#borrow-return" data-nav-key="borrow-return" data-dom-id="nav-borrow-return"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="arrow-right-left" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">领用归还</span>
+          </a>
+        </li>
+
+        <!-- 综合查询 -->
+        <li>
+          <a href="#query" data-nav-key="query" data-dom-id="nav-query"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="search" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">综合查询</span>
+          </a>
+        </li>
+
+        <!-- 数据看板 -->
+        <li>
+          <a href="#dashboard" data-nav-key="dashboard" data-dom-id="nav-dashboard"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="bar-chart-3" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">数据看板</span>
+          </a>
+        </li>
+
+        <!-- 化学品信息 -->
+        <li>
+          <a href="#chemical-info" data-nav-key="chemical-info" data-dom-id="nav-chemical-info"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="flask-conical" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">化学品信息</span>
+          </a>
+        </li>
+
+        <!-- 管控化学品目录 -->
+        <li>
+          <a href="#controlled-list" data-nav-key="controlled-list" data-dom-id="nav-controlled-list"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="shield-alert" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">管控化学品目录</span>
+          </a>
+        </li>
+
+        <!-- 系统设置 -->
+        <li>
+          <a href="#settings" data-nav-key="settings" data-dom-id="nav-settings"
+            class="group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 cursor-pointer"
+            style="color: var(--color-text-tertiary); border-left: 3px solid transparent;"
+            onmouseenter="if(!this.classList.contains('nav-active'))this.style.backgroundColor='rgba(255,255,255,0.06)'"
+            onmouseleave="if(!this.classList.contains('nav-active'))this.style.backgroundColor='transparent'">
+            <i data-lucide="settings" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
+            <span class="truncate text-sm" style="font-family: var(--font-sans);">系统设置</span>
+          </a>
+        </li>
+
+      </ul>
+    </nav>
+
+    <!-- Version -->
+    <div class="shrink-0 px-5 py-3" style="border-top: 1px solid rgba(255,255,255,0.08);">
+      <span class="text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">v0.2.0</span>
+    </div>
+  </aside>
+
+  <!-- Main Layout Wrapper -->
+  <div id="main-wrapper" class="flex flex-col min-h-screen lg:ml-[var(--sidebar-width)]">
+
+    <!-- Top Header Bar -->
+    <header class="sticky top-0 z-30 flex items-center justify-between shrink-0 px-4 lg:px-6"
+      style="height: var(--header-height); background-color: var(--color-bg-surface); border-bottom: 1px solid var(--color-border);">
+
+      <!-- Left: Hamburger + Breadcrumb -->
+      <div class="flex items-center gap-3 min-w-0 flex-1">
+        <!-- Mobile hamburger toggle -->
+        <button class="lg:hidden flex items-center justify-center shrink-0 cursor-pointer"
+          style="width: 36px; height: 36px; border-radius: var(--radius-md); color: var(--color-text-secondary);"
+          onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full'); document.getElementById('sidebar-backdrop').classList.toggle('hidden');">
+          <i data-lucide="menu" style="width: 22px; height: 22px;"></i>
+        </button>
+        <!-- Breadcrumb Slot -->
+        <nav id="breadcrumb" class="flex items-center gap-1.5 min-w-0 text-sm" style="color: var(--color-text-secondary); font-family: var(--font-sans);">
+          <span class="truncate">首页</span>
+          <span>/</span>
+          <span class="truncate" style="color: var(--color-text-primary);">试剂入库</span>
+        </nav>
+      </div>
+
+      <!-- Right: Notification + User -->
+      <div class="flex items-center gap-4 shrink-0">
+        <!-- Notification bell -->
+        <button class="relative flex items-center justify-center cursor-pointer"
+          style="width: 36px; height: 36px; border-radius: var(--radius-md); color: var(--color-text-secondary);"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          <i data-lucide="bell" style="width: 20px; height: 20px;"></i>
+          <!-- Notification badge -->
+          <span class="absolute top-1 right-1 flex items-center justify-center" style="width: 8px; height: 8px; background-color: var(--color-primary); border-radius: 50%; border: 2px solid var(--color-bg-surface);"></span>
+        </button>
+
+        <!-- User avatar -->
+        <div class="flex items-center gap-2 cursor-pointer py-1 px-2 rounded-md transition-colors duration-150"
+          onmouseenter="this.style.backgroundColor='var(--color-bg-main)'"
+          onmouseleave="this.style.backgroundColor='transparent'">
+          <div class="flex items-center justify-center shrink-0" style="width: 32px; height: 32px; background-color: var(--color-primary); border-radius: 50%; color: var(--color-text-inverse); font-size: 13px; font-weight: 600; font-family: var(--font-sans);">
+            管
+          </div>
+          <span class="hidden sm:inline truncate text-sm" style="color: var(--color-text-primary); font-family: var(--font-sans);">管理员</span>
+          <i data-lucide="chevron-down" class="hidden sm:inline" style="width: 16px; height: 16px; color: var(--color-text-tertiary);"></i>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-3 lg:p-5 min-h-0" style="background-color: var(--color-bg-main);">
+      <!-- Page Title -->
+      <div id="page-title-slot" class="mb-4">
+        <div class="flex items-center justify-between">
+          <div class="min-w-0">
+            <h1 class="text-xl font-semibold truncate" style="color: var(--color-text-primary); font-family: var(--font-sans);">试剂入库</h1>
+            <p class="text-sm mt-0.5 truncate" style="color: var(--color-text-secondary); font-family: var(--font-sans);">录入新试剂信息到系统</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page Content -->
+      <div id="main-content-slot">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+          <!-- Left: Form Area -->
+          <div class="min-w-0 lg:col-span-7">
+            <form onsubmit="return false;">
+
+              <!-- Section 1: 基础信息 -->
+              <div class="rounded-lg p-4 lg:p-5 mb-4" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+                <h2 class="text-sm font-semibold mb-4 flex items-center gap-2" style="color: var(--color-text-primary); font-family: var(--font-sans);">
+                  <span class="flex items-center justify-center shrink-0" style="width: 4px; height: 16px; background-color: var(--color-primary); border-radius: 2px;"></span>
+                  基础信息
+                </h2>
+
+                <!-- 化学品选择 - Full width search -->
+                <div class="mb-4">
+                  <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">化学品选择</label>
+                  <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style="width: 16px; height: 16px; color: var(--color-text-tertiary);"></i>
+                    <input type="text" placeholder="输入化学品名称或CAS号搜索..."
+                      class="w-full pl-9 pr-4 py-2 text-sm rounded-md outline-none transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                    <!-- Auto-complete dropdown hint -->
+                    <div class="absolute left-0 right-0 top-full mt-1 rounded-md shadow-sm z-10 hidden"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-surface);">
+                      <div class="px-3 py-2 text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">输入关键字搜索化学品库</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Grid: 2 fields per row -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-4 gap-y-4">
+
+                  <!-- 试剂编号 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">试剂编号</label>
+                    <input type="text" value="R-20260629" readonly
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none cursor-not-allowed"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-tertiary); font-family: var(--font-sans);">
+                  </div>
+
+                  <!-- 试剂名称 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">试剂名称</label>
+                    <input type="text" placeholder="请输入试剂名称"
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                  </div>
+
+                  <!-- CAS号 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">CAS号</label>
+                    <input type="text" placeholder="例如: 7732-18-5"
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                  </div>
+
+                  <!-- 试剂类型 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">试剂类型</label>
+                    <select class="w-full px-3 py-2 text-sm rounded-md outline-none appearance-none cursor-pointer transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans); background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                      <option value="">请选择</option>
+                      <option value="无机">无机</option>
+                      <option value="有机">有机</option>
+                      <option value="生化">生化</option>
+                      <option value="标准品">标准品</option>
+                      <option value="指示剂">指示剂</option>
+                    </select>
+                  </div>
+
+                  <!-- 纯度/规格 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">纯度/规格</label>
+                    <select class="w-full px-3 py-2 text-sm rounded-md outline-none appearance-none cursor-pointer transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans); background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                      <option value="">请选择</option>
+                      <option value="分析纯AR">分析纯(AR)</option>
+                      <option value="化学纯CP">化学纯(CP)</option>
+                      <option value="优级纯GR">优级纯(GR)</option>
+                      <option value="色谱纯">色谱纯</option>
+                      <option value="分子生物学级">分子生物学级</option>
+                    </select>
+                  </div>
+
+                  <!-- 供应商 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">供应商</label>
+                    <select class="w-full px-3 py-2 text-sm rounded-md outline-none appearance-none cursor-pointer transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans); background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                      <option value="">请选择</option>
+                      <option value="国药集团">国药集团</option>
+                      <option value="西陇科学">西陇科学</option>
+                      <option value="阿拉丁">阿拉丁</option>
+                      <option value="麦克林">麦克林</option>
+                      <option value="其他">其他</option>
+                    </select>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Section 2: 入库信息 -->
+              <div class="rounded-lg p-4 lg:p-5 mb-4" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+                <h2 class="text-sm font-semibold mb-4 flex items-center gap-2" style="color: var(--color-text-primary); font-family: var(--font-sans);">
+                  <span class="flex items-center justify-center shrink-0" style="width: 4px; height: 16px; background-color: var(--color-primary); border-radius: 2px;"></span>
+                  入库信息
+                </h2>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-4 gap-y-4">
+
+                  <!-- 入库数量 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">入库数量</label>
+                    <input type="number" min="0" placeholder="请输入数量"
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                  </div>
+
+                  <!-- 单位 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">单位</label>
+                    <select class="w-full px-3 py-2 text-sm rounded-md outline-none appearance-none cursor-pointer transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans); background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                      <option value="瓶">瓶</option>
+                      <option value="g">g</option>
+                      <option value="mL">mL</option>
+                      <option value="L">L</option>
+                      <option value="kg">kg</option>
+                    </select>
+                  </div>
+
+                  <!-- 库存量 (auto-calc, readonly) -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">库存量</label>
+                    <input type="text" value="自动计算" readonly
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none cursor-not-allowed"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-tertiary); font-family: var(--font-sans);">
+                  </div>
+
+                  <!-- 存储位置 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">存储位置</label>
+                    <select class="w-full px-3 py-2 text-sm rounded-md outline-none appearance-none cursor-pointer transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans); background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                      <option value="">请选择</option>
+                      <option value="常温A区">常温A区</option>
+                      <option value="常温B区">常温B区</option>
+                      <option value="常温C区">常温C区</option>
+                      <option value="冷藏A区">冷藏A区</option>
+                      <option value="冷藏B区">冷藏B区</option>
+                      <option value="冷冻A区">冷冻A区</option>
+                      <option value="危险品柜A">危险品柜A</option>
+                      <option value="危险品柜B">危险品柜B</option>
+                    </select>
+                  </div>
+
+                  <!-- 生产日期 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">生产日期</label>
+                    <input type="date"
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                  </div>
+
+                  <!-- 有效期至 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">有效期至</label>
+                    <input type="date"
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                  </div>
+
+                  <!-- 批次号 (full width on this row) -->
+                  <div class="lg:col-span-2">
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">批次号</label>
+                    <input type="text" placeholder="请输入批次号"
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';">
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Section 3: 附加信息 -->
+              <div class="rounded-lg p-4 lg:p-5 mb-4" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+                <h2 class="text-sm font-semibold mb-4 flex items-center gap-2" style="color: var(--color-text-primary); font-family: var(--font-sans);">
+                  <span class="flex items-center justify-center shrink-0" style="width: 4px; height: 16px; background-color: var(--color-primary); border-radius: 2px;"></span>
+                  附加信息
+                </h2>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-4 gap-y-4">
+
+                  <!-- 备注 -->
+                  <div class="lg:col-span-2">
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">备注</label>
+                    <textarea rows="3" placeholder="请输入备注信息（选填）"
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none resize-y transition-colors duration-150"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-primary); font-family: var(--font-sans);"
+                      onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(220,38,38,0.12)';"
+                      onblur="this.style.borderColor='var(--color-border)'; this.style.boxShadow='none';"></textarea>
+                  </div>
+
+                  <!-- 录入人 -->
+                  <div>
+                    <label class="block text-sm mb-1.5" style="color: var(--color-text-secondary); font-family: var(--font-sans);">录入人</label>
+                    <input type="text" value="管理员" readonly
+                      class="w-full px-3 py-2 text-sm rounded-md outline-none cursor-not-allowed"
+                      style="border: 1px solid var(--color-border); background-color: var(--color-bg-main); color: var(--color-text-tertiary); font-family: var(--font-sans);">
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Action Bar -->
+              <div class="flex items-center justify-end gap-3">
+                <button type="button"
+                  class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md cursor-pointer transition-colors duration-150 whitespace-nowrap"
+                  style="border: 1px solid var(--color-border); background-color: var(--color-bg-surface); color: var(--color-text-secondary); font-family: var(--font-sans);"
+                  onmouseenter="this.style.borderColor='var(--color-text-secondary)'"
+                  onmouseleave="this.style.borderColor='var(--color-border)'">
+                  <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                  取消
+                </button>
+                <button type="button"
+                  class="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md cursor-pointer transition-colors duration-150 whitespace-nowrap"
+                  style="background-color: var(--color-primary); color: var(--color-text-inverse); font-family: var(--font-sans); border: 1px solid var(--color-primary);"
+                  onmouseenter="this.style.backgroundColor='#b91c1c'; this.style.borderColor='#b91c1c';"
+                  onmouseleave="this.style.backgroundColor='var(--color-primary)'; this.style.borderColor='var(--color-primary)';">
+                  <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                  保存并入库
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          <!-- Right: Tips Panel (desktop only) -->
+          <div class="hidden lg:block lg:col-span-5">
+
+            <!-- 入库提示 Card -->
+            <div class="rounded-lg p-5 lg:p-6 mb-5" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+              <h3 class="text-sm font-semibold mb-4 flex items-center gap-2" style="color: var(--color-text-primary); font-family: var(--font-sans);">
+                <i data-lucide="info" style="width: 16px; height: 16px; color: var(--color-primary); flex-shrink: 0;"></i>
+                入库提示
+              </h3>
+              <ul class="flex flex-col gap-4">
+                <li class="flex items-start gap-2 text-xs leading-relaxed" style="color: var(--color-text-secondary); font-family: var(--font-sans);">
+                  <span class="shrink-0 mt-0.5 flex items-center justify-center" style="width: 5px; height: 5px; background-color: var(--color-primary); border-radius: 50%;"></span>
+                  请确保化学品信息填写准确
+                </li>
+                <li class="flex items-start gap-2 text-xs leading-relaxed" style="color: var(--color-text-secondary); font-family: var(--font-sans);">
+                  <span class="shrink-0 mt-0.5 flex items-center justify-center" style="width: 5px; height: 5px; background-color: var(--color-primary); border-radius: 50%;"></span>
+                  有毒有害试剂需标注存储要求
+                </li>
+                <li class="flex items-start gap-2 text-xs leading-relaxed" style="color: var(--color-text-secondary); font-family: var(--font-sans);">
+                  <span class="shrink-0 mt-0.5 flex items-center justify-center" style="width: 5px; height: 5px; background-color: var(--color-primary); border-radius: 50%;"></span>
+                  管控化学品需额外审核
+                </li>
+              </ul>
+            </div>
+
+            <!-- 最近入库 Card -->
+            <div class="rounded-lg p-5 lg:p-6" style="background-color: var(--color-bg-surface); border: 1px solid var(--color-border);">
+              <h3 class="text-sm font-semibold mb-4 flex items-center gap-2" style="color: var(--color-text-primary); font-family: var(--font-sans);">
+                <i data-lucide="clock" style="width: 16px; height: 16px; color: var(--color-primary); flex-shrink: 0;"></i>
+                最近入库
+              </h3>
+              <ul class="flex flex-col gap-3">
+                <!-- Item 1 -->
+                <li class="flex items-center justify-between gap-2 py-3" style="border-bottom: 1px solid var(--color-border);">
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-xs font-medium" style="color: var(--color-text-primary); font-family: var(--font-sans);">乙醇 (无水)</div>
+                    <div class="truncate text-xs mt-1" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">R-20260628-001</div>
+                  </div>
+                  <span class="shrink-0 text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">10瓶</span>
+                </li>
+                <!-- Item 2 -->
+                <li class="flex items-center justify-between gap-2 py-3" style="border-bottom: 1px solid var(--color-border);">
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-xs font-medium" style="color: var(--color-text-primary); font-family: var(--font-sans);">盐酸 (分析纯)</div>
+                    <div class="truncate text-xs mt-1" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">R-20260628-002</div>
+                  </div>
+                  <span class="shrink-0 text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">5瓶</span>
+                </li>
+                <!-- Item 3 -->
+                <li class="flex items-center justify-between gap-2 py-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-xs font-medium" style="color: var(--color-text-primary); font-family: var(--font-sans);">氢氧化钠</div>
+                    <div class="truncate text-xs mt-1" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">R-20260627-003</div>
+                  </div>
+                  <span class="shrink-0 text-xs" style="color: var(--color-text-tertiary); font-family: var(--font-sans);">3瓶</span>
+                </li>
+              </ul>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+<style>
+  /* Active nav state */
+  .nav-active {
+    color: var(--color-text-inverse) !important;
+    background-color: rgba(255,255,255,0.08) !important;
+    border-left-color: var(--color-primary) !important;
+  }
+</style>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>
