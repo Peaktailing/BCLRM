@@ -30,6 +30,8 @@ class ReagentBottleField:
     REMAINING_QUANTITY = 'remaining_quantity'  # 剩余量
     # ---- 规格（重量）（数字类型，原始包装量）----
     SPECIFICATION = 'specification'  # 规格（重量）
+    # ---- 计量单位（文本类型：g/mL/L/kg 等）----
+    UNIT = 'unit'  # 计量单位
     # ---- 纯度（文本类型，如：分析纯AR、化学纯CP）----
     PURITY = 'purity'  # 纯度
     # ---- 采购单价（数字类型，单位：元）----
@@ -52,13 +54,16 @@ class ReagentBottleField:
     STORAGE_LOCATION = 'storage_location'  # 存储位置
     # ---- 当前管理人（文本类型，保管权归属，存 person.name）----
     MANAGER = 'manager'  # 当前管理人
-    # ---- 可借标记（文本类型：可借/已借出/耗尽）----
-    # 注意：BORROWABLE_FLAG 已废弃，仅用于显示兼容，请使用 BORROWABLE_CHECK 进行业务判断
-    BORROWABLE_FLAG = 'borrowable_flag'  # 可借标记（废弃，仅用于显示兼容）
-    # ---- 可借标记判断（布尔类型：1=可借, 0=不可借）----
-    BORROWABLE_CHECK = 'borrowable_check'  # 可借标记判断（业务判断请使用此字段）
+    # ---- 可借状态（文本类型：可借/已借出/耗尽/空瓶）----
+    # borrowable_flag 是业务状态事实源；borrowable_check 为兼容派生的布尔缓存，
+    # 写 flag 时 ReagentBottleService 会自动同步 check。
+    BORROWABLE_FLAG = 'borrowable_flag'  # 可借状态（事实源）
+    # ---- 可借状态布尔缓存（1=可借, 0=不可借）----
+    BORROWABLE_CHECK = 'borrowable_check'  # 可借状态布尔缓存
     # ---- 过期状态（文本类型：正常/即将过期/已过期）----
     EXPIRED_FLAG = 'expired_flag'  # 过期状态
+    # ---- 到期日期（YYYY/MM/DD，入库时按未启封有效期计算）----
+    EXPIRY_DATE = 'expiry_date'  # 到期日期
     # ---- 报废状态（文本类型：待报废/已报废；空=正常在用）----
     SCRAP_FLAG = 'scrap_flag'  # 报废状态
     # ---- 试剂类型（文本类型，关联试剂类型表）----
@@ -92,6 +97,8 @@ class BorrowRecordField:
     BORROW_TIME = 'borrow_time'  # 领用时间
     # ---- 领用数量（数字类型，归还时用于超量校验）----
     BORROW_QUANTITY = 'borrow_quantity'  # 领用数量
+    # ---- 计量单位（文本类型）----
+    UNIT = 'unit'  # 计量单位
     # ---- 关联实验课程（整数，关联 experiment_course.id）----
     COURSE_ID = 'course_id'  # 关联实验课程ID
     # ---- 关联实验项目（整数，关联 experiment_item.id）----
@@ -127,6 +134,8 @@ class ReturnRecordField:
     RETURN_TIME = 'return_time'  # 归还时间
     # ---- 归还时余量（数字类型）----
     REMAINING_QUANTITY = 'remaining_quantity'  # 归还时余量
+    # ---- 计量单位（文本类型）----
+    UNIT = 'unit'  # 计量单位
     # ---- 本次实际用量（数字类型，= 领用量 - 还入量）----
     USAGE_QUANTITY = 'usage_quantity'  # 本次实际用量
     # ---- 关联借出记录号（文本类型，关联领用记录表）----

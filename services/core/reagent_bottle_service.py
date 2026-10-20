@@ -176,13 +176,26 @@ class ReagentBottleService(BaseService):
             })
 
         if status:
-            # 将中文状态映射为 borrowable_check 布尔值
-            status_value = 1 if status in ("可借", "1", 1) else 0
-            conditions.append({
-                "field": "borrowable_check",
-                "value": status_value,
-                "match_type": "exact"
-            })
+            # 可借/已借出/耗尽/空瓶是互斥的 flag 值，必须按 flag 精确过滤；
+            # 旧实现把所有非“可借”都映射为 borrowable_check=0，
+            # 导致“已借出”筛选同时返回“耗尽/空瓶”。
+            raw_status = (
+                status.value if isinstance(status, BorrowableStatus) else status
+            )
+            flag_values = {item.value for item in BorrowableStatus}
+            if raw_status in flag_values:
+                conditions.append({
+                    "field": "borrowable_flag",
+                    "value": raw_status,
+                    "match_type": "exact",
+                })
+            else:
+                status_value = 1 if raw_status in ("可借", "1", 1) else 0
+                conditions.append({
+                    "field": "borrowable_check",
+                    "value": status_value,
+                    "match_type": "exact",
+                })
 
         if keyword:
             conditions.append({

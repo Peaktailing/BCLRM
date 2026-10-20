@@ -56,6 +56,7 @@ class PurchaseOrder:
     reagent_name: Optional[str] = None
     cas_number: Optional[str] = None
     order_quantity: Optional[float] = None
+    unit: Optional[str] = 'g'
     unit_price: Optional[float] = None
     supplier: Optional[str] = None
     status: Optional[str] = None

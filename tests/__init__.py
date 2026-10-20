@@ -38,6 +38,15 @@ _LOG_TMP = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 _LOG_TMP.close()
 _settings.DB_LOG_PATH = _LOG_TMP.name
 
+# 附件索引库同样隔离，避免测试把附件索引写入真实 db/attach_cold.db
+_ATTACH_TMP = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_ATTACH_TMP.close()
+_settings.DB_ATTACH_PATH = _ATTACH_TMP.name
+
+_ARCHIVE_TMP = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_ARCHIVE_TMP.close()
+_settings.DB_ARCHIVE_PATH = _ARCHIVE_TMP.name
+
 # 5) 主库默认路径同样重定向：init_log_db 的迁移源等按 DB_MAIN_PATH 新建连接，
 #    统一指向测试库，避免相对路径在非仓库根目录运行时生成杂散 db/main.db
 _settings.DB_MAIN_PATH = _TMP.name

@@ -41,7 +41,14 @@ _summary_result = semester_stats_service.get_usage_summary(semester)
 summary = _summary_result.data if _summary_result.is_success() else {}
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("总用量", f"{summary.get('total_usage', 0):,.2f}")
+_unit_usage = summary.get("usage_by_unit") or {}
+if summary.get("multiple_units"):
+    _total_text = " / ".join(
+        f"{value:,.2f}{unit}" for unit, value in sorted(_unit_usage.items())
+    )
+else:
+    _total_text = f"{summary.get('total_usage', 0):,.2f}"
+col1.metric("总用量", _total_text)
 col2.metric("领用人数", summary.get("user_count", 0))
 col3.metric("试剂种类", summary.get("reagent_count", 0))
 col4.metric(

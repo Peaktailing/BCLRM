@@ -59,6 +59,22 @@ ADMIN_DECISION_VALUES = {
 }
 
 
+def enforce_role(*allowed_roles: str, action: str = "操作") -> None:
+    """按当前登录角色拦截敏感操作（供 service 层显式调用）。
+
+    无上下文（脚本/测试/初始化）时放行，与 ``enforce_write`` 的约定一致；
+    有上下文时，角色不在白名单内直接抛 ``PermissionDeniedError``。
+    """
+    role = get_user_role()
+    if role is None:
+        return
+    if role not in set(allowed_roles):
+        raise PermissionDeniedError(
+            f"权限不足：{action}需要 {'/'.join(sorted(allowed_roles))} 角色"
+            f"（当前角色：{role}）"
+        )
+
+
 def _is_self_service(row_identity: Optional[Dict]) -> bool:
     """判断本次写入的目标行是否就是当前登录用户本人。
 

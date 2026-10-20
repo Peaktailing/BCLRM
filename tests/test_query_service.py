@@ -83,6 +83,19 @@ class TestQueryBorrowableFilter(unittest.TestCase):
         self.assertEqual(row.expired_flag, "已过期")
         self.assertFalse(bool(row.borrowable_check), "sync_all 应将过期瓶 check 置 0")
 
+    def test_sync_all_clears_check_on_normal_to_expired_transition(self):
+        """正常→已过期转换时，sync_all 必须把 borrowable_check 一起置 0。"""
+        bn = self._make_bottle(
+            expired_flag="正常",
+            borrowable_check=1,
+            production_date="2020/01/01",
+        )
+        result = expiry_service.sync_all()
+        self.assertTrue(result.is_success(), result.message)
+        row = self._fetch(bn)
+        self.assertEqual(row.expired_flag, "已过期")
+        self.assertFalse(bool(row.borrowable_check))
+
     def test_scrapped_bottle_not_in_borrowable_list(self):
         """报废瓶（含存量脏 check=1）不入可借列表。"""
         scrapped = self._make_bottle(

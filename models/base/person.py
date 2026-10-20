@@ -17,4 +17,5 @@ class Person(BaseModel):
     phone: Optional[str] = None              # 电话
     student_or_work_id: Optional[str] = None  # 学号/工号
     password_hash: Optional[str] = None      # 密码哈希（PBKDF2-HMAC-SHA256）
+    must_change_password: Optional[bool] = False  # 本次登录后是否必须改密（不落库）
     id: Optional[int] = None                 # 自增主键

@@ -80,8 +80,14 @@ def main():
                         "编号": reagent.bottle_number,
                         "名称": reagent.reagent_name or "-",
                         "CAS号": reagent.cas_number or "-",
-                        "剩余量": f"{reagent.remaining_quantity}g" if reagent.remaining_quantity else "-",
-                        "规格": f"{reagent.specification}g" if reagent.specification else "-",
+                        "剩余量": (
+                            f"{reagent.remaining_quantity}{getattr(reagent, 'unit', None) or 'g'}"
+                            if reagent.remaining_quantity else "-"
+                        ),
+                        "规格": (
+                            f"{reagent.specification}{getattr(reagent, 'unit', None) or 'g'}"
+                            if reagent.specification else "-"
+                        ),
                         "纯度": reagent.purity or "-",
                         "启封日期": reagent.unseal_date or "-",
                         "过期状态": reagent.expired_flag or "正常",

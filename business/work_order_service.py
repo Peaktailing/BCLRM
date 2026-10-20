@@ -51,6 +51,8 @@ from services.core.borrow_record_service import borrow_record_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from utils.error_handler import logger, ServiceResult, handle_exception
 from utils.field_mapper import BorrowRecordField
+from utils.permission_guard import enforce_role
+from utils.user_context import get_user_name
 
 # 允许发起工单的角色（管理员集合与权限服务保持一致）
 ADMIN_ROLES = {"super_admin", "admin"}
@@ -143,6 +145,10 @@ class WorkOrderService:
                 message="课程领用必须选择课程与实验项目",
                 error_code="MISSING_COURSE_ITEM"
             )
+        enforce_role(
+            *(ADMIN_ROLES if order_type == ORDER_TYPE_SPORADIC else TEACHER_ROLES),
+            action="发起领用工单",
+        )
 
         course_id = getattr(course, "id", None) if course else None
         item_id = getattr(exp_item, "id", None) if exp_item else None
@@ -157,14 +163,21 @@ class WorkOrderService:
                 entry.get("bottle_number")
             )
             _cas = getattr(_bottle, "cas_number", None) if _bottle else None
-            if not _cas:
-                continue
-            _hit = controlled_list_service.get_by_cas_number(_cas)
+            _name = (
+                entry.get("reagent_name")
+                or getattr(_bottle, "reagent_name", None)
+            )
+            # 统一口径：CAS → 名称 → 别名；无 CAS 的瓶也必须能命中管控名录。
+            _hit = controlled_list_service.match(_name, _cas)
             if _hit:
                 needs_approval = True
                 controlled_types.add(
                     getattr(_hit, "dangerous_type", None) or "管控化学品"
                 )
+            elif getattr(_bottle, "is_controlled", None) == 1:
+                # 历史库存已标记管控但名录匹配不到（如名录维护滞后），仍要求审批。
+                needs_approval = True
+                controlled_types.add("管控化学品")
 
         if needs_approval:
             # 审批人：优先显式指定（页面下拉），课程领用未指定时退回课程绑定审批人。
@@ -238,12 +251,16 @@ class WorkOrderService:
                             qty = float(qty)
                         except (TypeError, ValueError):
                             qty = 0.0
+                        _entry_bottle = reagent_bottle_service.get_by_bottle_number(
+                            entry.get("bottle_number")
+                        )
                         if not borrow_order_item_service.create({
                             "order_id": order_id,
                             "bottle_number": entry.get("bottle_number"),
                             "reagent_name": entry.get("reagent_name"),
                             "borrow_qty": qty,
                             "returned_qty": 0.0,
+                            "unit": getattr(_entry_bottle, "unit", None) or "g",
                             "status": "待审批",
                         }):
                             raise RuntimeError(
@@ -328,11 +345,15 @@ class WorkOrderService:
                         item_id=item_id,
                     )
                     if result.is_success():
+                        _borrowed_bottle = reagent_bottle_service.get_by_bottle_number(
+                            bottle_number
+                        )
                         success_items.append({
                             "bottle_number": bottle_number,
                             "reagent_name": entry.get("reagent_name"),
                             "borrow_qty": qty,
                             "returned_qty": 0.0,
+                            "unit": getattr(_borrowed_bottle, "unit", None) or "g",
                             "status": "待归还",
                         })
                     else:
@@ -455,6 +476,7 @@ class WorkOrderService:
                 "borrow_qty": borrow_qty,
                 "returned_qty": returned_qty,
                 "remaining_qty": round(max(0.0, borrow_qty - returned_qty), 4),
+                "unit": getattr(item, "unit", None) or "g",
                 "status": item.status,
             })
         return rows
@@ -511,7 +533,7 @@ class WorkOrderService:
             )
 
         # 当前可借试剂瓶索引：试剂名 -> [瓶...]
-        available: Dict[str, List] = defaultdict(list)
+        available: Dict[tuple, List] = defaultdict(list)
         for bottle in reagent_bottle_service.get_all_parsed():
             name = getattr(bottle, "reagent_name", None)
             if not name:
@@ -520,13 +542,14 @@ class WorkOrderService:
                 continue
             if float(getattr(bottle, "remaining_quantity", 0) or 0) <= 0:
                 continue
-            available[name].append(bottle)
+            available[(name, getattr(bottle, "unit", None) or "g")].append(bottle)
 
         cart: List[Dict] = []
         missing: List[str] = []
         for item in history_items:
             name = item.reagent_name
-            pool = available.get(name) or []
+            unit = getattr(item, "unit", None) or "g"
+            pool = available.get((name, unit)) or []
             if not pool:
                 missing.append(name or "（未命名试剂）")
                 continue
@@ -537,6 +560,7 @@ class WorkOrderService:
                 "cas_number": getattr(bottle, "cas_number", None),
                 "specification": getattr(bottle, "specification", None),
                 "remaining_quantity": getattr(bottle, "remaining_quantity", None),
+                "unit": getattr(bottle, "unit", None) or unit,
                 "borrow_qty": float(item.borrow_qty or 0),
                 "history_qty": float(item.borrow_qty or 0),
             })
@@ -628,82 +652,84 @@ class WorkOrderService:
         items = borrow_order_item_service.get_by_order(order_id)
         now = datetime.now().strftime("%Y/%m/%d %H:%M")
 
-        # 原子抢占：仅当审批状态仍为「待审批」时才写入「已批准」。
-        # 先抢占再执行领用——败北方不扣库存。旧实现为先扣库存再无条件
-        # 更新工单状态，撤回/重复审批并发时已撤回工单仍被执行领用、
-        # 状态被互相覆盖（QA 审查发现）。
-        claimed = borrow_order_service.update_where(
-            {"id": order_id, "approval_status": APPROVAL_PENDING},
-            {
-                "status": ORDER_STATUS_BORROWING,
-                "approval_status": APPROVAL_APPROVED,
-                "approval_time": now,
-                "approval_remark": remark,
-            },
-        )
-        if not claimed:
-            current = borrow_order_service.get_by_id(order_id)
-            return ServiceResult.fail(
-                message=(
-                    "该工单已被其他会话处理（当前审批状态："
-                    f"{getattr(current, 'approval_status', None) or '未知'}），请刷新后重试"
-                ),
-                error_code="APPROVAL_RACE_LOST",
-            )
+        # 整段审批执行放在同一事务中：抢占状态、逐瓶领用、明细状态、实验进度
+        # 要么全部提交，要么进程中断/异常时全部回滚，避免“工单已批准但只执行了一半”。
+        from db.database import db
 
         success_count = 0
         failures: List[str] = []
-        for item in items:
-            result = borrow_service.reagent_borrow(
-                bottle_number=item.bottle_number,
-                user=order.applicant,
-                borrow_qty=float(item.borrow_qty or 0),
-                course_id=order.course_id,
-                item_id=order.item_id,
-            )
-            if result.is_success():
-                success_count += 1
-                borrow_order_item_service.update(item.id, {"status": ITEM_STATUS_PENDING})
-                # 审批信息按主键精确回写本次领用产生的流水（record_id 由
-                # reagent_borrow 返回）。旧实现按「瓶号+领用人+时间窗」宽匹配，
-                # 同瓶同人存在多张待审批工单时会互相覆盖审批留痕（QA 审查发现）
-                _record_id = (result.data or {}).get("record_id")
-                if _record_id:
-                    borrow_record_service.update(_record_id, {
-                        BorrowRecordField.APPROVER: approver_name,
-                        BorrowRecordField.APPROVED: 1,
-                    })
-            else:
-                # 批准时执行失败的明细置终态「执行失败」：该瓶从未借出，
-                # 不得进入待还列表，否则按流程"归还"会凭空虚增库存（QA 审查发现）
-                borrow_order_item_service.update(item.id, {"status": ITEM_STATUS_FAILED})
-                failures.append(f"{item.bottle_number}：{result.message}")
-
-        if success_count == 0:
-            # 一瓶都没领成（库存状态已变化）：恢复待审批，提示发起人调整。
-            # 明细保留「执行失败」终态，审批人重试时会重新逐瓶执行。
-            borrow_order_service.update_where(
-                {"id": order_id},
+        with db.transaction():
+            # 原子抢占：仅当审批状态仍为「待审批」时才写入「已批准」。
+            claimed = borrow_order_service.update_where(
+                {"id": order_id, "approval_status": APPROVAL_PENDING},
                 {
-                    "status": ORDER_STATUS_PENDING,
-                    "approval_status": APPROVAL_PENDING,
-                    "approval_time": None,
-                    "approval_remark": None,
+                    "status": ORDER_STATUS_BORROWING,
+                    "approval_status": APPROVAL_APPROVED,
+                    "approval_time": now,
+                    "approval_remark": remark,
                 },
             )
-            return ServiceResult.fail(
-                message="批准执行失败：" + "；".join(failures),
-                error_code="APPROVE_EXECUTE_FAILED",
-            )
+            if not claimed:
+                current = borrow_order_service.get_by_id(order_id)
+                return ServiceResult.fail(
+                    message=(
+                        "该工单已被其他会话处理（当前审批状态："
+                        f"{getattr(current, 'approval_status', None) or '未知'}），请刷新后重试"
+                    ),
+                    error_code="APPROVAL_RACE_LOST",
+                )
 
-        # 标记实验进度：已借出试剂（仅课程领用）
-        if order.course_name and order.item_name:
-            experiment_plan_business.mark_borrowed(
-                self._order_semester(order),
-                order.course_name,
-                order.item_name,
-                borrow_time=now,
-            )
+            for item in items:
+                result = borrow_service.reagent_borrow(
+                    bottle_number=item.bottle_number,
+                    user=order.applicant,
+                    borrow_qty=float(item.borrow_qty or 0),
+                    course_id=order.course_id,
+                    item_id=order.item_id,
+                )
+                if result.is_success():
+                    success_count += 1
+                    borrow_order_item_service.update(
+                        item.id, {"status": ITEM_STATUS_PENDING}
+                    )
+                    # 审批信息按主键精确回写本次领用产生的流水
+                    _record_id = (result.data or {}).get("record_id")
+                    if _record_id:
+                        borrow_record_service.update(_record_id, {
+                            BorrowRecordField.APPROVER: approver_name,
+                            BorrowRecordField.APPROVED: 1,
+                        })
+                else:
+                    # 该瓶从未借出，置终态，避免进入待还列表后凭空增加库存
+                    borrow_order_item_service.update(
+                        item.id, {"status": ITEM_STATUS_FAILED}
+                    )
+                    failures.append(f"{item.bottle_number}：{result.message}")
+
+            if success_count == 0:
+                # 一瓶都没领成：恢复待审批，提示发起人调整
+                borrow_order_service.update_where(
+                    {"id": order_id},
+                    {
+                        "status": ORDER_STATUS_PENDING,
+                        "approval_status": APPROVAL_PENDING,
+                        "approval_time": None,
+                        "approval_remark": None,
+                    },
+                )
+                return ServiceResult.fail(
+                    message="批准执行失败：" + "；".join(failures),
+                    error_code="APPROVE_EXECUTE_FAILED",
+                )
+
+            # 标记实验进度：已借出试剂（仅课程领用）
+            if order.course_name and order.item_name:
+                experiment_plan_business.mark_borrowed(
+                    self._order_semester(order),
+                    order.course_name,
+                    order.item_name,
+                    borrow_time=now,
+                )
 
         logger.info(
             "工单审批通过并完成领用",
@@ -965,6 +991,14 @@ class WorkOrderService:
         order = borrow_order_service.get_by_id(order_id)
         if not order:
             return ServiceResult.fail(message="工单不存在", error_code="ORDER_NOT_FOUND")
+
+        # 服务层还入权限：有登录上下文时，仅管理员或原领用人可操作。
+        actor = get_user_name()
+        if actor and actor != order.applicant and not self._is_admin_plus(actor):
+            return ServiceResult.fail(
+                message="只有管理员及以上或该工单的原领用人可以归还",
+                error_code="RETURN_FORBIDDEN",
+            )
 
         items = {item.id: item for item in borrow_order_item_service.get_by_order(order_id)}
         done: List[tuple] = []

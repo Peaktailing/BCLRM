@@ -42,7 +42,7 @@ def main():
     port = find_free_port(8501)
 
     print("=" * 60)
-    print("  试剂库管理系统 v0.88")
+    print("  试剂库管理系统 v0.8.15")
     print("  化学实验室试剂全生命周期管理")
     print("=" * 60)
     print(f"\n正在启动服务，请稍候...")

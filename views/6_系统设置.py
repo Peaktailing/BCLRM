@@ -11,6 +11,7 @@
 import sys
 import os
 import re
+import secrets
 
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,13 +19,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth, require_super_admin, require_admin
-from config.settings import DEFAULT_INITIAL_PASSWORD
 from utils.password_utils import hash_password
 from services.base.person_service import person_service
 from services.base.operation_log_service import operation_log_service
 from services.core.borrow_record_service import borrow_record_service
 from services.core.return_record_service import return_record_service
 from db.database import db
+from utils.audit import audit
 from utils.error_handler import logger
 
 # 表名安全校验正则：仅允许字母、数字、下划线
@@ -63,7 +64,7 @@ def main():
 
     # ========== 添加用户 ==========
     st.subheader("添加用户")
-    st.info(f"💡 新用户初始密码为「{DEFAULT_INITIAL_PASSWORD}」，请提醒其首次登录后尽快修改。")
+    st.info("💡 新用户将生成一次性随机初始密码；请当场转告并提醒首次登录后立即修改。")
 
     with st.form("add_user_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
@@ -85,12 +86,16 @@ def main():
             elif person_service.get_by_name(name):
                 st.warning(f"⚠️ 用户 {name} 已存在")
             else:
+                _initial_pwd = "Rst" + secrets.token_urlsafe(6)
                 new_id = person_service.create({
                     "name": name,
                     "role": _ROLE_OPTIONS[role_label],
+                    "password_hash": hash_password(_initial_pwd),
                 })
                 if new_id:
-                    st.success(f"✅ 用户 {name} 添加成功！（初始密码 {DEFAULT_INITIAL_PASSWORD}）")
+                    st.success(
+                        f"✅ 用户 {name} 添加成功！初始密码（仅显示一次）：{_initial_pwd}"
+                    )
                 else:
                     st.error("❌ 添加用户失败，请重试")
 
@@ -190,6 +195,12 @@ def main():
                             f"{len(return_refs)} 条归还记录，无法删除"
                         )
                     elif person_service.delete(target.id):
+                        audit(
+                            st.session_state.get("user_name", ""),
+                            "删除用户",
+                            target_type="user",
+                            target_id=del_target,
+                        )
                         st.success(f"✅ 已删除用户 {del_target}")
                         st.rerun()
                     else:
@@ -217,6 +228,13 @@ def main():
             elif st.session_state.get("user_name") == role_target:
                 st.error("❌ 不能修改当前登录用户自己的角色")
             elif person_service.update(target.id, {"role": new_role}):
+                audit(
+                    st.session_state.get("user_name", ""),
+                    "修改角色",
+                    target_type="user",
+                    target_id=role_target,
+                    detail=f"{target.role or '-'} → {new_role}",
+                )
                 st.success(f"✅ 已将 {role_target} 的角色改为「{role_label}」")
                 st.rerun()
             else:

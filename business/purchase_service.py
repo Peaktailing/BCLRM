@@ -42,8 +42,9 @@ from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.return_record_service import return_record_service
 from services.base.chemical_service import chemical_service
 from business.inventory_service import inventory_service
-from business.bottle_state import ExpiryStatus, ScrapStatus
+from business.bottle_state import is_borrowable_now
 from utils.error_handler import logger, ServiceResult, handle_exception
+from utils.permission_guard import enforce_role
 
 DEFAULT_TARGET_STUDENT_COUNT = 30
 
@@ -82,20 +83,25 @@ class PurchaseService:
         }
         return sorted(names)
 
-    def _stock_by_reagent(self) -> Dict[str, float]:
-        """当前库存：按试剂名汇总（排除待报废/已报废与已过期瓶，与调配口径一致）"""
-        stock: Dict[str, float] = defaultdict(float)
+    def _stock_by_reagent(self) -> Dict[tuple, float]:
+        """当前可用库存：按「试剂名 + CAS」汇总。
+
+        只统计真正可借的瓶（量/过期/报废/借出状态综合判定），与调配口径一致；
+        已借出的瓶不再算作可采购抵扣库存。
+        """
+        stock: Dict[tuple, float] = defaultdict(float)
         for bottle in reagent_bottle_service.get_all_parsed():
             name = getattr(bottle, "reagent_name", None)
             if not name:
                 continue
-            if getattr(bottle, "scrap_flag", None) in (
-                ScrapStatus.PENDING, ScrapStatus.SCRAPPED,
-            ):
+            if not is_borrowable_now(bottle):
                 continue
-            if getattr(bottle, "expired_flag", None) == ExpiryStatus.EXPIRED:
-                continue
-            stock[name] += float(getattr(bottle, "remaining_quantity", 0) or 0)
+            key = (
+                name,
+                getattr(bottle, "cas_number", None) or "",
+                getattr(bottle, "unit", None) or "g",
+            )
+            stock[key] += float(getattr(bottle, "remaining_quantity", 0) or 0)
         return stock
 
     def _bottle_meta(self) -> Dict[str, Dict]:
@@ -125,12 +131,17 @@ class PurchaseService:
         Returns:
             (历史人数, 明细列表)
         """
-        # 课程按「课程名」匹配，不限学年：分组表通常只有当前学年，
-        # 而历史用量可能来自上一学年
+        # 课程人数必须与用量同一学年口径：先取来源学年的课程班级；
+        # 若该学年没有课程记录（历史用量来自旧系统），再回退到全部学年。
         courses = [
-            c for c in experiment_course_service.get_by_semester(None)
+            c for c in experiment_course_service.get_by_semester(source_semester)
             if c.course_name == course_name
         ]
+        if not courses:
+            courses = [
+                c for c in experiment_course_service.get_by_semester(None)
+                if c.course_name == course_name
+            ]
         if not courses:
             return 0, []
 
@@ -147,6 +158,7 @@ class PurchaseService:
         rows: List[Dict] = []
         for usage_row in usage_rows:
             reagent = usage_row.get("reagent_name")
+            unit = usage_row.get("unit") or "g"
             total_usage = float(usage_row.get("usage") or 0)
             if not reagent or total_usage <= 0:
                 continue
@@ -157,12 +169,23 @@ class PurchaseService:
                 "item_name": usage_row.get("item_name") or "（未指定实验）",
                 "reagent_name": reagent,
                 "cas_number": meta.get(reagent, {}).get("cas_number"),
+                "unit": unit,
                 "source_quantity": round(total_usage, 2),
                 "per_capita_usage": round(per_capita, 4),
                 "student_count": int(target_student_count or 0),
                 "demand_quantity": demand,
                 "purchase_quantity": demand,          # 课程单不扣库存，初值 = 需求量
-                "current_stock": round(stock.get(reagent, 0.0), 2),
+                "current_stock": round(
+                    stock.get(
+                        (
+                            reagent,
+                            meta.get(reagent, {}).get("cas_number") or "",
+                            unit,
+                        ),
+                        0.0,
+                    ),
+                    2,
+                ),
                 "supplier": meta.get(reagent, {}).get("supplier"),
                 "unit_price": meta.get(reagent, {}).get("unit_price"),
             })
@@ -210,6 +233,7 @@ class PurchaseService:
         created_by: Optional[str] = None
     ) -> ServiceResult:
         """生成课程采购单；同一课程 + 目标学年已存在则**覆盖**"""
+        enforce_role("admin", "super_admin", action="生成采购单")
         if not course_name or not source_semester or not target_semester:
             return ServiceResult.fail(
                 message="课程名、来源学年、目标学年都必须填写",
@@ -246,7 +270,7 @@ class PurchaseService:
                     # 覆盖前先保留人工修改过的明细（is_manual=1），
                     # 覆盖生成时采购量/供应商/备注继续沿用并保持「已改」标记
                     manual_map = {
-                        (i.item_id, i.reagent_name): i
+                        (i.item_id, i.reagent_name, getattr(i, "unit", None) or "g"): i
                         for i in purchase_plan_item_service.get_by_plan(plan_id)
                         if getattr(i, "is_manual", 0)
                     }
@@ -282,7 +306,7 @@ class PurchaseService:
                         raise RuntimeError("创建采购单失败")
 
                 for row in rows:
-                    _key = (row["item_id"], row["reagent_name"])
+                    _key = (row["item_id"], row["reagent_name"], row["unit"])
                     _kept = manual_map.get(_key)
                     created = purchase_plan_item_service.create({
                         "plan_id": plan_id,
@@ -291,6 +315,7 @@ class PurchaseService:
                         "reagent_name": row["reagent_name"],
                         "cas_number": row["cas_number"],
                         "source_quantity": row["source_quantity"],
+                        "unit": row["unit"],
                         "per_capita_usage": row["per_capita_usage"],
                         "student_count": row["student_count"],
                         "demand_quantity": row["demand_quantity"],
@@ -311,7 +336,9 @@ class PurchaseService:
 
                 # 旧明细中已被人工修改、但本次预估不再出现的，保留为独立明细
                 if existing and manual_map:
-                    _new_keys = {(r["item_id"], r["reagent_name"]) for r in rows}
+                    _new_keys = {
+                        (r["item_id"], r["reagent_name"], r["unit"]) for r in rows
+                    }
                     for _key2, _old2 in manual_map.items():
                         if _key2 in _new_keys:
                             continue
@@ -322,6 +349,7 @@ class PurchaseService:
                             "reagent_name": _old2.reagent_name,
                             "cas_number": _old2.cas_number,
                             "source_quantity": _old2.source_quantity,
+                            "unit": getattr(_old2, "unit", None) or "g",
                             "per_capita_usage": _old2.per_capita_usage,
                             "student_count": _old2.student_count,
                             "demand_quantity": _old2.demand_quantity,
@@ -381,6 +409,7 @@ class PurchaseService:
     @handle_exception(context="修改采购单明细")
     def update_plan_items(self, plan_id: int, updates: List[Dict], updated_by: Optional[str] = None) -> ServiceResult:
         """保存采购单明细的人工修改（需求量 / 采购量 / 供应商 / 备注）"""
+        enforce_role("admin", "super_admin", action="修改采购单")
         if not updates:
             return ServiceResult.fail(message="没有需要保存的修改", error_code="EMPTY_UPDATES")
 
@@ -418,13 +447,16 @@ class PurchaseService:
                         "remark": row.get("remark"),
                     }
                     item = current_items.get(item_id)
-                    changed = (
-                        True if item is None else (
-                            self._field_changed(item.demand_quantity, fields["demand_quantity"])
-                            or self._field_changed(item.purchase_quantity, fields["purchase_quantity"])
-                            or self._field_changed(item.supplier, fields["supplier"])
-                            or self._field_changed(item.remark, fields["remark"])
+                    if item is None:
+                        # 防止通过伪造 item_id 修改其他采购单的明细
+                        raise ValueError(
+                            f"采购明细 {item_id} 不属于当前采购单，已拒绝保存"
                         )
+                    changed = (
+                        self._field_changed(item.demand_quantity, fields["demand_quantity"])
+                        or self._field_changed(item.purchase_quantity, fields["purchase_quantity"])
+                        or self._field_changed(item.supplier, fields["supplier"])
+                        or self._field_changed(item.remark, fields["remark"])
                     )
                     # 只有真正改过的行才标记「已改」
                     if changed:
@@ -456,6 +488,7 @@ class PurchaseService:
         按试剂合并需求，再统一扣减一次库存。
         未提交的课程采购单（草稿「待采购」）不参与汇总。
         """
+        enforce_role("super_admin", action="汇总采购单")
         if not target_semester:
             return ServiceResult.fail(message="请选择目标学年", error_code="MISSING_SEMESTER")
 
@@ -490,15 +523,17 @@ class PurchaseService:
                 ),
             )
 
-        # 合并键：试剂名 + CAS（同名不同 CAS 视为不同物质，避免错录被静默吞掉）
+        # 合并键：试剂名 + CAS + 单位（任一不同都不能直接相加）
         merged: Dict[tuple, Dict] = {}
         cas_conflicts: Dict[str, set] = {}
 
-        def _entry_for(reagent: str, cas: Optional[str]) -> Dict:
-            key = (reagent, cas or "")
+        def _entry_for(reagent: str, cas: Optional[str], unit: Optional[str]) -> Dict:
+            unit = unit or "g"
+            key = (reagent, cas or "", unit)
             entry = merged.setdefault(key, {
                 "reagent_name": reagent,
                 "cas_number": cas,
+                "unit": unit,
                 "total_demand": 0.0,
                 "total_purchase": 0.0,
                 "courses": [],
@@ -514,7 +549,9 @@ class PurchaseService:
         for plan in plans:
             for item in purchase_plan_item_service.get_by_plan(plan.id):
                 reagent = item.reagent_name or "（未命名试剂）"
-                entry = _entry_for(reagent, item.cas_number)
+                entry = _entry_for(
+                    reagent, item.cas_number, getattr(item, "unit", None)
+                )
                 demand = float(item.demand_quantity or 0)
                 entry["total_demand"] += demand
                 # 采购量才决定实际要买多少（采购量=0 表示不采购）
@@ -531,7 +568,7 @@ class PurchaseService:
 
         for res in reservations:
             reagent = res.reagent_name or "（未命名试剂）"
-            entry = _entry_for(reagent, res.cas_number)
+            entry = _entry_for(reagent, res.cas_number, res.unit)
             qty = float(res.quantity or 0)
             entry["total_demand"] += qty
             # 预定单数量即采购量
@@ -547,14 +584,17 @@ class PurchaseService:
         stock = self._stock_by_reagent()
 
         rows: List[Dict] = []
-        for (reagent, _cas), entry in merged.items():
+        for (reagent, _cas, unit), entry in merged.items():
             total_demand = round(entry["total_demand"], 2)
             total_purchase = round(entry["total_purchase"], 2)
-            current_stock = round(stock.get(reagent, 0.0), 2)
+            current_stock = round(
+                stock.get((reagent, entry["cas_number"] or "", unit), 0.0), 2
+            )
             final_purchase = round(max(0.0, total_purchase - current_stock), 2)
             rows.append({
                 "reagent_name": reagent,
                 "cas_number": entry["cas_number"],
+                "unit": unit,
                 "total_demand": total_demand,
                 "total_purchase": total_purchase,
                 "current_stock": current_stock,
@@ -639,6 +679,7 @@ class PurchaseService:
                 "student_count": item.student_count,
                 "demand_quantity": item.demand_quantity,
                 "purchase_quantity": item.purchase_quantity,
+                "unit": getattr(item, "unit", None) or "g",
                 "current_stock": item.current_stock,
                 "is_manual": item.is_manual,
                 "supplier": item.supplier,
@@ -655,10 +696,12 @@ class PurchaseService:
     # ------------------------------------------------------------------
     @staticmethod
     def _plan_has_controlled(plan_id: int) -> bool:
-        """判断采购单是否含管控化学品（按明细 CAS 匹配管控目录）"""
+        """判断采购单是否含管控化学品（CAS → 名称 → 别名统一匹配）"""
         for item in purchase_plan_item_service.get_by_plan(plan_id):
-            cas = getattr(item, "cas_number", None)
-            if cas and controlled_list_service.get_by_cas_number(cas):
+            if controlled_list_service.match(
+                getattr(item, "reagent_name", None),
+                getattr(item, "cas_number", None),
+            ):
                 return True
         return False
 
@@ -667,6 +710,7 @@ class PurchaseService:
         self, plan_id: int, approver: str, submitted_by: str
     ) -> ServiceResult:
         """提交采购单进入审批流（含管控化学品时必须经审批）"""
+        enforce_role("admin", "super_admin", action="提交采购审批")
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
@@ -722,6 +766,7 @@ class PurchaseService:
         self, plan_id: int, approver_name: str, remark: Optional[str] = None
     ) -> ServiceResult:
         """批准采购单（批准后可执行采购/入库）"""
+        enforce_role("admin", "super_admin", action="审批采购单")
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
@@ -758,6 +803,7 @@ class PurchaseService:
         self, plan_id: int, approver_name: str, remark: Optional[str] = None
     ) -> ServiceResult:
         """驳回采购单"""
+        enforce_role("admin", "super_admin", action="审批采购单")
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
@@ -792,6 +838,7 @@ class PurchaseService:
     @handle_exception(context="提交课程采购单")
     def submit_plan(self, plan_id: int, submitted_by: Optional[str] = None) -> ServiceResult:
         """提交课程采购单：纳入汇总采购单与采购单跟踪（草稿 → 已提交）"""
+        enforce_role("admin", "super_admin", action="提交采购单")
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
@@ -810,6 +857,15 @@ class PurchaseService:
             return ServiceResult.fail(
                 message="该采购单已被驳回，无法提交",
                 error_code="REJECTED",
+            )
+        # 含管控化学品的采购单必须先完成审批，不能靠“直接提交”绕过审批流
+        if self._plan_has_controlled(plan_id) and approval != "已批准":
+            return ServiceResult.fail(
+                message=(
+                    "该采购单含管控化学品，必须先完成审批（审批状态需为「已批准」）"
+                    "后才能提交；请先在下方「提交审批」并等待审批人处理"
+                ),
+                error_code="APPROVAL_REQUIRED",
             )
 
         if purchase_plan_service.update(plan_id, {"status": PLAN_STATUS_SUBMITTED}):
@@ -830,6 +886,7 @@ class PurchaseService:
         self, plan_id: int, new_status: str, operator: Optional[str] = None
     ) -> ServiceResult:
         """课程采购单跟踪状态流转：已提交 → 已下单 → 已到货"""
+        enforce_role("admin", "super_admin", action="更新采购单状态")
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
@@ -868,6 +925,7 @@ class PurchaseService:
         remark: Optional[str] = None,
     ) -> ServiceResult:
         """取消采购单（到货之前）：退回草稿「待采购」，可重新编辑后再提交"""
+        enforce_role("admin", "super_admin", action="取消采购单")
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
@@ -918,6 +976,7 @@ class PurchaseService:
         明细入库成功后回填 bottle_number，防止重复入库；
         全部明细入库完成后，采购单状态流转为「已入库」。
         """
+        enforce_role("admin", "super_admin", action="按采购单入库")
         plan = purchase_plan_service.get_by_id(plan_id)
         if not plan:
             return ServiceResult.fail(message="采购单不存在", error_code="PLAN_NOT_FOUND")
@@ -957,27 +1016,48 @@ class PurchaseService:
                 if _chem_for_type:
                     cas_number = cas_number or getattr(_chem_for_type, "cas_number", None)
                     reagent_type = getattr(_chem_for_type, "reagent_type", None)
-            result = inventory_service.create_inventory_record(
-                reagent_name=item.reagent_name,
-                cas_number=cas_number,
-                remaining_quantity=qty,
-                specification=qty,
-                unit_price=item.unit_price,
-                supplier=item.supplier,
-                manager=manager,
-                # 生产日期必须提供，否则过期判定会因缺日期而永远返回「正常」
-                production_date=production_date,
-                storage_location=storage_location,
-                reagent_type=reagent_type,
-                # 按采购单入库放宽：历史试剂可能未建化学品档案 / 缺 CAS
-                allow_missing_cas=True,
-                allow_unlisted_chemical=True,
-            )
-            if result.is_success() and result.data:
+            from db.database import db
+
+            result = None
+            try:
+                # 逐项事务：新建瓶 + 回填 bottle_number 必须原子；
+                # 回填用 `bottle_number IS NULL` 条件，两个会话并发入库时只有一个成功，
+                # 败方的新瓶随事务回滚，不会重复造库存。
+                with db.transaction():
+                    result = inventory_service.create_inventory_record(
+                        reagent_name=item.reagent_name,
+                        cas_number=cas_number,
+                        remaining_quantity=qty,
+                        specification=qty,
+                        unit=getattr(item, "unit", None) or "g",
+                        unit_price=item.unit_price,
+                        supplier=item.supplier,
+                        manager=manager,
+                        # 生产日期必须提供，否则过期判定会因缺日期而永远返回「正常」
+                        production_date=production_date,
+                        storage_location=storage_location,
+                        reagent_type=reagent_type,
+                        # 按采购单入库放宽：历史试剂可能未建化学品档案 / 缺 CAS
+                        allow_missing_cas=True,
+                        allow_unlisted_chemical=True,
+                    )
+                    if result.is_success() and result.data:
+                        bottle_no = result.data.get("bottle_number")
+                        if not purchase_plan_item_service.update_where(
+                            {"id": item.id, "bottle_number": None},
+                            {"bottle_number": bottle_no},
+                        ):
+                            raise RuntimeError(
+                                "该明细已被其他会话入库，本次新瓶已回滚"
+                            )
+            except Exception as e:
+                failed.append(f"{item.reagent_name}: 入库回填失败（{e}）")
+                continue
+
+            if result is not None and result.is_success() and result.data:
                 bottle_no = result.data.get("bottle_number")
-                purchase_plan_item_service.update(item.id, {"bottle_number": bottle_no})
                 succeeded.append(f"{item.reagent_name} → {bottle_no}")
-            else:
+            elif result is not None:
                 failed.append(f"{item.reagent_name}: {result.message}")
 
         items_after = purchase_plan_item_service.get_by_plan(plan_id)
@@ -1074,9 +1154,15 @@ class PurchaseService:
         Args:
             semester: 批准时可补填「需求学年」，用于归集进对应学年的汇总采购单
         """
+        enforce_role("admin", "super_admin", action="审批预定单")
         res = reservation_order_service.get_by_id(reservation_id)
         if not res:
             return ServiceResult.fail(message="预定单不存在", error_code="NOT_FOUND")
+        if reviewer and res.applicant and reviewer == res.applicant:
+            return ServiceResult.fail(
+                message="审批人不能是预定单申请人本人",
+                error_code="SELF_APPROVAL",
+            )
         if res.status != RESERVATION_PENDING:
             return ServiceResult.fail(
                 message=(
@@ -1114,6 +1200,7 @@ class PurchaseService:
         created_by: Optional[str] = None,
     ) -> ServiceResult:
         """把「已批准」的预定单转为正式采购单（待下单）"""
+        enforce_role("admin", "super_admin", action="预定转采购")
         res = reservation_order_service.get_by_id(reservation_id)
         if not res:
             return ServiceResult.fail(message="预定单不存在", error_code="NOT_FOUND")
@@ -1123,26 +1210,39 @@ class PurchaseService:
                 error_code="INVALID_STATE",
             )
         order_number = "PO" + datetime.now().strftime("%Y%m%d%H%M%S%f")
-        po_id = purchase_order_service.create({
-            "order_number": order_number,
-            "reservation_order_id": reservation_id,
-            "reagent_name": res.reagent_name,
-            "cas_number": res.cas_number,
-            "order_quantity": res.quantity,
-            "unit_price": unit_price,
-            "supplier": supplier,
-            "status": PO_PENDING,
-        })
-        if po_id:
-            reservation_order_service.update(reservation_id, {"status": RESERVATION_FULFILLED})
-            from utils.audit import audit
-            audit(
-                created_by, "预定转采购",
-                target_type="purchase_order", target_id=order_number,
-                detail=f"来源预定单 {res.order_number}",
-            )
-            return ServiceResult.ok(message=f"已生成采购单 {order_number}（待下单）")
-        return ServiceResult.fail(message="生成采购单失败，请重试")
+        from db.database import db
+
+        try:
+            # 采购单创建与预定单状态流转必须同事务，避免重试生成重复采购单
+            with db.transaction():
+                po_id = purchase_order_service.create({
+                    "order_number": order_number,
+                    "reservation_order_id": reservation_id,
+                    "reagent_name": res.reagent_name,
+                    "cas_number": res.cas_number,
+                    "order_quantity": res.quantity,
+                    "unit": res.unit or "g",
+                    "unit_price": unit_price,
+                    "supplier": supplier,
+                    "status": PO_PENDING,
+                })
+                if not po_id:
+                    raise RuntimeError("生成采购单失败")
+                if not reservation_order_service.update(
+                    reservation_id, {"status": RESERVATION_FULFILLED}
+                ):
+                    raise RuntimeError("预定单状态更新失败，已回滚采购单")
+        except Exception as e:
+            logger.error("预定转采购失败，已回滚", error=str(e), exception=e)
+            return ServiceResult.fail(message=f"生成采购单失败：{e}")
+
+        from utils.audit import audit
+        audit(
+            created_by, "预定转采购",
+            target_type="purchase_order", target_id=order_number,
+            detail=f"来源预定单 {res.order_number}",
+        )
+        return ServiceResult.ok(message=f"已生成采购单 {order_number}（待下单）")
 
     # ------------------------------------------------------------------
     # 采购单状态流转（待下单 → 已下单 → 已到货）
@@ -1151,6 +1251,7 @@ class PurchaseService:
     def update_purchase_order_status(
         self, po_id: int, new_status: str, operator: Optional[str] = None
     ) -> ServiceResult:
+        enforce_role("admin", "super_admin", action="更新采购单状态")
         po = purchase_order_service.get_by_id(po_id)
         if not po:
             return ServiceResult.fail(message="采购单不存在", error_code="NOT_FOUND")

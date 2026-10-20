@@ -14,6 +14,7 @@ from utils.id_generator import id_generator
 from utils.field_mapper import ReturnRecordField, ReagentBottleField, BorrowRecordField
 from utils.error_handler import logger, ServiceResult, handle_exception
 from datetime import datetime
+import math
 from types import SimpleNamespace
 from typing import Optional, List
 from db.database import db
@@ -41,6 +42,40 @@ class ReturnService:
         self.return_record_service = return_record_service
         self.borrow_record_service = borrow_record_service
         self.id_gen = id_generator
+
+    def _resolve_pre_borrow_qty(
+        self,
+        linked_borrow_record_num: Optional[str],
+        current_qty: float,
+        borrow_qty,
+    ) -> Optional[float]:
+        """推导本次领用前的瓶内总量（用于校验归还上限与计算用量）。
+
+        首次归还：pre = 当前剩余 + 领用量。
+        多次部分归还：取该领用记录的首条归还记录，pre = 首条用量 + 首条归还后余量，
+        避免把前几次还回量重复计入上限。
+        """
+        if borrow_qty is None:
+            return None
+        try:
+            borrow_qty = float(borrow_qty)
+        except (TypeError, ValueError):
+            return None
+
+        if linked_borrow_record_num:
+            rows = self.return_record_service.get_all_by_field(
+                "linked_borrow_record_number", linked_borrow_record_num
+            )
+            if rows:
+                first = sorted(rows, key=lambda row: row.get("id") or 0)[0]
+                usage = first.get("usage_quantity")
+                remaining = first.get("remaining_quantity")
+                if usage is not None and remaining is not None:
+                    try:
+                        return float(usage) + float(remaining)
+                    except (TypeError, ValueError):
+                        pass
+        return float(current_qty) + borrow_qty
 
     @handle_exception(context="试剂归还")
     def reagent_return(
@@ -89,7 +124,11 @@ class ReturnService:
                 error_code="EMPTY_RETURN_USER"
             )
 
-        if not isinstance(remaining_qty, (int, float)) or remaining_qty < 0:
+        if (
+            not isinstance(remaining_qty, (int, float))
+            or not math.isfinite(float(remaining_qty))
+            or remaining_qty < 0
+        ):
             logger.warning(
                 "参数校验失败: 剩余量不能为负数",
                 remaining_qty=remaining_qty
@@ -139,27 +178,43 @@ class ReturnService:
                 )
 
         # 2.1 校验归还量是否合理：归还后的总量不得超过「借出时的总量」
-        #     借出时总量 = 当前瓶剩余（即借出后的剩余）+ 本次领用量
-        if latest_borrow is not None:
-            borrow_qty = getattr(latest_borrow, BorrowRecordField.BORROW_QUANTITY, None)
-            current_qty = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
-            if borrow_qty is not None:
-                max_allowed = float(current_qty) + float(borrow_qty)
-                if remaining_qty > max_allowed + 1e-6:
-                    logger.warning(
-                        "归还量超过借出时的总量",
-                        bottle_number=bottle_number,
-                        remaining_qty=remaining_qty,
-                        max_allowed=max_allowed,
-                        borrow_quantity=borrow_qty
-                    )
-                    return ServiceResult.fail(
-                        message=(
-                            f"归还量（{remaining_qty:g}g）超过借出时的总量（{max_allowed:g}g），"
-                            "请核对后重新填写"
-                        ),
-                        error_code="RETURN_QTY_EXCEEDS_BORROW"
-                    )
+        #     借出时总量不能简单用「当前剩余 + 本次领用量」——严格模式可多次
+        #     部分归还，当前剩余已包含前几次还回量，会把上限越算越大。
+        #     若已有归还记录，用首条记录的「用量 + 归还后余量」反推借出前总量。
+        if latest_borrow is None:
+            logger.warning("归还失败：没有对应的未结清领用记录", bottle_number=bottle_number)
+            return ServiceResult.fail(
+                message="该试剂瓶没有对应的领用记录，无法归还；请先确认领用流水",
+                error_code="NO_OPEN_BORROW",
+            )
+
+        borrow_qty = getattr(latest_borrow, BorrowRecordField.BORROW_QUANTITY, None)
+        current_qty = float(
+            getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
+        )
+        pre_borrow_qty = self._resolve_pre_borrow_qty(
+            linked_borrow_record_num, current_qty, borrow_qty
+        )
+        if pre_borrow_qty is not None:
+            max_allowed = pre_borrow_qty
+            specification = getattr(bottle, ReagentBottleField.SPECIFICATION, None)
+            if specification is not None and float(specification) > 0:
+                max_allowed = min(max_allowed, float(specification))
+            if remaining_qty > max_allowed + 1e-6:
+                logger.warning(
+                    "归还量超过借出时的总量",
+                    bottle_number=bottle_number,
+                    remaining_qty=remaining_qty,
+                    max_allowed=max_allowed,
+                    borrow_quantity=borrow_qty,
+                )
+                return ServiceResult.fail(
+                    message=(
+                        f"归还量（{remaining_qty:g}g）超过借出时的总量（{max_allowed:g}g），"
+                        "请核对后重新填写"
+                    ),
+                    error_code="RETURN_QTY_EXCEEDS_BORROW",
+                )
 
         # 3. 生成归还记录编号
         return_num = self.id_gen.generate_return_record_number()
@@ -168,15 +223,10 @@ class ReturnService:
         current_time = datetime.now().strftime("%Y/%m/%d %H:%M")
 
         # 5. 计算本次实际用量 = 借出时总量 - 归还后总量
-        #    等价于「领用量 - 还入量」：还入量 = 归还后剩余 - 借出后剩余
+        #    借出时总量由 _resolve_pre_borrow_qty 统一推导（支持多次部分归还）
         usage_quantity = None
-        if latest_borrow is not None:
-            borrow_qty = getattr(latest_borrow, BorrowRecordField.BORROW_QUANTITY, None)
-            if borrow_qty is not None:
-                pre_borrow_qty = float(
-                    getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, 0.0) or 0.0
-                ) + float(borrow_qty)
-                usage_quantity = max(0.0, pre_borrow_qty - float(remaining_qty))
+        if pre_borrow_qty is not None:
+            usage_quantity = max(0.0, pre_borrow_qty - float(remaining_qty))
 
         # 6. 创建归还记录数据
         return_data = {
@@ -185,6 +235,7 @@ class ReturnService:
             ReturnRecordField.RETURN_USER: return_user,
             ReturnRecordField.RETURN_TIME: current_time,
             ReturnRecordField.REMAINING_QUANTITY: remaining_qty,
+            ReturnRecordField.UNIT: getattr(bottle, ReagentBottleField.UNIT, None) or "g",
             ReturnRecordField.LAST_UPDATE_TIME: current_time,
             ReturnRecordField.MODIFIER: return_user
         }
@@ -280,10 +331,17 @@ class ReturnService:
                 borrowable_flag = BorrowableStatus.EMPTY.value
                 updates[ReagentBottleField.BORROWABLE_FLAG] = borrowable_flag
                 updates[ReagentBottleField.SCRAP_FLAG] = ScrapStatus.PENDING.value
-            updated = self.bottle_service.update(bottle_id, updates)
+            # 条件更新：以读取到的当前余量为版本号，避免并发归还/借出互相覆盖
+            updated = self.bottle_service.update_where(
+                {
+                    ReagentBottleField.ID: bottle_id,
+                    ReagentBottleField.REMAINING_QUANTITY: current_qty,
+                },
+                updates,
+            )
             if not updated:
                 # 瓶更新失败主动抛异常，触发事务回滚（归还记录一并撤销）
-                raise RuntimeError("更新试剂瓶信息失败，已回滚归还记录")
+                raise RuntimeError("试剂瓶状态已被其他操作修改，归还失败，已回滚归还记录")
 
         logger.info(
             "试剂瓶信息更新成功",

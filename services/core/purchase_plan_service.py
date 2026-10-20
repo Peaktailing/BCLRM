@@ -89,6 +89,7 @@ class PurchasePlanItemService(BaseService):
             reagent_name=record.get('reagent_name'),
             cas_number=record.get('cas_number'),
             source_quantity=record.get('source_quantity'),
+            unit=record.get('unit') or 'g',
             per_capita_usage=record.get('per_capita_usage'),
             student_count=record.get('student_count'),
             demand_quantity=record.get('demand_quantity'),

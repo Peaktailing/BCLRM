@@ -65,11 +65,12 @@ def _build_summary_excel(rows, semester: str) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "采购汇总"
-    sheet.append(["试剂名称", "CAS号", "总需求", "当前库存", "最终采购量", "供应商", "需采购"])
+    sheet.append(["试剂名称", "CAS号", "单位", "总需求", "当前库存", "最终采购量", "供应商", "需采购"])
     for row in rows:
         sheet.append([
             row["reagent_name"],
             row["cas_number"] or "",
+            row.get("unit") or "g",
             row["total_demand"],
             row["current_stock"],
             row["final_purchase"],
@@ -319,6 +320,7 @@ with tab_manage:
                                 "id": row["id"],
                                 "实验": row["item_name"],
                                 "试剂名称": row["reagent_name"],
+                                "单位": row.get("unit") or "g",
                                 "人均用量": row["per_capita_usage"],
                                 "需求量": row["demand_quantity"],
                                 "采购量": row["purchase_quantity"],
@@ -332,6 +334,7 @@ with tab_manage:
                             "id": None,
                             "实验": st.column_config.TextColumn(disabled=True),
                             "试剂名称": st.column_config.TextColumn(disabled=True),
+                            "单位": st.column_config.TextColumn(disabled=True),
                             "人均用量": st.column_config.NumberColumn(disabled=True, format="%.4f"),
                             "需求量": st.column_config.NumberColumn(min_value=0.0, step=1.0),
                             "采购量": st.column_config.NumberColumn(min_value=0.0, step=1.0),
@@ -402,6 +405,7 @@ with tab_summary:
                         {
                             "试剂名称": r["reagent_name"],
                             "CAS号": r["cas_number"] or "-",
+                            "单位": r.get("unit") or "g",
                             "总需求": r["total_demand"],
                             "当前库存": r["current_stock"],
                             "最终采购量": r["final_purchase"],

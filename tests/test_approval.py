@@ -158,6 +158,34 @@ class TestBorrowApproval(unittest.TestCase):
         bottle = reagent_bottle_service.get_by_bottle_number("B9002")
         self.assertAlmostEqual(float(bottle.remaining_quantity), 100.0)
 
+    def test_controlled_without_cas_requires_approval(self):
+        """无 CAS 但名称命中管控名录时，也必须进入审批而不是直接借出。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9006", "管控试剂", 100.0, cas="")
+        self._make_person("李老师", "teacher")
+        self._make_person("王管理员", "admin")
+
+        created = work_order_service.create_order(
+            order_type="课程领用",
+            applicant="李老师",
+            cart_items=[{
+                "bottle_number": "B9006",
+                "reagent_name": "管控试剂",
+                "borrow_qty": 10.0,
+            }],
+            course=experiment_course_service.get_by_id(
+                self._make_course(approver="王管理员")
+            ),
+            exp_item=experiment_item_service.get_by_id(self._make_item()),
+        )
+        self.assertTrue(created.is_success(), created.message)
+        self.assertTrue(created.data.get("pending_approval"))
+        self.assertAlmostEqual(
+            float(reagent_bottle_service.get_by_bottle_number("B9006").remaining_quantity),
+            100.0,
+            msg="审批前不得扣库存",
+        )
+
     def test_course_without_approver_rejected(self):
         """课程未绑定审批管理员时应明确拒绝（NO_APPROVER）。"""
         self._make_controlled("CN-111")

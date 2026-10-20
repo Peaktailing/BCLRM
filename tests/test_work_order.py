@@ -465,7 +465,7 @@ class TestWorkOrder(unittest.TestCase):
         item = work_order_service.get_order_items(order_id)[0]
 
         # 注入故障：瓶更新失败（返回 False）触发事务回滚
-        with mock.patch.object(reagent_bottle_service, "update", return_value=False):
+        with mock.patch.object(reagent_bottle_service, "update_where", return_value=False):
             result = work_order_service.return_items(
                 order_id,
                 [{"item_id": item["id"], "return_qty": 0.0, "discard": True}],
@@ -505,16 +505,16 @@ class TestWorkOrder(unittest.TestCase):
         items = work_order_service.get_order_items(order_id)
 
         bottle_first = reagent_bottle_service.get_by_bottle_number("B8102")
-        _real_update = reagent_bottle_service.update
+        _real_update = reagent_bottle_service.update_where
 
-        def _flaky_update(bottle_id, fields):
+        def _flaky_update(conditions, fields):
             # 仅空瓶迁移的那一瓶失败，其余正常
-            if bottle_id == bottle_first.id:
+            if conditions.get("id") == bottle_first.id:
                 return False
-            return _real_update(bottle_id, fields)
+            return _real_update(conditions, fields)
 
         with mock.patch.object(
-            reagent_bottle_service, "update", side_effect=_flaky_update
+            reagent_bottle_service, "update_where", side_effect=_flaky_update
         ):
             result = work_order_service.return_items(
                 order_id,

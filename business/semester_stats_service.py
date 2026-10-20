@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Dict, List, Optional
 
-from business.usage_service import usage_service
+from business.usage_service import is_effective_order, usage_service
 from services.base.experiment_course_service import experiment_course_service
 from services.core.borrow_order_service import borrow_order_service
 from services.core.return_record_service import return_record_service
@@ -35,7 +35,10 @@ class SemesterStatsService:
         """学年用量汇总：总用量 / 领用人数 / 人均用量 / 工单数 / 归还次数"""
         rows = usage_service.collect(semester)
 
-        total_usage = round(sum(row["usage"] for row in rows), 2)
+        usage_by_unit: Dict[str, float] = defaultdict(float)
+        for row in rows:
+            usage_by_unit[row.get("unit") or "g"] += float(row["usage"])
+        total_usage = round(sum(usage_by_unit.values()), 2)
         users = set()
         for row in rows:
             users.update(row["applicants"])
@@ -44,7 +47,11 @@ class SemesterStatsService:
 
         orders = [
             order for order in borrow_order_service.get_all_parsed()
-            if semester is None or date_to_semester(getattr(order, "borrow_time", None)) == semester
+            if is_effective_order(order)
+            and (
+                semester is None
+                or date_to_semester(getattr(order, "borrow_time", None)) == semester
+            )
         ]
         return_count = len([
             record for record in return_record_service.get_all_parsed()
@@ -54,6 +61,10 @@ class SemesterStatsService:
         data = {
             "semester": semester or "全部",
             "total_usage": total_usage,
+            "usage_by_unit": {
+                unit: round(value, 2) for unit, value in usage_by_unit.items()
+            },
+            "multiple_units": len(usage_by_unit) > 1,
             "user_count": user_count,
             "avg_per_user": avg_per_user,
             "reagent_count": len({
@@ -85,11 +96,13 @@ class SemesterStatsService:
         rows = usage_service.collect(semester, only_course=True)
 
         # 课程分组：按 course_id 聚合
-        grouped: Dict[int, Dict] = {}
+        grouped: Dict[tuple, Dict] = {}
         for row in rows:
             course_id = row.get("course_id")
-            entry = grouped.setdefault(course_id, {
+            unit = row.get("unit") or "g"
+            entry = grouped.setdefault((course_id, unit), {
                 "course_name": row.get("course_name") or f"课程#{course_id}",
+                "unit": unit,
                 "usage": 0.0,
                 "experiments": set(),
             })
@@ -97,8 +110,12 @@ class SemesterStatsService:
             if row.get("item_name"):
                 entry["experiments"].add(row["item_name"])
 
-        # 课程人数（按课程名汇总各班级人数）
-        courses = experiment_course_service.get_by_semester(None)
+        # 课程人数：按 course_id（班级记录）取该班级人数，不能用同名课程总人数，
+        # 否则每个班级行都会被他班人数稀释。
+        courses = experiment_course_service.get_by_semester(semester)
+        students_by_id: Dict[int, int] = {
+            course.id: int(course.student_count or 0) for course in courses
+        }
         students_by_name: Dict[str, int] = defaultdict(int)
         meta_by_name: Dict[str, Dict] = {}
         for course in courses:
@@ -109,14 +126,19 @@ class SemesterStatsService:
             })
 
         result: List[Dict] = []
-        for course_id, entry in grouped.items():
+        for (course_id, unit), entry in grouped.items():
             course_name = entry["course_name"]
-            students = students_by_name.get(course_name, 0)
+            students = (
+                students_by_id.get(course_id)
+                if course_id is not None
+                else students_by_name.get(course_name, 0)
+            ) or 0
             usage = round(entry["usage"], 2)
             meta = meta_by_name.get(course_name, {})
             result.append({
                 "课程": course_name,
                 "班级": meta.get("class_name") or "-",
+                "单位": unit,
                 "教师": meta.get("teacher") or "-",
                 "课程人数": students,
                 "实验数": len(entry["experiments"]),
@@ -132,8 +154,8 @@ class SemesterStatsService:
     def get_usage_by_reagent(self, semester: Optional[str] = None) -> ServiceResult:
         """按试剂聚合用量与人均
 
-        人均用量 = 该试剂用量 ÷ 领用人数，**按试剂分别计算**，
-        而不是把所有试剂用量加总后再除以人数。
+        人均用量 = 该试剂用量 ÷ 全体领用人数（各试剂分别汇总；
+        分母沿用页面既有口径“全体领用人数”，不是该试剂自己的领用人数）。
         """
         rows = usage_service.collect(semester)
 
@@ -145,7 +167,9 @@ class SemesterStatsService:
         grouped: Dict[str, Dict] = {}
         for row in rows:
             name = row.get("reagent_name") or "（未命名试剂）"
-            entry = grouped.setdefault(name, {
+            unit = row.get("unit") or "g"
+            entry = grouped.setdefault((name, unit), {
+                "unit": unit,
                 "usage": 0.0,
                 "order_count": 0,
                 "applicants": set(),
@@ -158,10 +182,11 @@ class SemesterStatsService:
                 entry["experiments"].add(row["item_name"])
 
         result: List[Dict] = []
-        for name, entry in grouped.items():
+        for (name, unit), entry in grouped.items():
             usage = round(entry["usage"], 2)
             result.append({
                 "试剂名称": name,
+                "单位": unit,
                 "用量": usage,
                 "人均用量": round(usage / user_count, 2) if user_count else None,
                 "领用人次": len(entry["applicants"]),
@@ -191,8 +216,8 @@ class SemesterStatsService:
         """
         rows = usage_service.collect(semester, only_course=True)
 
-        # 各课程（按班级记录）的人数与教师
-        courses = experiment_course_service.get_by_semester(None)
+        # 各课程（按班级记录）的人数与教师；指定学年时只取该学年的班级
+        courses = experiment_course_service.get_by_semester(semester)
         student_counts_by_name: Dict[str, List[int]] = defaultdict(list)
         teacher_by_name: Dict[str, str] = {}
         for course in courses:
@@ -207,8 +232,10 @@ class SemesterStatsService:
                 course_name,
                 row.get("item_name") or "-",
                 row.get("reagent_name") or "-",
+                row.get("unit") or "g",
             )
             entry = grouped.setdefault(key, {
+                "unit": row.get("unit") or "g",
                 "usage": 0.0,
                 "class_count": 0,
                 "order_count": 0,
@@ -218,7 +245,7 @@ class SemesterStatsService:
             entry["order_count"] += int(row.get("order_count") or 0)
 
         result: List[Dict] = []
-        for (course_name, item_name, reagent_name), entry in grouped.items():
+        for (course_name, item_name, reagent_name, unit), entry in grouped.items():
             counts = [c for c in student_counts_by_name.get(course_name, []) if c > 0]
             avg_students = round(sum(counts) / len(counts)) if counts else 0
             class_count = entry["class_count"] or 1
@@ -228,6 +255,7 @@ class SemesterStatsService:
                 "教师": teacher_by_name.get(course_name, "-"),
                 "实验": item_name,
                 "试剂": reagent_name,
+                "单位": entry["unit"],
                 "平均用量": avg_usage,
                 "班级平均人数": avg_students,
                 "人均用量": round(avg_usage / avg_students, 4) if avg_students else None,

@@ -15,11 +15,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 from types import SimpleNamespace
 
-from business.bottle_state import ScrapStatus, recompute_borrowable
+from business.bottle_state import (
+    BorrowableStatus,
+    ExpiryStatus,
+    ScrapStatus,
+    recompute_borrowable,
+)
 from business.manager_service import manager_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from services.core.reagent_bottle_service import reagent_bottle_service
+from utils.audit import audit
 from utils.error_handler import logger
 from utils.field_mapper import ReagentBottleField
 
@@ -53,6 +59,10 @@ expiring = [
 expired = [
     b for b in _bottles
     if getattr(b, "expired_flag", None) == ExpiryStatus.EXPIRED
+]
+unknown_expiry = [
+    b for b in _bottles
+    if getattr(b, "expired_flag", None) == ExpiryStatus.UNKNOWN
 ]
 
 col1, col2, col3, col4 = st.columns(4)
@@ -141,12 +151,20 @@ with tab_scrap:
                             _rid,
                             {
                                 ReagentBottleField.SCRAP_FLAG: ScrapStatus.SCRAPPED,
-                                # 报废瓶必须同时退出「可借」集合
+                                # 报废瓶必须同时退出「可借」集合（flag + check 双写）
+                                ReagentBottleField.BORROWABLE_FLAG: BorrowableStatus.EMPTY,
                                 ReagentBottleField.BORROWABLE_CHECK: 0,
                             },
                         ):
                             _ok += 1
                     logger.info("确认报废完成", count=_ok)
+                    audit(
+                        user_name,
+                        "确认报废",
+                        target_type="bottle",
+                        target_id=",".join(str(i) for i in _selected_ids),
+                        detail=f"确认报废 {_ok} 瓶",
+                    )
                     st.success(f"✅ 已确认报废 {_ok} 瓶")
                     st.rerun()
 
@@ -181,6 +199,13 @@ with tab_scrap:
                         }):
                             _ok += 1
                     logger.info("恢复使用完成", count=_ok)
+                    audit(
+                        user_name,
+                        "恢复使用",
+                        target_type="bottle",
+                        target_id=",".join(str(i) for i in _selected_ids),
+                        detail=f"恢复使用 {_ok} 瓶",
+                    )
                     st.success(f"↩️ 已恢复 {_ok} 瓶（状态按剩余量重算）")
                     st.rerun()
 
@@ -213,6 +238,11 @@ with tab_expiry:
             st.error(f"❌ 已过期 {len(expired)} 瓶，建议尽快处置或报废")
         if expiring:
             st.warning(f"⚠️ 即将过期 {len(expiring)} 瓶，请及时使用或安排处置")
+        if unknown_expiry:
+            st.info(
+                f"❓ 有 {len(unknown_expiry)} 瓶缺少生产日期或有效期信息，"
+                "无法判定过期状态，请补录化学品档案/生产日期"
+            )
 
         st.dataframe(
             [

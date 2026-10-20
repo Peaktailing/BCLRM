@@ -29,6 +29,7 @@ from services.base.person_service import person_service
 from business.permission_service import permission_service
 from business.manager_service import manager_service, REASON_ALLOCATION
 from business.bottle_state import is_borrowable, is_expired, ScrapStatus
+from business.expiry_service import expiry_service
 from models.core.allocation_order import (
     ALLOC_STATUS_PENDING,
     ALLOC_STATUS_LENT,
@@ -127,6 +128,7 @@ class AllocationService:
         """可借且未过期、未被调配单预占、有剩余量的目标试剂瓶"""
         result = []
         reserved = self._reserved_bottle_numbers()
+        chemical_cache = expiry_service._build_chemical_cache()
         for bottle in self.bottle_service.get_all_parsed():
             if not self._match_reagent(bottle, cas_number, reagent_name):
                 continue
@@ -138,7 +140,8 @@ class AllocationService:
                 continue
             if not is_borrowable(getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None)):
                 continue
-            if is_expired(getattr(bottle, ReagentBottleField.EXPIRED_FLAG, None)):
+            # 实时按日期计算过期状态，避免 expired_flag 未同步导致过期瓶被分配
+            if is_expired(expiry_service.check_bottle(bottle, chemical_cache)):
                 continue
             if self._num(getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, None)) <= 0:
                 continue
@@ -367,50 +370,56 @@ class AllocationService:
                 entry["items"].extend(group["items"])
                 entry["total_qty"] += self._num(group["total_qty"])
 
-        # 统一创建调配单（每个管理人每试剂一张）
-        for entry in merged.values():
-            manager = entry["manager"]
-            cas = entry["cas_number"]
-            name = entry["reagent_name"]
-            total_qty = round(entry["total_qty"], 6)
-            year_demand = self._year_demand(cas, name)
-            total_stock = self._stock(cas, name)
-            manager_stock = self._stock(
-                cas, name,
-                manager=None if manager == UNASSIGNED_MANAGER else manager,
-            )
-            sufficient = 1 if total_stock >= year_demand else 0
-            alloc_number = self.id_gen.generate_allocation_number()
-            alloc_id = self.order_service.create({
-                AllocationOrderField.ALLOCATION_NUMBER: alloc_number,
-                AllocationOrderField.DEMAND_ID: demand_id,
-                AllocationOrderField.MANAGER: manager,
-                AllocationOrderField.STATUS: ALLOC_STATUS_PENDING,
-                AllocationOrderField.DEMAND_QTY: total_qty,
-                AllocationOrderField.MANAGER_STOCK_QTY: manager_stock,
-                AllocationOrderField.TOTAL_STOCK_QTY: total_stock,
-                AllocationOrderField.YEAR_DEMAND_QTY: year_demand,
-                AllocationOrderField.IS_STOCK_SUFFICIENT: sufficient,
-                AllocationOrderField.CREATED_BY: created_by,
-            })
-            if not alloc_id:
-                logger.error("创建调配单失败", demand_id=demand_id, manager=manager)
-                continue
-            for item in entry["items"]:
-                self.order_item_service.create({
-                    AllocationOrderItemField.ALLOCATION_ID: alloc_id,
-                    AllocationOrderItemField.BOTTLE_NUMBER: item["bottle_number"],
-                    AllocationOrderItemField.REAGENT_NAME: item["reagent_name"],
-                    AllocationOrderItemField.QTY: item["qty"],
-                    AllocationOrderItemField.STATUS: ALLOC_ITEM_PENDING,
+        # 统一创建调配单（每个管理人每试剂一张）；单头+明细必须同事务，
+        # 否则中途失败会留下没有明细的调配单，后续处理逻辑无法正确流转。
+        with db.transaction():
+            for entry in merged.values():
+                manager = entry["manager"]
+                cas = entry["cas_number"]
+                name = entry["reagent_name"]
+                total_qty = round(entry["total_qty"], 6)
+                year_demand = self._year_demand(cas, name)
+                total_stock = self._stock(cas, name)
+                manager_stock = self._stock(
+                    cas, name,
+                    manager=None if manager == UNASSIGNED_MANAGER else manager,
+                )
+                sufficient = 1 if total_stock >= year_demand else 0
+                alloc_number = self.id_gen.generate_allocation_number()
+                alloc_id = self.order_service.create({
+                    AllocationOrderField.ALLOCATION_NUMBER: alloc_number,
+                    AllocationOrderField.DEMAND_ID: demand_id,
+                    AllocationOrderField.MANAGER: manager,
+                    AllocationOrderField.STATUS: ALLOC_STATUS_PENDING,
+                    AllocationOrderField.DEMAND_QTY: total_qty,
+                    AllocationOrderField.MANAGER_STOCK_QTY: manager_stock,
+                    AllocationOrderField.TOTAL_STOCK_QTY: total_stock,
+                    AllocationOrderField.YEAR_DEMAND_QTY: year_demand,
+                    AllocationOrderField.IS_STOCK_SUFFICIENT: sufficient,
+                    AllocationOrderField.CREATED_BY: created_by,
                 })
-            created.append({
-                "allocation_number": alloc_number,
-                "manager": manager,
-                "reagent_name": name,
-                "total_qty": total_qty,
-                "is_stock_sufficient": sufficient,
-            })
+                if not alloc_id:
+                    raise RuntimeError(
+                        f"创建调配单失败（需求 {demand_id}，管理人 {manager}）"
+                    )
+                for item in entry["items"]:
+                    if not self.order_item_service.create({
+                        AllocationOrderItemField.ALLOCATION_ID: alloc_id,
+                        AllocationOrderItemField.BOTTLE_NUMBER: item["bottle_number"],
+                        AllocationOrderItemField.REAGENT_NAME: item["reagent_name"],
+                        AllocationOrderItemField.QTY: item["qty"],
+                        AllocationOrderItemField.STATUS: ALLOC_ITEM_PENDING,
+                    }):
+                        raise RuntimeError(
+                            f"创建调配单明细失败：{item['bottle_number']}"
+                        )
+                created.append({
+                    "allocation_number": alloc_number,
+                    "manager": manager,
+                    "reagent_name": name,
+                    "total_qty": total_qty,
+                    "is_stock_sufficient": sufficient,
+                })
 
         if not created:
             return ServiceResult.fail(

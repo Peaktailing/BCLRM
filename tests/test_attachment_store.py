@@ -1,6 +1,6 @@
 """附件存储（utils/attachment_store.py）单元测试
 
-使用临时目录，不污染 attachments/；附件索引写入真实 attach_cold.db（幂等小数据）。
+使用临时目录，不污染 attachments/；附件索引库由 tests/__init__.py 重定向到临时库。
 """
 import tempfile
 import unittest

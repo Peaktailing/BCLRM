@@ -11,6 +11,7 @@ from services.base.controlled_list_service import controlled_list_service
 from models.base.chemical import ChemicalInfo
 from utils.field_mapper import ChemicalInfoField, ReagentTypeField
 from utils.error_handler import logger, ServiceResult, handle_exception
+from utils.permission_guard import enforce_role
 from typing import Optional, List
 
 
@@ -245,6 +246,7 @@ class ChemicalManageService:
             ServiceResult: 创建结果，成功时 data 为创建的记录ID，
                           失败时包含错误信息
         """
+        enforce_role("admin", "super_admin", action="新增化学品")
         # 1. 数据校验
         validation_result = self.validate_chemical_data(
             name, cas, reagent_type, storage_requirement
@@ -356,7 +358,18 @@ class ChemicalManageService:
             ServiceResult: 更新结果，成功时 data 为更新的记录ID，
                           失败时包含错误信息
         """
-        # 参数校验
+        enforce_role("admin", "super_admin", action="修改化学品")
+        # 参数校验（更新与新增使用同一组必填项，避免把名称/CAS 清空）
+        if not name or not str(name).strip():
+            return ServiceResult.fail(
+                message="化学品名称不能为空",
+                error_code="EMPTY_CHEMICAL_NAME",
+            )
+        if not cas or not str(cas).strip():
+            return ServiceResult.fail(
+                message="CAS号不能为空",
+                error_code="EMPTY_CAS_NUMBER",
+            )
         if not record_id or not str(record_id).strip():
             logger.warning("参数校验失败: 记录ID不能为空")
             return ServiceResult.fail(
@@ -443,6 +456,12 @@ class ChemicalManageService:
                     cas=cas,
                     controlled_type=controlled_type
                 )
+            elif (
+                match_result.is_failure()
+                or (original.cas_number or "").strip() == cas.strip()
+            ):
+                # 匹配异常或 CAS 未变时保留原管控标记，避免名录临时缺失导致误清空
+                controlled_type = original.controlled_type
 
         # 7. 构建更新数据字典（仅包含非 None 字段，避免覆盖已有值）
         chemical_data = {

@@ -85,6 +85,7 @@ class PurchaseOrderService(BaseService):
             reagent_name=record.get("reagent_name"),
             cas_number=record.get("cas_number"),
             order_quantity=record.get("order_quantity"),
+            unit=record.get("unit") or "g",
             unit_price=record.get("unit_price"),
             supplier=record.get("supplier"),
             status=record.get("status"),

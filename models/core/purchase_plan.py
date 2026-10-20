@@ -41,6 +41,7 @@ class PurchasePlanItem:
     reagent_name: Optional[str] = None
     cas_number: Optional[str] = None
     source_quantity: Optional[float] = None    # 来源学年总用量（历史）
+    unit: Optional[str] = 'g'                  # 计量单位
     per_capita_usage: Optional[float] = None   # 人均用量 = 历史用量 ÷ 历史人数
     student_count: Optional[int] = None        # 预计人数
     demand_quantity: Optional[float] = None    # 需求量 = 人均 × 人数（可人工修改）

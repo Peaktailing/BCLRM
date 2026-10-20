@@ -6,6 +6,7 @@
 import sqlite3
 import os
 import threading
+from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional
 from pathlib import Path
@@ -42,6 +43,7 @@ class Database:
     """
 
     _instances: dict = {}  # 按 db_path 缓存实例，支持多数据库独立连接
+    _instances_lock = threading.Lock()
 
     def __new__(cls, db_path: str = None):
         """单例模式（按 db_path 区分），确保同一路径只有一个连接
@@ -53,13 +55,15 @@ class Database:
             db_path = os.path.join(os.path.dirname(__file__), 'main.db')
         # 规范化路径避免因相对/绝对路径差异导致重复实例
         normalized = os.path.abspath(db_path)
-        if normalized not in cls._instances:
-            instance = super().__new__(cls)
-            instance._initialized = False
-            instance._connection = None  # 每个实例独立连接实例
-            instance._lock = threading.RLock()  # 可重入锁，避免同一线程重复获取时死锁
-            cls._instances[normalized] = instance
-        return cls._instances[normalized]
+        with cls._instances_lock:
+            if normalized not in cls._instances:
+                instance = super().__new__(cls)
+                instance._initialized = False
+                instance._connection = None  # 每个实例独立连接实例
+                instance._lock = threading.RLock()  # 可重入锁，避免同一线程重复获取时死锁
+                instance._local = threading.local()  # 事务深度按线程隔离
+                cls._instances[normalized] = instance
+            return cls._instances[normalized]
 
     def __init__(self, db_path: str = None):
         """初始化数据库连接
@@ -75,9 +79,17 @@ class Database:
             db_path = os.path.join(os.path.dirname(__file__), 'main.db')
 
         self.db_path = os.path.abspath(db_path)
-        self._transaction_depth = 0
         self._initialized = True
         self._ensure_db_directory()
+
+    @property
+    def _transaction_depth(self) -> int:
+        """当前线程的事务嵌套深度（线程本地，避免跨会话串事务）。"""
+        return getattr(self._local, "transaction_depth", 0)
+
+    @_transaction_depth.setter
+    def _transaction_depth(self, value: int) -> None:
+        self._local.transaction_depth = value
 
     def _ensure_db_directory(self):
         """确保数据库目录存在"""
@@ -114,9 +126,11 @@ class Database:
             cursor = self.connection.cursor()
             # 启用 WAL 模式
             cursor.execute("PRAGMA journal_mode=WAL")
+            self._wal_mode = cursor.fetchone()[0]
             # 设置 WAL 自动检查点（1000页）
             cursor.execute("PRAGMA wal_autocheckpoint=1000")
-            self._wal_mode = cursor.fetchone()[0]
+            # 多连接/多进程写冲突时最多等待 5 秒，避免立即抛 database is locked
+            cursor.execute("PRAGMA busy_timeout=5000")
             logger.info(f"WAL模式已启用: {self._wal_mode}")
         except Exception as e:
             logger.warning(f"WAL配置异常: {str(e)}")
@@ -147,10 +161,11 @@ class Database:
 
     def close(self):
         """关闭数据库连接"""
-        if self._connection:
-            self._connection.close()
-            self._connection = None
-            logger.info(f"数据库连接已关闭: {self.db_path}")
+        with self._lock:
+            if self._connection:
+                self._connection.close()
+                self._connection = None
+                logger.info(f"数据库连接已关闭: {self.db_path}")
 
     def init_tables(self):
         """初始化所有数据表（仅主库使用）
@@ -281,6 +296,7 @@ class Database:
                     cas_number TEXT,
                     remaining_quantity REAL,
                     specification REAL,
+                    unit TEXT DEFAULT 'g',
                     purity TEXT,
                     reagent_type TEXT,
                     is_controlled INTEGER DEFAULT 0,
@@ -294,7 +310,7 @@ class Database:
                     last_return_time TEXT,
                     last_return_record_no INTEGER,
                     storage_location TEXT,
-                    borrowable_flag TEXT DEFAULT '可借',  -- 注意：此字段已废弃，仅用于显示兼容。请使用 borrowable_check 进行业务判断
+                    borrowable_flag TEXT DEFAULT '可借',  -- 业务状态：可借/已借出/耗尽/空瓶（与 borrowable_check 同步）
                     borrowable_check INTEGER DEFAULT 1,  -- borrowable_check: 1=可借, 0=不可借
                     expired_flag TEXT DEFAULT '正常',
                     expiry_date TEXT,
@@ -399,6 +415,7 @@ class Database:
                     is_controlled INTEGER DEFAULT 0,
                     borrow_time TEXT,
                     borrow_quantity REAL,
+                    unit TEXT DEFAULT 'g',
                     course_id INTEGER,
                     approver TEXT,
                     approval_file TEXT,
@@ -448,6 +465,7 @@ class Database:
                     reagent_name TEXT,
                     borrow_qty REAL,
                     returned_qty REAL DEFAULT 0,
+                    unit TEXT DEFAULT 'g',
                     status TEXT DEFAULT '待归还',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (order_id) REFERENCES borrow_order(id) ON DELETE CASCADE
@@ -464,6 +482,7 @@ class Database:
                     return_time TEXT,
                     remaining_quantity REAL,
                     usage_quantity REAL,
+                    unit TEXT DEFAULT 'g',
                     linked_borrow_record_number TEXT,
                     last_update_time TEXT,
                     modifier TEXT,
@@ -633,6 +652,7 @@ class Database:
                     reagent_name TEXT,
                     cas_number TEXT,
                     order_quantity REAL,
+                    unit TEXT DEFAULT 'g',
                     unit_price REAL,
                     supplier TEXT,
                     status TEXT DEFAULT 'pending',
@@ -661,6 +681,7 @@ class Database:
                 "reagent_type", "supplier", "manufacturer", "controlled_list",
                 "chemical_info", "reagent_bottle", "borrow_record",
                 "return_record", "consumable", "experiment_project",
+                "borrow_order", "experiment_course",
                 "reservation_order", "purchase_order",
             ]
             for _tbl in _trigger_tables:
@@ -697,6 +718,15 @@ class Database:
                     UNIQUE(course_name, target_semester)
                 )
             """)
+            # purchase_plan 在上面的通用触发器循环之后才建表，单独补触发器
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_purchase_plan_updated_at
+                AFTER UPDATE ON purchase_plan
+                FOR EACH ROW
+                BEGIN
+                    UPDATE purchase_plan SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                END;
+            """)
 
             # 16.2 采购单明细：课程 - 实验 - 试剂
             cursor.execute("""
@@ -708,6 +738,7 @@ class Database:
                     reagent_name TEXT,
                     cas_number TEXT,
                     source_quantity REAL,
+                    unit TEXT DEFAULT 'g',
                     per_capita_usage REAL,
                     student_count INTEGER,
                     demand_quantity REAL,
@@ -975,11 +1006,16 @@ class Database:
                 existing_rows = cursor.execute("SELECT COUNT(*) FROM purchase_plan").fetchone()[0]
                 if existing_rows:
                     logger.warning(
-                        "采购单表存在旧结构数据，重建将丢弃这些数据",
+                        "采购单表存在旧结构数据，将重命名为 legacy 表保留而非删除",
                         row_count=existing_rows
                     )
-                cursor.execute("DROP TABLE IF EXISTS purchase_plan_item")
-                cursor.execute("DROP TABLE IF EXISTS purchase_plan")
+                _legacy_suffix = datetime.now().strftime("%Y%m%d%H%M%S")
+                cursor.execute(
+                    f"ALTER TABLE purchase_plan RENAME TO purchase_plan_legacy_{_legacy_suffix}"
+                )
+                cursor.execute(
+                    f"ALTER TABLE purchase_plan_item RENAME TO purchase_plan_item_legacy_{_legacy_suffix}"
+                )
                 cursor.execute("""
                     CREATE TABLE purchase_plan (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1009,6 +1045,7 @@ class Database:
                         reagent_name TEXT,
                         cas_number TEXT,
                         source_quantity REAL,
+                        unit TEXT DEFAULT 'g',
                         per_capita_usage REAL,
                         student_count INTEGER,
                         demand_quantity REAL,
@@ -1022,7 +1059,20 @@ class Database:
                         FOREIGN KEY (plan_id) REFERENCES purchase_plan(id) ON DELETE CASCADE
                     )
                 """)
-                logger.info("迁移完成：purchase_plan / purchase_plan_item 已升级为课程-实验-试剂结构")
+                logger.info("迁移完成：purchase_plan / purchase_plan_item  已升级为课程-实验-试剂结构")
+
+            # 迁移：为既有表补充 unit 字段（历史数据默认 g）
+            for _tbl in (
+                "reagent_bottle", "borrow_record", "return_record",
+                "borrow_order_item", "purchase_plan_item", "purchase_order",
+            ):
+                cursor.execute(f"PRAGMA table_info({_tbl})")
+                _cols = {row[1] for row in cursor.fetchall()}
+                if _cols and "unit" not in _cols:
+                    cursor.execute(
+                        f"ALTER TABLE {_tbl} ADD COLUMN unit TEXT DEFAULT 'g'"
+                    )
+                    logger.info(f"迁移完成：{_tbl} 表添加 unit 字段")
 
             self.connection.commit()
 
@@ -1052,7 +1102,9 @@ class Database:
                     logger.info("迁移完成：chemical_reagent_type 关联表数据已从 CSV 填充")
 
         except Exception as e:
-            logger.warning(f"数据库迁移执行异常（可忽略）: {str(e)}")
+            # schema 迁移失败不能继续启动，否则会在运行期以更难排查的方式报错
+            logger.error(f"数据库迁移执行异常: {str(e)}", exception=e)
+            raise
 
     def _migrate_chemical_info_drop_reagent_type_fk(self):
         """迁移：移除 chemical_info 表的 reagent_type 外键约束
@@ -1116,6 +1168,15 @@ class Database:
 
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_name ON chemical_info(name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chemical_cas ON chemical_info(cas_number)")
+            # DROP/重建表会连带删除原触发器，必须重新创建
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS trg_chemical_info_updated_at
+                AFTER UPDATE ON chemical_info
+                FOR EACH ROW
+                BEGIN
+                    UPDATE chemical_info SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                END;
+            """)
 
             cursor.execute(f"PRAGMA foreign_keys = {original_fk_state}")
 
@@ -1148,30 +1209,35 @@ class Database:
 
         依赖连接使用 autocommit 模式（isolation_level=None）。
         """
-        conn = self.connection
-        nested = self._transaction_depth > 0
-        self._transaction_depth += 1
-        savepoint = f"sp_tx_{self._transaction_depth}"
-        try:
-            if not nested:
-                conn.execute("BEGIN")
-            else:
-                conn.execute(f"SAVEPOINT {savepoint}")
-            yield conn
-            if not nested:
-                conn.commit()
-            else:
-                conn.execute(f"RELEASE {savepoint}")
-        except Exception:
-            if not nested:
-                conn.rollback()
-            else:
-                # 仅回滚本嵌套段的写入（回滚后释放保存点，外层事务继续）
-                conn.execute(f"ROLLBACK TO {savepoint}")
-                conn.execute(f"RELEASE {savepoint}")
-            raise
-        finally:
-            self._transaction_depth -= 1
+        # 整个事务临界区持有可重入锁：同一连接被多个 Streamlit 会话共享时，
+        # 防止线程 A 的事务中混入线程 B 的语句、或 B 的 SAVEPOINT 挂到 A 的事务上。
+        # 内层 execute_* 会再次获取同一把 RLock（同线程可重入），不会死锁。
+        with self._lock:
+            conn = self.connection
+            nested = self._transaction_depth > 0
+            self._transaction_depth += 1
+            savepoint = f"sp_tx_{self._transaction_depth}"
+            try:
+                if not nested:
+                    # IMMEDIATE：进入事务即取得写锁，避免读事务升级写锁时的竞争
+                    conn.execute("BEGIN IMMEDIATE")
+                else:
+                    conn.execute(f"SAVEPOINT {savepoint}")
+                yield conn
+                if not nested:
+                    conn.commit()
+                else:
+                    conn.execute(f"RELEASE {savepoint}")
+            except Exception:
+                if not nested:
+                    conn.rollback()
+                else:
+                    # 仅回滚本嵌套段的写入（回滚后释放保存点，外层事务继续）
+                    conn.execute(f"ROLLBACK TO {savepoint}")
+                    conn.execute(f"RELEASE {savepoint}")
+                raise
+            finally:
+                self._transaction_depth -= 1
 
     def execute_query(self, query: str, params: tuple = None) -> list:
         """执行查询语句

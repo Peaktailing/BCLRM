@@ -58,18 +58,18 @@ def import_person_data(db, df):
 
         fields = {
             'name': str(row.get('姓名', '')),
-            'gender': str(row.get('性别', '')) if not pd.isna(row.get('性别')) else None,
-            'person_id': str(row.get('人员', '')) if not pd.isna(row.get('人员')) else None,
-            'feishu_person': str(row.get('飞书人员', '')) if not pd.isna(row.get('飞书人员')) else None,
-            'person_attribute': str(row.get('人员属性', '')) if not pd.isna(row.get('人员属性')) else None,
-            'student_id_work_id': str(row.get('学号/工号', '')) if not pd.isna(row.get('学号/工号')) else None,
+            'role': 'user',
+            'student_or_work_id': (
+                str(row.get('学号/工号', ''))
+                if not pd.isna(row.get('学号/工号')) else None
+            ),
         }
 
         try:
             query = """
                 INSERT OR IGNORE INTO person
-                (name, gender, person_id, feishu_person, person_attribute, student_id_work_id)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (name, role, student_or_work_id)
+                VALUES (?, ?, ?)
             """
             db.execute_insert(query, tuple(fields.values()))
             count += 1

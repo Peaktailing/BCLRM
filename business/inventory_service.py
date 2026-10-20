@@ -17,7 +17,9 @@ from models.core.reagent_bottle import ReagentBottle
 from utils.id_generator import id_generator
 from utils.field_mapper import ReagentBottleField
 from business.bottle_state import borrowable_flag_on_inbound
+from business.expiry_service import expiry_service
 from utils.error_handler import logger, ServiceResult, ValidationError
+from utils.permission_guard import enforce_role
 from datetime import datetime
 from typing import Tuple, List, Optional, Dict, Any
 
@@ -224,6 +226,7 @@ class InventoryService:
         cas_number: str,
         remaining_quantity: float,
         specification: float,
+        unit: str = "g",
         purity: Optional[str] = None,
         reagent_type: Optional[str] = None,
         unit_price: Optional[float] = None,
@@ -252,6 +255,8 @@ class InventoryService:
         Returns:
             ServiceResult[Dict] - 成功时返回包含 bottle_number 和 barcode 的字典
         """
+        enforce_role("admin", "super_admin", action="试剂入库")
+        unit = (str(unit).strip() if unit else "") or "g"
         # 1. 校验输入数据
         validation = self.validate_inventory_inputs(
             reagent_name, cas_number, remaining_quantity, specification,
@@ -319,6 +324,7 @@ class InventoryService:
             ReagentBottleField.CAS_NUMBER: cas_number,
             ReagentBottleField.REMAINING_QUANTITY: remaining_quantity,
             ReagentBottleField.SPECIFICATION: specification,
+            ReagentBottleField.UNIT: unit,
             ReagentBottleField.INBOUND_DATE: current_time,
             ReagentBottleField.BORROWABLE_FLAG: borrowable_text,
             ReagentBottleField.BORROWABLE_CHECK: is_available,
@@ -339,6 +345,12 @@ class InventoryService:
 
         if production_date:
             inventory_data[ReagentBottleField.PRODUCTION_DATE] = production_date
+            # 入库即计算到期日，供 FEFO 排序与过期预警使用
+            _expiry_date = expiry_service.compute_expiry_date(
+                production_date, reagent_name, cas_number
+            )
+            if _expiry_date:
+                inventory_data[ReagentBottleField.EXPIRY_DATE] = _expiry_date
 
         if storage_location:
             inventory_data[ReagentBottleField.STORAGE_LOCATION] = storage_location
@@ -350,6 +362,19 @@ class InventoryService:
         try:
             record_id = self.reagent_bottle_service.create(inventory_data)
             if record_id:
+                from utils.audit import audit
+                from utils.user_context import get_user_name
+
+                audit(
+                    get_user_name(),
+                    "入库",
+                    target_type="bottle",
+                    target_id=bottle_no,
+                    detail=(
+                        f"{reagent_name} × {remaining_quantity}"
+                        + (f"；管控化学品({controlled_type})" if is_controlled else "")
+                    ),
+                )
                 result_msg = f"入库成功！试剂瓶编号：{bottle_no}，条码：{barcode}"
                 if is_controlled:
                     result_msg += f"\n注意：该试剂为管控化学品（{controlled_type}）"
@@ -438,10 +463,15 @@ class InventoryService:
                 remaining_quantity=item.get("remaining_quantity", 0.0),
                 specification=item.get("specification", 0.0),
                 purity=item.get("purity"),
+                unit=item.get("unit") or "g",
+                reagent_type=item.get("reagent_type"),
                 unit_price=item.get("unit_price"),
                 supplier=item.get("supplier"),
                 production_date=item.get("production_date"),
-                storage_location=item.get("storage_location")
+                storage_location=item.get("storage_location"),
+                manager=item.get("manager"),
+                allow_missing_cas=item.get("allow_missing_cas", False),
+                allow_unlisted_chemical=item.get("allow_unlisted_chemical", False),
             )
 
             if result.is_success():

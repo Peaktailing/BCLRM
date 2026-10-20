@@ -108,24 +108,39 @@ class PersonService(BaseService):
                 error_code="AUTH_FAILED",
             )
 
-        # 未设置密码（迁移期老账户）：仅当输入等于默认初始密码时放行
-        if not is_password_hash_set(person.password_hash or ""):
+        stored_hash = person.password_hash or ""
+
+        # 完全未设置密码（迁移期老账户）：仅默认初始密码可用，并立即落库
+        if not stored_hash:
             if password and password == DEFAULT_INITIAL_PASSWORD:
                 new_hash = hash_password(password)
                 self.update_by_field("name", user_name, {"password_hash": new_hash})
                 person.password_hash = new_hash
-                logger.info(f"用户 {user_name} 首次登录，已设置初始密码")
-                return ServiceResult.ok(data=person, message="首次登录成功")
+                person.must_change_password = True
+                logger.warning(
+                    f"用户 {user_name} 使用默认初始密码首次登录，请尽快修改密码"
+                )
+                return ServiceResult.ok(
+                    data=person, message="首次登录成功，请尽快修改初始密码"
+                )
             return ServiceResult.fail(
                 message="用户名或密码错误",
                 error_code="AUTH_FAILED",
             )
 
-        if not verify_password(password, person.password_hash):
+        if not verify_password(password, stored_hash):
             return ServiceResult.fail(
                 message="用户名或密码错误",
                 error_code="AUTH_FAILED",
             )
+
+        # 历史 ``salt:hash`` 格式：验证通过后立即升级为 PBKDF2 新格式，
+        # 避免旧格式长期留存，也避免被 is_password_hash_set 误判为未设置。
+        if not stored_hash.startswith("pbkdf2:"):
+            new_hash = hash_password(password)
+            self.update_by_field("name", user_name, {"password_hash": new_hash})
+            person.password_hash = new_hash
+            logger.info(f"用户 {user_name} 的历史密码哈希已升级")
 
         logger.info(f"用户 {user_name} 登录验证成功")
         return ServiceResult.ok(data=person, message="验证通过")

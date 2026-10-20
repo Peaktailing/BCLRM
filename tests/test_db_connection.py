@@ -42,13 +42,15 @@ def test_database_connection():
         tables_after = cursor.fetchall()
         print(f"✓ 初始化后共有 {len(tables_after)} 个表")
 
+        assert db.db_path
+        assert len(tables_after) > 0
         return True
 
     except Exception as e:
         print(f"✗ 数据库测试失败: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 
 def test_service_initialization():
@@ -74,7 +76,8 @@ def test_service_initialization():
             print(f"✗ {service_name} 初始化失败: {e}")
 
     print(f"\n服务初始化: {success_count}/{len(services)} 成功")
-    return success_count == len(services)
+    assert success_count == len(services)
+    return True
 
 
 if __name__ == "__main__":

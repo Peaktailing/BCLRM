@@ -158,7 +158,13 @@ class ExperimentPlanBusinessService:
 
         imported = 0
         for item in items:
-            qty = float(item.borrow_qty or 0)
+            # 与 usage_service 口径一致：净用量 = 领用量 − 已归还量
+            qty = max(
+                0.0,
+                float(item.borrow_qty or 0) - float(item.returned_qty or 0),
+            )
+            if qty <= 0:
+                continue
             per_person = round(qty / base_count, 4) if base_count else qty
             if experiment_default_usage_service.upsert({
                 "course_name": course_name,
@@ -192,9 +198,9 @@ class ExperimentPlanBusinessService:
     # ------------------------------------------------------------------
     # 按人数生成领用清单
     # ------------------------------------------------------------------
-    def _available_bottles(self) -> Dict[str, List]:
-        """当前可借试剂瓶索引：试剂名 -> [瓶...]"""
-        index: Dict[str, List] = defaultdict(list)
+    def _available_bottles(self) -> Dict[tuple, List]:
+        """当前可借试剂瓶索引：(试剂名, 单位) -> [瓶...]"""
+        index: Dict[tuple, List] = defaultdict(list)
         for bottle in reagent_bottle_service.get_all_parsed():
             name = getattr(bottle, "reagent_name", None)
             if not name:
@@ -203,7 +209,7 @@ class ExperimentPlanBusinessService:
                 continue
             if float(getattr(bottle, "remaining_quantity", 0) or 0) <= 0:
                 continue
-            index[name].append(bottle)
+            index[(name, getattr(bottle, "unit", None) or "g")].append(bottle)
         return index
 
     @handle_exception(context="按默认方案生成领用清单")
@@ -228,23 +234,41 @@ class ExperimentPlanBusinessService:
         missing: List[str] = []
         for usage in usages:
             name = usage.reagent_name
+            unit = getattr(usage, "unit", None) or "g"
             per_person = float(usage.qty_per_person or 0)
             total = round(per_person * count, 4)
-            pool = available.get(name) or []
+            pool = available.get((name, unit)) or []
+            if total <= 0:
+                continue
             if not pool:
                 missing.append(name)
                 continue
-            bottle = pool.pop(0)
-            cart.append({
-                "bottle_number": getattr(bottle, "bottle_number", None),
-                "reagent_name": getattr(bottle, "reagent_name", None) or name,
-                "cas_number": getattr(bottle, "cas_number", None),
-                "specification": getattr(bottle, "specification", None),
-                "remaining_quantity": getattr(bottle, "remaining_quantity", None),
-                "borrow_qty": total,
-                "qty_per_person": per_person,
-                "student_count": count,
-            })
+
+            # 单瓶余量不足时拆分到多瓶，避免生成必然失败的清单
+            remaining_need = total
+            while remaining_need > 1e-9 and pool:
+                bottle = pool.pop(0)
+                available_qty = float(
+                    getattr(bottle, "remaining_quantity", 0) or 0
+                )
+                take = min(available_qty, remaining_need)
+                if take <= 0:
+                    continue
+                cart.append({
+                    "bottle_number": getattr(bottle, "bottle_number", None),
+                    "reagent_name": getattr(bottle, "reagent_name", None) or name,
+                    "cas_number": getattr(bottle, "cas_number", None),
+                    "specification": getattr(bottle, "specification", None),
+                    "remaining_quantity": getattr(bottle, "remaining_quantity", None),
+                    "unit": getattr(bottle, "unit", None) or unit,
+                    "borrow_qty": round(take, 4),
+                    # 按占比分摊人均，页面按人数重算时不会重复放大
+                    "qty_per_person": round(per_person * take / total, 6),
+                    "student_count": count,
+                })
+                remaining_need -= take
+            if remaining_need > 1e-6:
+                missing.append(name)
 
         message = f"已按默认方案（{count} 人）生成 {len(cart)} 条领用清单"
         if missing:

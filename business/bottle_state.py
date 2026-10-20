@@ -28,6 +28,7 @@ class ExpiryStatus(str, Enum):
     NORMAL = "正常"
     EXPIRING = "即将过期"
     EXPIRED = "已过期"
+    UNKNOWN = "待确认"   # 缺少生产日期/无法解析，不能判定过期
 
 
 class ScrapStatus(str, Enum):
@@ -86,7 +87,8 @@ def recompute_borrowable(bottle) -> tuple:
     remaining = float(getattr(bottle, "remaining_quantity", 0) or 0)
     expired = getattr(bottle, "expired_flag", None) == ExpiryStatus.EXPIRED
 
-    if scrap == ScrapStatus.PENDING:
+    if scrap in (ScrapStatus.PENDING, ScrapStatus.SCRAPPED):
+        # 待报废 / 已报废都不得再进入可借池；flag 统一落为「空瓶」
         flag = BorrowableStatus.EMPTY
     elif remaining <= 0:
         flag = BorrowableStatus.DEPLETED

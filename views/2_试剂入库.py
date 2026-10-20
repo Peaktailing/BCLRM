@@ -11,7 +11,7 @@ import streamlit as st
 from business.inventory_service import inventory_service
 from business.purchase_service import purchase_service
 from components.sidebar_nav import render_sidebar
-from components.auth import require_auth
+from components.auth import require_auth, require_admin
 
 # 纯度选项（从业务需求定义）
 PURITY_OPTIONS = ["分析纯", "化学纯", "优级纯", "色谱纯", "光谱纯", "电子纯", "工业纯"]
@@ -22,6 +22,9 @@ def main():
 
     # 认证检查
     if not require_auth():
+        st.stop()
+    # 入库会新增库存并指定管理人，限管理员及以上
+    if not require_admin():
         st.stop()
 
     # 使用统一的侧边栏导航
@@ -103,7 +106,7 @@ def main():
                 )
 
                 remaining_qty = st.number_input(
-                    "剩余量(g)*",
+                    "剩余量*",
                     min_value=0.001,
                     step=0.001,
                     value=500.0,
@@ -111,11 +114,18 @@ def main():
                 )
 
                 spec = st.number_input(
-                    "规格(g)*",
+                    "规格*",
                     min_value=0.001,
                     step=0.001,
                     value=500.0,
-                    help="试剂瓶的标称规格（入库时默认满量）"
+                    help="试剂瓶的标称规格（入库时默认满量）；单位见下方"
+                )
+
+                unit = st.selectbox(
+                    "计量单位*",
+                    options=["g", "kg", "mg", "mL", "L"],
+                    index=0,
+                    help="同一试剂请保持单位一致；不同单位不会直接相加",
                 )
 
             with col2:
@@ -187,6 +197,7 @@ def main():
                         cas_number=cas_value,
                         remaining_quantity=remaining_qty,
                         specification=spec,
+                        unit=unit,
                         purity=purity,
                         reagent_type=reagent_type,
                         unit_price=unit_price if unit_price > 0 else None,

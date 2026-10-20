@@ -112,12 +112,12 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def is_password_hash_set(password_hash: str) -> bool:
-    """检查密码哈希是否已设置（非空且格式正确）
+    """检查密码哈希是否已设置（新格式或历史 ``salt:hash`` 格式）。
 
-    Args:
-        password_hash: 密码哈希字符串
-
-    Returns:
-        True 表示已设置密码
+    旧实现只认 ``pbkdf2:``，会把仍持有历史哈希的账户误判为“未设置密码”，
+    从而允许用默认初始密码登录并覆盖原哈希。这里把历史格式也视为“已设置”，
+    由 ``verify_password`` 用旧算法校验后再升级为新格式。
     """
-    return bool(password_hash and password_hash.startswith("pbkdf2:"))
+    if not password_hash:
+        return False
+    return password_hash.startswith("pbkdf2:") or ":" in password_hash

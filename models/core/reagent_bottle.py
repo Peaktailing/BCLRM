@@ -22,8 +22,9 @@ class ReagentBottle(BaseModel):
     barcode: Optional[str] = None           # 条码（用于扫码识别）
     reagent_name: Optional[str] = None      # 试剂名称
     cas_number: Optional[str] = None        # 试剂CAS编号（化学品唯一标识）
-    remaining_quantity: Optional[float] = None  # 剩余量（单位：g 或 mL）
+    remaining_quantity: Optional[float] = None  # 剩余量（单位见 unit）
     specification: Optional[float] = None   # 规格（原始包装量）
+    unit: Optional[str] = 'g'               # 计量单位（g/mL/L/kg 等）
     purity: Optional[str] = None            # 纯度（如：分析纯AR、化学纯CP）
     unit_price: Optional[float] = None      # 采购单价（元）
     supplier: Optional[str] = None          # 供应商
@@ -41,6 +42,7 @@ class ReagentBottle(BaseModel):
     storage_requirement: Optional[str] = None  # 存储要求
     borrowable_check: Optional[bool] = None    # 可借判断（由 borrowable_flag 同步）
     expired_flag: Optional[str] = None      # 过期状态（正常/即将过期/已过期）
+    expiry_date: Optional[str] = None       # 到期日期（入库时按未启封有效期计算）
     scrap_flag: Optional[str] = None        # 报废状态（待报废/已报废；空=正常在用）
     bottle_status: Optional[str] = None     # 派生显示状态（可借/已借出/耗尽/空瓶/已过期）
     id: Optional[int] = None                # 自增主键

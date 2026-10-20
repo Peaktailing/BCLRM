@@ -74,6 +74,7 @@ class BorrowOrderItemService(BaseService):
             reagent_name=record.get('reagent_name'),
             borrow_qty=record.get('borrow_qty'),
             returned_qty=record.get('returned_qty'),
+            unit=record.get('unit') or 'g',
             status=record.get('status'),
         )
 

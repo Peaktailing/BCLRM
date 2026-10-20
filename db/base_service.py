@@ -273,10 +273,20 @@ class BaseService:
             self._validate_field_name(key)
 
         set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
-        where_clause = ' AND '.join([f"{key} = ?" for key in conditions.keys()])
+        # None 条件转成 IS NULL，否则 `field = NULL` 永远不成立；
+        # 用于「仅当 bottle_number 仍为空时回填」这类原子抢占。
+        where_parts = []
+        where_params = []
+        for key, value in conditions.items():
+            if value is None:
+                where_parts.append(f"{key} IS NULL")
+            else:
+                where_parts.append(f"{key} = ?")
+                where_params.append(value)
+        where_clause = ' AND '.join(where_parts)
         query = f"UPDATE {self.table_name} SET {set_clause} WHERE {where_clause}"
 
-        params = tuple(fields.values()) + tuple(conditions.values())
+        params = tuple(fields.values()) + tuple(where_params)
 
         try:
             affected_rows = self.db.execute_update(query, params)

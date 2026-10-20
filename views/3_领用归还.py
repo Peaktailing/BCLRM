@@ -307,8 +307,14 @@ with tab_borrow:
                     "编号": reagent.bottle_number,
                     "名称": reagent.reagent_name or "-",
                     "CAS号": reagent.cas_number or "-",
-                    "剩余量": f"{reagent.remaining_quantity}g" if reagent.remaining_quantity else "-",
-                    "规格": f"{reagent.specification}g" if reagent.specification else "-",
+                    "剩余量": (
+                        f"{reagent.remaining_quantity}{getattr(reagent, 'unit', None) or 'g'}"
+                        if reagent.remaining_quantity else "-"
+                    ),
+                    "规格": (
+                        f"{reagent.specification}{getattr(reagent, 'unit', None) or 'g'}"
+                        if reagent.specification else "-"
+                    ),
                     "纯度": reagent.purity or "-",
                     "过期状态": reagent.expired_flag or "正常",
                     "状态": f"{status_color} {reagent.borrowable_flag}" if reagent.borrowable_flag else "-",
@@ -344,6 +350,7 @@ with tab_borrow:
                                 "cas_number": reagent.cas_number,
                                 "specification": reagent.specification,
                                 "remaining_quantity": reagent.remaining_quantity,
+                                "unit": getattr(reagent, "unit", None) or "g",
                                 "borrow_qty": reagent.remaining_quantity,
                             })
                     st.success(f"已添加 {len(selected_bottles)} 瓶试剂到领用清单")
@@ -399,8 +406,14 @@ with tab_borrow:
                         "编号": entry["bottle_number"],
                         "名称": entry["reagent_name"] or "-",
                         "CAS号": entry["cas_number"] or "-",
-                        "规格": f"{entry['specification']}g" if entry["specification"] else "-",
-                        "剩余量": f"{entry['remaining_quantity']}g" if entry["remaining_quantity"] else "-",
+                        "规格": (
+                            f"{entry['specification']}{entry.get('unit') or 'g'}"
+                            if entry["specification"] else "-"
+                        ),
+                        "剩余量": (
+                            f"{entry['remaining_quantity']}{entry.get('unit') or 'g'}"
+                            if entry["remaining_quantity"] else "-"
+                        ),
                         "领用量": float(entry.get("borrow_qty") or entry.get("remaining_quantity") or 0),
                         "人均用量": (
                             float(entry["qty_per_person"])
@@ -452,11 +465,9 @@ with tab_borrow:
                 仅管控工单需要审批人：普通工单后端不落库审批人，强制选择纯属摩擦，
                 且候选为空时会硬阻断提交（QA 审查发现）。"""
                 for entry in st.session_state.borrow_cart:
-                    cas = entry.get("cas_number")
-                    if cas and controlled_list_service.get_by_cas_number(cas):
-                        return True
-                    name = entry.get("reagent_name")
-                    if name and controlled_list_service.get_by_name(name):
+                    if controlled_list_service.match(
+                        entry.get("reagent_name"), entry.get("cas_number")
+                    ):
                         return True
                 return False
 

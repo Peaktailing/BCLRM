@@ -4,6 +4,8 @@
 
 提供管控化学品名录的CRUD操作和查询方法。
 """
+import re
+
 from db.base_service import BaseService
 from models.base.controlled_list import ControlledList
 from utils.error_handler import logger
@@ -62,11 +64,43 @@ class ControlledListService(BaseService):
             return self._parse_record(record)
         return None
 
+    @staticmethod
+    def _normalize(value) -> str:
+        """名称归一化：去空白、统一小写，降低录入差异导致的漏判。"""
+        return "".join(str(value or "").split()).lower()
+
+    def match(
+        self, reagent_name: Optional[str] = None, cas_number: Optional[str] = None
+    ) -> Optional[ControlledList]:
+        """按 CAS 或名称/别名匹配管控名录（所有入口统一使用）。
+
+        优先级：CAS 精确匹配 → chemical_name 精确匹配 → alias 拆分后匹配。
+        名称匹配会去除空白并忽略大小写，兼容“丙酮 / 二甲基酮”这类别名。
+        """
+        if cas_number and str(cas_number).strip():
+            hit = self.get_by_cas_number(str(cas_number).strip())
+            if hit:
+                return hit
+
+        target = self._normalize(reagent_name)
+        if not target:
+            return None
+
+        for item in self.get_all_controlled():
+            names = [item.chemical_name]
+            if item.alias:
+                names.extend(
+                    part for part in re.split(r"[,，、;；/]", item.alias) if part
+                )
+            if any(self._normalize(name) == target for name in names):
+                return item
+        return None
+
     def is_controlled(self, cas_number: str) -> bool:
         """检查CAS号是否在管控名录中
 
         Args:
-            cas_number: CAS号
+            cas_number: CAS编号
 
         Returns:
             是否为管控化学品

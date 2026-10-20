@@ -16,6 +16,7 @@ class ReturnRecord(BaseModel):
     return_user: Optional[str] = None        # 归还人
     return_time: Optional[str] = None        # 归还时间（YYYY/MM/DD HH:MM）
     remaining_quantity: Optional[float] = None  # 归还时余量
+    unit: Optional[str] = 'g'                   # 计量单位
     usage_quantity: Optional[float] = None      # 本次实际用量（= 领用量 - 还入量）
     linked_borrow_record_number: Optional[str] = None  # 关联领用记录号
     last_update_time: Optional[str] = None   # 最后更新时间

@@ -35,6 +35,7 @@ from utils.field_mapper import (
 from utils.id_generator import id_generator
 from utils.error_handler import logger, ServiceResult, handle_exception
 from utils.audit import audit
+from db.database import db
 
 
 class DemandService:
@@ -111,30 +112,35 @@ class DemandService:
         borrow_time = datetime.now().strftime("%Y/%m/%d %H:%M")
         demand_number = self.id_gen.generate_demand_number()
 
-        demand_id = self.demand_service.create({
-            ReagentDemandField.DEMAND_NUMBER: demand_number,
-            ReagentDemandField.REQUESTER: requester,
-            ReagentDemandField.ORDER_TYPE: order_type,
-            ReagentDemandField.COURSE_ID: course_id,
-            ReagentDemandField.ITEM_ID: item_id,
-            ReagentDemandField.PROJECT_ID: project_id,
-            ReagentDemandField.COURSE_NAME: course_name,
-            ReagentDemandField.ITEM_NAME: item_name,
-            ReagentDemandField.BORROW_TIME: borrow_time,
-            ReagentDemandField.STATUS: DEMAND_STATUS_PENDING,
-            ReagentDemandField.REMARK: remark,
-            ReagentDemandField.CREATED_BY: created_by,
-        })
-        if not demand_id:
-            return ServiceResult.fail(message="创建需求单失败", error_code="DEMAND_CREATE_FAILED")
-
-        for line in valid_lines:
-            self.demand_item_service.create({
-                ReagentDemandItemField.DEMAND_ID: demand_id,
-                ReagentDemandItemField.REAGENT_NAME: line["reagent_name"],
-                ReagentDemandItemField.CAS_NUMBER: line["cas_number"],
-                ReagentDemandItemField.REQUESTED_QTY: line["requested_qty"],
+        # 需求单头 + 明细同事务，避免出现没有明细的空需求单
+        with db.transaction():
+            demand_id = self.demand_service.create({
+                ReagentDemandField.DEMAND_NUMBER: demand_number,
+                ReagentDemandField.REQUESTER: requester,
+                ReagentDemandField.ORDER_TYPE: order_type,
+                ReagentDemandField.COURSE_ID: course_id,
+                ReagentDemandField.ITEM_ID: item_id,
+                ReagentDemandField.PROJECT_ID: project_id,
+                ReagentDemandField.COURSE_NAME: course_name,
+                ReagentDemandField.ITEM_NAME: item_name,
+                ReagentDemandField.BORROW_TIME: borrow_time,
+                ReagentDemandField.STATUS: DEMAND_STATUS_PENDING,
+                ReagentDemandField.REMARK: remark,
+                ReagentDemandField.CREATED_BY: created_by,
             })
+            if not demand_id:
+                raise RuntimeError("创建需求单失败")
+
+            for line in valid_lines:
+                if not self.demand_item_service.create({
+                    ReagentDemandItemField.DEMAND_ID: demand_id,
+                    ReagentDemandItemField.REAGENT_NAME: line["reagent_name"],
+                    ReagentDemandItemField.CAS_NUMBER: line["cas_number"],
+                    ReagentDemandItemField.REQUESTED_QTY: line["requested_qty"],
+                }):
+                    raise RuntimeError(
+                        f"创建需求明细失败：{line['reagent_name']}"
+                    )
 
         alloc_result = self.allocation.generate_allocation_orders(
             demand_id, requester, valid_lines, created_by

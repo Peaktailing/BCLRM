@@ -10,6 +10,7 @@
       * sealed_shelf_life（启封有效时长，天）
 """
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Optional, Tuple, Dict, Any
 
 from models.core.reagent_bottle import ReagentBottle
@@ -45,6 +46,33 @@ class ExpiryService:
     # ------------------------------------------------------------------
     # 公开方法
     # ------------------------------------------------------------------
+
+    def compute_expiry_date(
+        self,
+        production_date: Optional[str],
+        reagent_name: Optional[str] = None,
+        cas_number: Optional[str] = None,
+    ) -> Optional[str]:
+        """按「未启封有效期」计算到期日期（入库时写入 reagent_bottle.expiry_date）。
+
+        无生产日期时返回 None；无法解析日期时返回 None，由调用方决定是否告警。
+        """
+        if not production_date:
+            return None
+        _view = SimpleNamespace(
+            reagent_name=reagent_name,
+            cas_number=cas_number,
+            unseal_date=None,
+        )
+        shelf_life = self._get_shelf_life_for_bottle(_view)
+        date_clean = str(production_date).strip()[:10].replace("-", "/").replace(".", "/")
+        try:
+            start_dt = datetime.strptime(date_clean, "%Y/%m/%d")
+        except (ValueError, TypeError, IndexError):
+            logger.warning("无法解析生产日期，未计算到期日", production_date=production_date)
+            return None
+        expiry_dt = start_dt + timedelta(days=shelf_life.unsealed)
+        return expiry_dt.strftime("%Y/%m/%d")
 
     def check_bottle(self, bottle: ReagentBottle, chemical_cache: Optional[Dict[str, Any]] = None) -> str:
         """判断单个试剂瓶的过期状态（不写库）
@@ -98,8 +126,9 @@ class ExpiryService:
                     fields[ReagentBottleField.BORROWABLE_CHECK] = 0
                 elif getattr(bottle, "borrowable_flag", None) != BorrowableStatus.BORROWED:
                     _flag, check = recompute_borrowable(bottle)
-                    if check:
-                        fields[ReagentBottleField.BORROWABLE_CHECK] = 1
+                    # 过期恢复正常时也要同步 check（可能从 0 恢复为 1）；
+                    # 「已借出」瓶交由借还流程管理，不在此处改写。
+                    fields[ReagentBottleField.BORROWABLE_CHECK] = 1 if check else 0
                 self.bottle_service.update_by_field(
                     field_name=ReagentBottleField.BOTTLE_NUMBER,
                     value=bottle.bottle_number,
@@ -149,7 +178,15 @@ class ExpiryService:
             # （如 borrowable_check=1 但实际已过期/已报废的行）。
             # 「已借出」瓶交由借还流程管理，此处不改写其可借性。
             if getattr(bottle, "borrowable_flag", None) != BorrowableStatus.BORROWED:
-                _flag, check = recompute_borrowable(bottle)
+                # 用本次算出的 new_flag 参与重算，否则「正常→已过期」转换时
+                # 仍会按旧的「正常」判定，把 check 留在 1。
+                _view = SimpleNamespace(
+                    remaining_quantity=getattr(bottle, "remaining_quantity", 0),
+                    expired_flag=new_flag,
+                    scrap_flag=getattr(bottle, "scrap_flag", None),
+                    borrowable_flag=getattr(bottle, "borrowable_flag", None),
+                )
+                _flag, check = recompute_borrowable(_view)
                 current_check = bool(getattr(bottle, "borrowable_check", False))
                 if bool(check) != current_check:
                     fields[ReagentBottleField.BORROWABLE_CHECK] = 1 if check else 0
@@ -204,14 +241,16 @@ class ExpiryService:
         """
         bottles = self.bottle_service.get_all_parsed()
         chemical_cache = self._build_chemical_cache()
-        normal = expiring = expired = 0
+        normal = expiring = expired = unknown = 0
 
         for bottle in bottles:
             flag = self.check_bottle(bottle, chemical_cache)
-            if flag == "已过期":
+            if flag == ExpiryStatus.EXPIRED.value:
                 expired += 1
-            elif flag == "即将过期":
+            elif flag == ExpiryStatus.EXPIRING.value:
                 expiring += 1
+            elif flag == ExpiryStatus.UNKNOWN.value:
+                unknown += 1
             else:
                 normal += 1
 
@@ -219,6 +258,7 @@ class ExpiryService:
             "normal": normal,
             "expiring": expiring,
             "expired": expired,
+            "unknown": unknown,
             "total": len(bottles),
         })
 
@@ -296,25 +336,25 @@ class ExpiryService:
         Returns:
             "正常" / "即将过期" / "已过期"
         """
-        # 没有起始日期 → 无法判断，返回正常
+        # 没有起始日期 → 无法判断，标记「待确认」（不阻断借出，但提示补录）
         if not date_str:
-            return "正常"
+            return ExpiryStatus.UNKNOWN.value
 
         # shelf_life_days=0 表示立即过期
         if shelf_life_days == 0:
             return "已过期"
 
-        # shelf_life_days 为 None 或负数时返回正常
+        # shelf_life_days 为 None 或负数时无法判断，标记「待确认」
         if shelf_life_days is None or shelf_life_days < 0:
-            return "正常"
+            return ExpiryStatus.UNKNOWN.value
 
         try:
             # 支持多种日期格式：YYYY/MM/DD, YYYY-MM-DD, YYYY.MM.DD
             date_clean = date_str.strip()[:10].replace('-', '/').replace('.', '/')
             start_dt = datetime.strptime(date_clean, "%Y/%m/%d")
-        except (ValueError, IndexError):
+        except (ValueError, TypeError, IndexError):
             logger.warning("无法解析日期", date_str=date_str)
-            return "正常"
+            return ExpiryStatus.UNKNOWN.value
 
         # 计算到期日期
         expiry_dt = start_dt + timedelta(days=shelf_life_days)

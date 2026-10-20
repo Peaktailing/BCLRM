@@ -17,6 +17,8 @@ from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, Optional, TypeVar, Generic
 
+from config.settings import ERROR_LOG_FILE, LOG_DIR
+
 # ============================================================================
 # 自定义异常类
 # ============================================================================
@@ -161,8 +163,8 @@ class ErrorLogger:
     _instance = None
     _initialized = False
     
-    DEFAULT_LOG_DIR = "logs"
-    DEFAULT_LOG_FILE = "error.log"
+    DEFAULT_LOG_DIR = LOG_DIR
+    DEFAULT_LOG_FILE = ERROR_LOG_FILE
     DEFAULT_LOG_LEVEL = logging.INFO
     
     def __new__(cls, *args, **kwargs):

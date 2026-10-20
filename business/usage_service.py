@@ -85,7 +85,7 @@ class UsageService:
                 key = (
                     order.course_id, order.course_name,
                     order.item_id, order.item_name,
-                    item.reagent_name,
+                    item.reagent_name, getattr(item, "unit", None) or "g",
                 )
                 row = aggregated.setdefault(key, {
                     "usage": 0.0,
@@ -97,13 +97,17 @@ class UsageService:
                 row["applicants"].add(order.applicant)
 
         results: List[Dict] = []
-        for (course_id, course_name_value, item_id, item_name, reagent_name), row in aggregated.items():
+        for (
+            course_id, course_name_value, item_id, item_name,
+            reagent_name, unit,
+        ), row in aggregated.items():
             results.append({
                 "course_id": course_id,
                 "course_name": course_name_value,
                 "item_id": item_id,
                 "item_name": item_name,
                 "reagent_name": reagent_name,
+                "unit": unit,
                 "usage": round(row["usage"], 2),
                 "order_count": len(row["order_numbers"]),
                 "applicants": sorted(row["applicants"]),
@@ -118,8 +122,8 @@ class UsageService:
         """按领用人聚合用量（一次工单可能多人，按领用人去重计数）"""
         orders = borrow_order_service.get_all_parsed()
         items_cache: Dict[int, list] = {}
-        by_user: Dict[str, float] = defaultdict(float)
-        orders_by_user: Dict[str, set] = defaultdict(set)
+        by_user: Dict[tuple, float] = defaultdict(float)
+        orders_by_user: Dict[tuple, set] = defaultdict(set)
 
         for order in orders:
             if not is_effective_order(order):
@@ -130,24 +134,28 @@ class UsageService:
             if order_items is None:
                 order_items = borrow_order_item_service.get_by_order(order.id)
                 items_cache[order.id] = order_items
-            usage = sum(
-                max(0.0, float(i.borrow_qty or 0) - float(i.returned_qty or 0))
-                for i in order_items
-            )
-            if usage <= 0:
-                continue
-            by_user[order.applicant] += usage
-            orders_by_user[order.applicant].add(order.order_number)
+            for item in order_items:
+                usage = max(
+                    0.0,
+                    float(item.borrow_qty or 0) - float(item.returned_qty or 0),
+                )
+                if usage <= 0:
+                    continue
+                unit = getattr(item, "unit", None) or "g"
+                key = (order.applicant, unit)
+                by_user[key] += usage
+                orders_by_user[key].add(order.order_number)
 
         total = sum(by_user.values())
         rows = [
             {
                 "领用人": user,
+                "单位": unit,
                 "用量": round(usage, 2),
-                "工单数": len(orders_by_user[user]),
+                "工单数": len(orders_by_user[(user, unit)]),
                 "占比": f"{(usage / total * 100):.1f}%" if total else "0.0%",
             }
-            for user, usage in by_user.items()
+            for (user, unit), usage in by_user.items()
         ]
         rows.sort(key=lambda item: item["用量"], reverse=True)
         return rows

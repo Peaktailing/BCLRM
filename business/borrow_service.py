@@ -110,6 +110,17 @@ class BorrowService:
 
         # 2. 校验试剂瓶状态（borrowable_flag 为事实来源，见 business/bottle_state）
         borrowable_flag = getattr(bottle, ReagentBottleField.BORROWABLE_FLAG, None)
+        scrap_flag = getattr(bottle, ReagentBottleField.SCRAP_FLAG, None)
+        if scrap_flag:
+            logger.warning(
+                "试剂瓶已进入报废流程，禁止借出",
+                bottle_number=bottle_number,
+                scrap_flag=scrap_flag,
+            )
+            return ServiceResult.fail(
+                message=f"该试剂当前状态为「{scrap_flag}」，不可借出",
+                error_code="BOTTLE_SCRAPPED",
+            )
         if not is_borrowable(borrowable_flag):
             logger.warning(
                 "试剂瓶不可借出",
@@ -120,19 +131,36 @@ class BorrowService:
                 message=f"该试剂当前状态为「{borrowable_flag}」，不可借出",
                 error_code="BOTTLE_NOT_BORROWABLE"
             )
+        if getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None) is False:
+            logger.warning(
+                "试剂瓶可借性校验未通过",
+                bottle_number=bottle_number,
+                borrowable_check=False,
+            )
+            return ServiceResult.fail(
+                message="该试剂当前不可借出（可借性校验未通过）",
+                error_code="BOTTLE_NOT_BORROWABLE",
+            )
 
-        # 2.1 校验试剂是否已过期
+        # 2.1 校验试剂是否已过期（按日期实时计算，不能只信可能陈旧的 expired_flag）
         expired_flag = getattr(bottle, ReagentBottleField.EXPIRED_FLAG, None)
-        if is_expired(expired_flag):
+        live_expiry = expiry_service.check_bottle(bottle)
+        if is_expired(live_expiry):
             logger.warning(
                 "试剂已过期，禁止借出",
                 bottle_number=bottle_number,
-                expired_flag=expired_flag
+                expired_flag=expired_flag,
+                live_expiry=live_expiry,
             )
+            if live_expiry != expired_flag:
+                expiry_service.check_and_update(bottle)
             return ServiceResult.fail(
                 message="该试剂已过期，禁止借出",
                 error_code="REAGENT_EXPIRED"
             )
+        if live_expiry != expired_flag:
+            # 顺带把「即将过期/正常」的最新判定写回，避免展示层继续使用旧值
+            expiry_service.check_and_update(bottle)
 
         # 3. 校验领用数量
         remaining_qty = getattr(bottle, ReagentBottleField.REMAINING_QUANTITY, None)
@@ -158,25 +186,12 @@ class BorrowService:
                 error_code="EXCEED_REMAINING_QTY"
             )
 
-        # 4. 检查是否为管控试剂
+        # 4. 检查是否为管控试剂（CAS → 名称 → 别名，统一使用 match）
         is_controlled = False
         controlled_type = None
         cas_number = getattr(bottle, ReagentBottleField.CAS_NUMBER, None)
-        controlled_item = None
-        if cas_number:
-            controlled_item = self.controlled_service.get_by_cas_number(cas_number)
-        if not controlled_item:
-            # 无 CAS 的历史试剂：按名称/别名兜底匹配管控名录，避免危化品绕过审批
-            _name = getattr(bottle, ReagentBottleField.REAGENT_NAME, None)
-            if _name:
-                controlled_item = self.controlled_service.get_by_name(_name)
-                if controlled_item:
-                    logger.info(
-                        "按名称匹配到管控试剂（该瓶未登记 CAS）",
-                        bottle_number=bottle_number,
-                        reagent_name=_name,
-                        controlled_type=getattr(controlled_item, 'dangerous_type', None),
-                    )
+        reagent_name = getattr(bottle, ReagentBottleField.REAGENT_NAME, None)
+        controlled_item = self.controlled_service.match(reagent_name, cas_number)
         if controlled_item:
             is_controlled = True
             controlled_type = getattr(controlled_item, 'dangerous_type', None)
@@ -185,6 +200,15 @@ class BorrowService:
                 bottle_number=bottle_number,
                 cas_number=cas_number,
                 controlled_type=controlled_type
+            )
+        elif getattr(bottle, "is_controlled", None) == 1:
+            # 库存已标记管控但名录未命中（名录维护滞后）时仍按管控试剂提示
+            is_controlled = True
+            logger.warning(
+                "库存标记为管控试剂但管控名录未命中",
+                bottle_number=bottle_number,
+                cas_number=cas_number,
+                reagent_name=reagent_name,
             )
 
         # 5. 创建领用记录前再次检查状态（防止并发问题）
@@ -211,7 +235,8 @@ class BorrowService:
             BorrowRecordField.BOTTLE_NUMBER: getattr(bottle, ReagentBottleField.BOTTLE_NUMBER),
             BorrowRecordField.USER: user,
             BorrowRecordField.BORROW_TIME: current_time,
-            BorrowRecordField.BORROW_QUANTITY: borrow_qty
+            BorrowRecordField.BORROW_QUANTITY: borrow_qty,
+            BorrowRecordField.UNIT: getattr(bottle, ReagentBottleField.UNIT, None) or "g",
         }
 
         # 关联实验课程与实验项目（可选）
@@ -279,10 +304,20 @@ class BorrowService:
                     bottle_number=bottle_number,
                     unseal_date=current_time
                 )
-            updated = self.bottle_service.update(bottle.id, updates)
+            # 条件更新：仅当瓶仍处于校验时的状态/余量才写入。
+            # 这样多进程（或多个 Streamlit 实例）同时借同一瓶时，只有一个能成功，
+            # 失败方会回滚领用记录，而不是用陈旧余量覆盖胜方结果。
+            updated = self.bottle_service.update_where(
+                {
+                    ReagentBottleField.ID: bottle.id,
+                    ReagentBottleField.BORROWABLE_FLAG: borrowable_flag,
+                    ReagentBottleField.REMAINING_QUANTITY: remaining_qty,
+                },
+                updates,
+            )
             if not updated:
                 # 更新失败主动抛异常，触发事务回滚（领用记录一并撤销）
-                raise RuntimeError("更新试剂瓶库存失败，已回滚领用记录")
+                raise RuntimeError("试剂瓶状态已被其他操作修改，领用失败，已回滚领用记录")
 
         logger.info(
             "试剂瓶库存更新成功",

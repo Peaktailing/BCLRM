@@ -21,6 +21,7 @@ from services.core.borrow_order_service import (
     borrow_order_service,
 )
 from services.core.reagent_bottle_service import reagent_bottle_service
+from services.base.controlled_list_service import controlled_list_service
 
 _TABLES = (
     "purchase_plan_item", "purchase_plan",
@@ -74,7 +75,7 @@ class TestPurchaseService(unittest.TestCase):
     def _make_order(self, order_number, reagent_name, borrow_qty, returned_qty,
                     course_id, course_name, item_id, item_name,
                     borrow_time="2025/10/15 10:00", bottle_number="B0001",
-                    applicant="张三"):
+                    applicant="张三", unit="g"):
         """造一张课程领用工单（用量 = 领用量 - 归还量）"""
         order_id = borrow_order_service.create({
             "order_number": order_number,
@@ -93,6 +94,7 @@ class TestPurchaseService(unittest.TestCase):
             "reagent_name": reagent_name,
             "borrow_qty": borrow_qty,
             "returned_qty": returned_qty,
+            "unit": unit,
             "status": "已归还" if returned_qty >= borrow_qty else "待归还",
         })
         return order_id
@@ -184,6 +186,60 @@ class TestPurchaseService(unittest.TestCase):
         self.assertAlmostEqual(row["current_stock"], 100.0)
         self.assertAlmostEqual(row["final_purchase"], 110.0)    # 210 - 100（只扣一次）
         self.assertEqual(len(row["course_detail"]), 2)
+
+    def test_mixed_units_are_not_summed(self):
+        """同名试剂 g 与 mL 必须分行汇总，不能直接相加。"""
+        course_id = self._make_course("单位课程", students=20)
+        item_id = self._make_item("单位课程", "实验一")
+        self._make_order(
+            "BO910", "试剂甲", 10.0, 0.0,
+            course_id, "单位课程", item_id, "实验一", unit="g",
+        )
+        self._make_order(
+            "BO911", "试剂甲", 5.0, 0.0,
+            course_id, "单位课程", item_id, "实验一", unit="mL",
+        )
+
+        preview = purchase_service.preview_course_plan(
+            "单位课程", "2025-2026", 30
+        ).data
+        self.assertEqual({row["unit"] for row in preview["items"]}, {"g", "mL"})
+
+        plan = purchase_service.generate_course_plan(
+            "单位课程", "2025-2026", "2026-2027", 30
+        ).data
+        purchase_service.submit_plan(plan["plan_id"], submitted_by="测试")
+        rows = purchase_service.summarize("2026-2027").data
+        self.assertEqual({row["unit"] for row in rows}, {"g", "mL"})
+
+    def test_controlled_plan_cannot_submit_without_approval(self):
+        """含管控化学品的采购单未审批时不得提交，防止绕过审批流。"""
+        controlled_list_service.create({
+            "chemical_name": "管控试剂",
+            "cas_number": "CN-111",
+            "dangerous_type": "易制毒",
+        })
+        course_id = self._make_course("管控课程", students=20)
+        item_id = self._make_item("管控课程", "实验一")
+        reagent_bottle_service.create({
+            "bottle_number": "B9001",
+            "reagent_name": "管控试剂",
+            "cas_number": "CN-111",
+            "remaining_quantity": 100.0,
+            "borrowable_flag": "可借",
+            "expired_flag": "正常",
+        })
+        self._make_order(
+            "BO900", "管控试剂", 10.0, 0.0,
+            course_id, "管控课程", item_id, "实验一",
+        )
+        plan = purchase_service.generate_course_plan(
+            "管控课程", "2025-2026", "2026-2027", 30
+        ).data
+
+        result = purchase_service.submit_plan(plan["plan_id"], submitted_by="测试")
+        self.assertTrue(result.is_failure())
+        self.assertEqual(result.error_code, "APPROVAL_REQUIRED")
 
     def test_update_plan_items_marks_manual(self):
         """管理员修改明细后标记 is_manual 并同步表头总量。"""

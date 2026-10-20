@@ -110,6 +110,9 @@ def render_login_form():
         st.session_state["user_name"] = user_name
         st.session_state["is_admin"] = bool(permission_service.is_admin(user_name).data)
         st.session_state["user_role"] = permission_service.get_user_role(user_name).data or "user"
+        st.session_state["must_change_password"] = bool(
+            getattr(auth_result.data, "must_change_password", False)
+        )
         st.session_state["last_activity"] = time.time()
         # 写入服务端权限守卫上下文（utils/user_context.py）
         set_user(user_name, st.session_state["user_role"])
@@ -158,6 +161,11 @@ def require_auth():
         st.session_state.get("user_role", "user"),
     )
 
+    # 首次登录（使用默认初始密码）必须先改密，改密前不加载任何业务页面
+    if st.session_state.get("must_change_password"):
+        render_force_password_change(st.session_state.get("user_name", ""))
+        return False
+
     # 显示当前用户信息和登出按钮
     with st.sidebar:
         st.divider()
@@ -202,6 +210,33 @@ def require_auth():
             st.rerun()
 
     return True
+
+
+def render_force_password_change(user_name: str) -> None:
+    """强制修改初始密码表单（首次登录使用默认密码时）。"""
+    st.warning("🔐 你正在使用初始密码登录，必须先修改密码后才能继续使用系统。")
+    with st.form("force_change_password"):
+        new_pw = st.text_input("新密码", type="password", key="force_new_pw")
+        confirm_pw = st.text_input("确认新密码", type="password", key="force_confirm_pw")
+        submitted = st.form_submit_button("保存新密码", type="primary", use_container_width=True)
+    if not submitted:
+        return
+    if len(new_pw or "") < MIN_PASSWORD_LENGTH:
+        st.error(f"新密码至少 {MIN_PASSWORD_LENGTH} 位")
+        return
+    if new_pw != confirm_pw:
+        st.error("两次输入的新密码不一致")
+        return
+    result = person_service.set_password(user_name, new_pw)
+    if result.is_success():
+        st.session_state["must_change_password"] = False
+        from utils.audit import audit
+
+        audit(user_name, "首次登录修改密码", target_type="user", target_id=user_name)
+        st.success("密码已更新")
+        st.rerun()
+    else:
+        st.error(result.message or "密码更新失败")
 
 
 def require_admin():

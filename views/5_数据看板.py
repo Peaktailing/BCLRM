@@ -51,7 +51,11 @@ def main():
     with col4:
         st.metric("已耗尽", inventory_stats.get("exhausted", 0))
     with col5:
-        st.metric("总剩余量", f"{inventory_stats.get('total_quantity', 0)}g")
+        _by_unit = inventory_stats.get("total_quantity_by_unit") or {}
+        _qty_text = " / ".join(
+            f"{value:g}{unit}" for unit, value in sorted(_by_unit.items())
+        ) or "0g"
+        st.metric("总剩余量", _qty_text)
     
     st.divider()
 
@@ -59,13 +63,15 @@ def main():
     st.subheader("过期状态概览")
     _expiry_result = expiry_service.get_expiry_stats()
     expiry_stats = _expiry_result.data if _expiry_result.is_success() else {}
-    ec1, ec2, ec3 = st.columns(3)
+    ec1, ec2, ec3, ec4 = st.columns(4)
     with ec1:
         st.metric("✅ 正常", expiry_stats.get("normal", 0))
     with ec2:
         st.metric("⚠️ 即将过期", expiry_stats.get("expiring", 0))
     with ec3:
         st.metric("❌ 已过期", expiry_stats.get("expired", 0))
+    with ec4:
+        st.metric("❓ 待确认", expiry_stats.get("unknown", 0))
     
     st.divider()
     

@@ -62,4 +62,5 @@ class BorrowOrderItem:
     reagent_name: Optional[str] = None
     borrow_qty: Optional[float] = None      # 领用量
     returned_qty: Optional[float] = None    # 已归还量
+    unit: Optional[str] = 'g'               # 计量单位
     status: Optional[str] = None            # 待归还 / 已归还

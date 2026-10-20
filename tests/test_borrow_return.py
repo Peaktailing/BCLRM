@@ -101,7 +101,7 @@ class TestBorrowReturnFlow(unittest.TestCase):
         """事务原子性：库存更新失败时，领用记录必须随事务整体回滚（无孤儿记录）。"""
         bn = self._make_bottle()
         with mock.patch.object(
-            reagent_bottle_service, "update", side_effect=RuntimeError("boom")
+            reagent_bottle_service, "update_where", side_effect=RuntimeError("boom")
         ):
             result = borrow_service.reagent_borrow(bn, "u", 5.0)
 
@@ -163,6 +163,31 @@ class TestBorrowReturnFlow(unittest.TestCase):
         self.assertTrue(result.is_success(), result.message)
         b = reagent_bottle_service.get_by_bottle_number(bn)
         self.assertAlmostEqual(float(b.remaining_quantity), 100.0)
+
+    def test_return_rejects_never_borrowed_bottle(self):
+        """没有领用记录的瓶子不能直接归还，避免凭空增加库存。"""
+        bn = self._make_bottle()
+        result = return_service.reagent_return(bn, "u", 50.0)
+        self.assertTrue(result.is_failure())
+        self.assertEqual(result.error_code, "NO_OPEN_BORROW")
+        b = reagent_bottle_service.get_by_bottle_number(bn)
+        self.assertAlmostEqual(float(b.remaining_quantity), 100.0)
+
+    def test_repeated_partial_return_cannot_inflate_stock(self):
+        """多次部分归还时，上限应基于首次借出前总量，不能被越算越大。"""
+        bn = self._make_bottle()                       # 瓶内 100
+        borrow_service.reagent_borrow(bn, "u", 10.0)  # -> 90
+
+        first = return_service.reagent_return(bn, "u", 95.0)
+        self.assertTrue(first.is_success(), first.message)
+
+        # 第二次最多只能回到借出前的 100，不能按“当前 95 + 借出 10”算成 105
+        second = return_service.reagent_return(bn, "u", 105.0)
+        self.assertTrue(second.is_failure())
+        self.assertEqual(second.error_code, "RETURN_QTY_EXCEEDS_BORROW")
+        self.assertAlmostEqual(
+            float(reagent_bottle_service.get_by_bottle_number(bn).remaining_quantity), 95.0
+        )
 
     def test_borrow_records_quantity(self):
         """借出时应记录领用量，供归还校验使用。"""

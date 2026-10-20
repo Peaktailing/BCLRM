@@ -5,6 +5,8 @@
 使用 DashboardService 类封装所有统计相关业务方法，
 使用字段常量替代硬编码字段名，使用 logger 和 ServiceResult 统一错误处理。
 """
+from collections import defaultdict
+
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.borrow_record_service import borrow_record_service
 from services.core.return_record_service import return_record_service
@@ -75,6 +77,7 @@ class DashboardService:
             expired = 0
             scrapped = 0
             total_quantity = 0.0
+            total_quantity_by_unit = defaultdict(float)
 
             for bottle in bottles:
                 bc = getattr(bottle, ReagentBottleField.BORROWABLE_CHECK, None)
@@ -94,8 +97,10 @@ class DashboardService:
                 else:
                     borrowed += 1
 
-                # 报废瓶余量不计入可用总量
+                # 报废瓶余量不计入可用总量；按单位分别累计，避免 g/mL 相加
                 if rq and sf not in ("待报废", "已报废"):
+                    unit = getattr(bottle, "unit", None) or "g"
+                    total_quantity_by_unit[unit] += rq
                     total_quantity += rq
 
             stats = {
@@ -106,6 +111,10 @@ class DashboardService:
                 "expired": expired,
                 "scrapped": scrapped,
                 "total_quantity": round(total_quantity, 2),
+                "total_quantity_by_unit": {
+                    unit: round(value, 2)
+                    for unit, value in total_quantity_by_unit.items()
+                },
             }
 
             logger.info(

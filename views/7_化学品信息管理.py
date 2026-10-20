@@ -6,7 +6,7 @@
 import streamlit as st
 from business.chemical_service import chemical_manage_service
 from components.sidebar_nav import render_sidebar
-from components.auth import require_auth
+from components.auth import require_auth, require_admin
 from utils.attachment_store import attachment_store
 from utils.formula_utils import format_formula
 from utils.error_handler import logger
@@ -130,6 +130,9 @@ def main():
 
     # 认证检查
     if not require_auth():
+        st.stop()
+    # 化学品主数据与 MSDS 维护限管理员及以上
+    if not require_admin():
         st.stop()
 
     # 使用统一的侧边栏导航
@@ -407,15 +410,16 @@ def main():
                         st.error("请至少选择一个试剂类型")
                     else:
                         reagent_type_str = ", ".join(selected_types_edit)
+                        _old_msds = _clean_msds(getattr(selected_chemical, 'msds', None))
+                        _new_msds_stored = None
                         if edit_msds:
-                            # 上传新附件：真实存储，删除旧文件
-                            edit_msds_value = _store_msds(
+                            # 先保存新附件，确认数据库更新成功后再删除旧文件，
+                            # 避免更新失败时旧 MSDS 已被删除、记录指向不存在的文件。
+                            _new_msds_stored = _store_msds(
                                 edit_msds,
                                 ref_id=getattr(selected_chemical, 'name', ''),
                             )
-                            _old_msds = _clean_msds(getattr(selected_chemical, 'msds', None))
-                            if _old_msds and _old_msds != edit_msds_value:
-                                attachment_store.delete(_old_msds)
+                            edit_msds_value = _new_msds_stored
                         else:
                             edit_msds_value = _clean_msds(getattr(selected_chemical, 'msds', None))
                         _result = chemical_manage_service.update_chemical(
@@ -432,9 +436,19 @@ def main():
                         )
 
                         if _result.is_success():
+                            # 数据库已切换到新附件，再清理旧文件
+                            if (
+                                _new_msds_stored
+                                and _old_msds
+                                and _old_msds != _new_msds_stored
+                            ):
+                                attachment_store.delete(_old_msds)
                             st.success(_result.message)
                             st.rerun()
                         else:
+                            # 更新失败：回收刚上传的新文件，避免孤儿附件
+                            if _new_msds_stored:
+                                attachment_store.delete(_new_msds_stored)
                             st.error(_result.message)
     else:
         st.info("暂无化学品数据，无法进行编辑")
