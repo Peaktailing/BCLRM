@@ -64,3 +64,4 @@ scripts/             # 初始化、导入等离线脚本
 - [BUG 修复报告](docs/BUG修复报告.md)
 - [业务流转逻辑](docs/业务流转逻辑.md)
 - [开发基础文档](docs/开发基础文档.md)
+- [三方协作手册](docs/三方协作手册.md)（Trae / Qoder / CodeBuddy 并行维护约定）
