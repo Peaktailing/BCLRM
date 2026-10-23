@@ -304,6 +304,7 @@ class BorrowOrderField:
     STATUS = 'status'              # 借用中 / 部分归还 / 已归还
     REMARK = 'remark'
     CREATED_BY = 'created_by'
+    REQUIREMENT_NUMBER = 'requirement_number'  # 来源需求单号（转单时回填）
 
 
 class BorrowOrderItemField:
@@ -562,6 +563,14 @@ class RequirementSheetField:
     SOURCE_CODE = 'source_code'  # 来源编码
     # ---- 告警摘要（文本类型，JSON 数组）----
     WARNINGS = 'warnings'  # 告警摘要
+    # ---- 学年（文本类型，如 2026-2027；9/1 起算）----
+    ACADEMIC_YEAR = 'academic_year'  # 学年
+    # ---- 对应借出单号（文本类型）：转单后回填 ----
+    ORDER_NUMBER = 'order_number'  # 对应借出单号
+    # ---- 兑付时间（时间戳）：借出即兑付 ----
+    ISSUED_AT = 'issued_at'  # 兑付时间
+    # ---- 发料人（文本类型）----
+    ISSUED_BY = 'issued_by'  # 发料人
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 

@@ -23,6 +23,7 @@ from components.sidebar_nav import render_sidebar
 from business.manager_service import manager_service
 from business.material_pipeline_service import material_pipeline_service
 from business.recipe_service import recipe_business_service
+from business.requirement_issue_service import requirement_issue_service
 from business.requirement_service import requirement_business_service
 from domain.substance import ComponentRole
 from services.custodian_route import (
@@ -31,6 +32,7 @@ from services.custodian_route import (
     SCOPE_LABELS,
     custodian_route_repository,
 )
+from utils.field_mapper import RequirementSheetField
 
 st.set_page_config(page_title="配方与需求", layout="wide")
 
@@ -539,6 +541,7 @@ with tab_pipe:
                 )
                 if result.success:
                     st.session_state["pipe_acceptance"] = result.data["acceptance"]
+                    st.session_state["pipe_acceptance_sheet"] = picked
                     st.session_state.pop("pipe_proposal", None)
                 else:
                     st.error(result.message)
@@ -576,6 +579,33 @@ with tab_pipe:
 
             for note in acceptance.notes:
                 st.caption(f"· {note}")
+
+            # ------------------------------------------------------------ 转单
+            st.markdown("##### 转借出单：借出即兑付")
+            sheet_row = requirement_issue_service.sheets.get_by_number(picked) or {}
+            already = (sheet_row.get(RequirementSheetField.ORDER_NUMBER) or "").strip()
+            accepted_sheet = st.session_state.get("pipe_acceptance_sheet")
+            if accepted_sheet and accepted_sheet != picked:
+                st.caption("上面的受理结论属于另一张单。换单后请重新受理，再转借出单。")
+            elif already:
+                st.success(f"这张需求单已兑付，借出单 {already}；不再占用学年保底。")
+            elif not acceptance.issued:
+                st.info("受理结论里没有可发的料，无从转单；缺口请走第二段或采购。")
+            else:
+                st.caption(
+                    "转单会逐瓶扣库存、生成一张借出单（一单多瓶），并把需求单置为"
+                    "「已兑付」。兑付之后，这张单不再占本学年保底——否则同一门课"
+                    "第二周再申领，会被自己上一张单压住。"
+                )
+                if st.button("签发借出单（借出即兑付）", type="primary", key="pipe_issue"):
+                    drafted = requirement_issue_service.issue(picked, acceptance, current_user)
+                    if drafted.success:
+                        st.success(drafted.message)
+                        for key in ("pipe_acceptance", "pipe_acceptance_sheet", "pipe_proposal"):
+                            st.session_state.pop(key, None)
+                        st.rerun()
+                    else:
+                        st.error(drafted.message)
 
             # ------------------------------------------------------------ 第二段
             if acceptance.is_complete:

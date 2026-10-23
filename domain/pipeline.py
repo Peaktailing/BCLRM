@@ -146,10 +146,27 @@ class IssueLine:
     lot_id: str = ""
     note: str = ""
     seq: int = 0
+    #: 逐瓶的取量。一行要拆两瓶时，``lot_id`` 只能写成一串编号（``"A,B"``），
+    #: 而扣库存问的是「A 扣多少、B 扣多少」——这个信息只有抽卡那一刻知道。
+    #: 空元组 = 单瓶或现场指定，此时整行量记在 ``lot_id`` 上。
+    picks: tuple[LotPick, ...] = ()
 
     @property
     def name(self) -> str:
         return self.substance.name or self.substance.key
+
+    def allocations(self) -> tuple[LotPick, ...]:
+        """逐瓶要扣的量；不知道是哪一瓶时返回空（现场指定，不进借出单）。
+
+        转借出单必须精确到瓶：明细写「A、B 共 100 g」没法执行——扣 A 多少
+        扣 B 多少是空的。所以抽卡的分配结果要一路留到这里，不能压成一行
+        字符串再让下游去猜。
+        """
+        if self.picks:
+            return self.picks
+        if self.lot_id:
+            return (LotPick(self.lot_id, self.quantity),)
+        return ()
 
     def describe(self) -> str:
         lot = f"（{self.lot_id}）" if self.lot_id else ""

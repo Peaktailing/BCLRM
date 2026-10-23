@@ -158,6 +158,9 @@ class AcceptanceDesk:
             lot_id=primary,
             note=f"{custodian_note} 名下" + (f"，共 {len(picks)} 瓶" if len(picks) > 1 else ""),
             seq=requirement.seq,
+            # 逐瓶分配原样带走：下游要按瓶扣库存，不能靠 lot_id 里那串编号
+            # 反推每瓶各多少
+            picks=tuple(picks),
         )
 
     def _pick_lots(

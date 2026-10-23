@@ -470,7 +470,10 @@ class Database:
                     remark TEXT,
                     created_by TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- 来源需求单号（追加末尾）。需求单转借出单时回填，
+                    -- 用于「这张领用单是为哪张需求单发的」反查。
+                    requirement_number TEXT
                 )
             """)
 
@@ -845,7 +848,12 @@ class Database:
                     -- 学年（9/1 起算，形如 2026-2027）。需求以学年为周期，
                     -- 保底只在当前学年内累计，跨年自动翻篇。
                     -- 新列一律追加在末尾：裸 SQL 里的 SELECT * 按位置取值。
-                    academic_year TEXT
+                    academic_year TEXT,
+                    -- 兑付：转成的借出单号、兑付时刻与发料人。借出即兑付——
+                    -- 料真的发出去了，这张单才退出保底累计（保底只认 submitted）。
+                    order_number TEXT,
+                    issued_at TIMESTAMP,
+                    issued_by TEXT
                 )
             """)
 
@@ -1364,6 +1372,25 @@ class Database:
                             (_label, _sid),
                         )
                 logger.info("迁移完成：requirement_sheet 表添加 academic_year 字段")
+
+            # 5) requirement_sheet 加兑付三列：转借出单后回填。老单没有这三
+            #    列，留 NULL——「没兑付过」本来就是 NULL 的语义，不需要回填。
+            for _col, _ddl in (
+                ("order_number", "TEXT"),
+                ("issued_at", "TIMESTAMP"),
+                ("issued_by", "TEXT"),
+            ):
+                if rs_cols and _col not in rs_cols:
+                    cursor.execute(f"ALTER TABLE requirement_sheet ADD COLUMN {_col} {_ddl}")
+                    logger.info(f"迁移完成：requirement_sheet 表添加 {_col} 字段（兑付）")
+
+            # 6) borrow_order 加来源需求单：借出单要能反查「这张单是为哪张需求
+            #    单发的」，否则兑付对账只能靠人回忆。
+            cursor.execute("PRAGMA table_info(borrow_order)")
+            bo_cols = {row[1] for row in cursor.fetchall()}
+            if bo_cols and "requirement_number" not in bo_cols:
+                cursor.execute("ALTER TABLE borrow_order ADD COLUMN requirement_number TEXT")
+                logger.info("迁移完成：borrow_order 表添加 requirement_number 字段")
 
             if rb_cols:
                 # 4) 回填物质外键：CAS 优先（唯一），名称兜底。CAS 为空不算声明，                #    与 chemical_info 的唯一索引口径一致。
