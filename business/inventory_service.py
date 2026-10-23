@@ -13,6 +13,7 @@ from services.base.supplier_service import supplier_service
 from services.base.storage_location_service import storage_location_service
 from services.base.reagent_type_service import reagent_type_service
 from services.base.person_service import person_service
+from services.bottle_ledger import BottleLedger
 from models.core.reagent_bottle import ReagentBottle
 from utils.id_generator import id_generator
 from utils.field_mapper import ReagentBottleField
@@ -36,7 +37,7 @@ class InventoryService:
     def __init__(self, chemical_service=None, supplier_service=None,
                  storage_location_service=None, reagent_type_service=None,
                  controlled_list_service=None, reagent_bottle_service=None,
-                 person_service=None):
+                 person_service=None, bottle_ledger: Optional[BottleLedger] = None):
         """初始化入库服务
 
         注入所有依赖的服务实例，便于测试和维护。
@@ -50,6 +51,7 @@ class InventoryService:
             controlled_list_service: ControlledListService 实例
             reagent_bottle_service: ReagentBottleService 实例
             person_service: PersonService 实例（用于获取可选管理人）
+            bottle_ledger: 物质指针 / 来源批次 / 位置轨迹的双写入口
         """
         from services.core.reagent_bottle_service import reagent_bottle_service as rbs
         from services.base.chemical_service import chemical_service as cs
@@ -66,6 +68,13 @@ class InventoryService:
         self.storage_location_service = storage_location_service or sls
         self.reagent_type_service = reagent_type_service or rts
         self.person_service = person_service or ps
+        # 双写入口跟注入的瓶服务、物质服务走同一个库与同一次事务；
+        # 用模块级单例会在「测试用独立库、业务用全局库」的场景下写串库
+        # （实测：chemical_id 指向另一个库的 chemical_info，FK 直接拒写）。
+        self.bottle_ledger = bottle_ledger or BottleLedger(
+            bottles=self.reagent_bottle_service,
+            chemicals=self.chemical_service,
+        )
         self.id_generator = id_generator
         logger.info("InventoryService 初始化完成")
 
@@ -360,7 +369,21 @@ class InventoryService:
 
         # 6. 创建入库记录
         try:
-            record_id = self.reagent_bottle_service.create(inventory_data)
+            # 瓶与它的外设（物质指针 / 来源批次 / 第一条位置）同一事务：
+            # 不允许出现「瓶在架上了，但它属于哪批货、放在哪没记下来」。
+            # 双写阶段旧列仍是读路径的真理源，但新表必须同步长出数据，
+            # 否则第二阶段切读路径时历史已经补不全（services/bottle_ledger.py）。
+            with self.reagent_bottle_service.db.transaction():
+                record_id = self.reagent_bottle_service.create(inventory_data)
+                if record_id:
+                    from utils.user_context import get_user_name
+
+                    self.bottle_ledger.attach(
+                        bottle_no,
+                        inventory_data,
+                        moved_by=get_user_name() or "",
+                        note="入库",
+                    )
             if record_id:
                 from utils.audit import audit
                 from utils.user_context import get_user_name

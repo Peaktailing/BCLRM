@@ -45,5 +45,11 @@ class ReagentBottle(BaseModel):
     expiry_date: Optional[str] = None       # 到期日期（入库时按未启封有效期计算）
     scrap_flag: Optional[str] = None        # 报废状态（待报废/已报废；空=正常在用）
     bottle_status: Optional[str] = None     # 派生显示状态（可借/已借出/耗尽/空瓶/已过期）
+    # 范式化指针（v0.9.1 加列，v0.9.2 起由 services/bottle_ledger.py 双写）：
+    # 物质与批次在各自表里，瓶上只留指针；位置的历史在 bottle_placement，
+    # placement_at 是「当前位置那一条」的落表时间。
+    chemical_id: Optional[int] = None       # 物质档案（chemical_info.id）
+    lot_id: Optional[int] = None            # 来源批次（bottle_lot.id）
+    placement_at: Optional[str] = None      # 当前位置落表时间
     rev: Optional[int] = 0                  # 写入版本：读出第几版，写回就点名第几版
     id: Optional[int] = None                # 自增主键
