@@ -126,6 +126,10 @@ class EvidenceConfig:
     REQUIRE_RETURN = "evidence.require_return"
     #: 单张照片大小上限（MB）
     MAX_MB = "evidence.max_mb"
+    #: 落盘前压到的长边（像素）。越小越省空间，越小也越看不清标签小字
+    PHOTO_MAX_EDGE = "evidence.photo_max_edge"
+    #: 重编码 JPEG 质量（40–95）
+    PHOTO_QUALITY = "evidence.photo_quality"
     #: 照片保留天数（0 = 永久）
     KEEP_DAYS = "evidence.keep_days"
     #: 手机访问基地址（生成瓶身二维码用，如 http://192.168.1.10:8601）
@@ -137,6 +141,8 @@ DEFAULTS = {
     EvidenceConfig.REQUIRE_BORROW: "1",
     EvidenceConfig.REQUIRE_RETURN: "1",
     EvidenceConfig.MAX_MB: "8",
+    EvidenceConfig.PHOTO_MAX_EDGE: "1280",
+    EvidenceConfig.PHOTO_QUALITY: "75",
     EvidenceConfig.KEEP_DAYS: "180",
     EvidenceConfig.MOBILE_BASE_URL: "",
 }

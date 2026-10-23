@@ -172,6 +172,61 @@ class AttachmentStore:
             return None
         return target.read_bytes()
 
+    # ------------------------------------------------------------------
+    # 附属文件（缩略图）
+    #
+    # 缩略图**不进索引表**：索引一行代表「一张照片」，缩略图是同一张照片的
+    # 另一种分辨率，登记进去会让照片计数翻倍、「必拍是否已满足」也跟着错。
+    # 靠命名规则与主文件绑定，路径可推导，不需要额外一列。
+    # ------------------------------------------------------------------
+    @staticmethod
+    def sibling_name(stored_name: str, suffix: str = ".thumb") -> str:
+        """主文件 → 附属文件名。``a1b2_x.jpg`` → ``a1b2_x.thumb.jpg``。"""
+        if not stored_name:
+            return ""
+        stem, dot, ext = stored_name.rpartition(".")
+        if not dot:
+            return f"{stored_name}{suffix}"
+        return f"{stem}{suffix}.{ext}"
+
+    def save_sibling(
+        self, content: bytes, stored_name: str, suffix: str = ".thumb"
+    ) -> Optional[str]:
+        """把附属文件写到主文件旁边。不登记索引，失败不影响主文件。"""
+        if not content or not stored_name:
+            return None
+        name = self.sibling_name(stored_name, suffix)
+        try:
+            target = self._resolve(name)
+        except ValueError:
+            logger.warning(f"拒绝写入非法附属文件路径: {name}")
+            return None
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+            return name
+        except OSError as exc:
+            logger.warning(f"附属文件写入失败: {name}（{exc}）")
+            return None
+
+    def load_sibling(
+        self, stored_name: str, suffix: str = ".thumb"
+    ) -> Optional[bytes]:
+        """读附属文件；没有就返回 None（调用方自己决定回落到主文件）。"""
+        name = self.sibling_name(stored_name, suffix)
+        if not name:
+            return None
+        try:
+            target = self._resolve(name)
+        except ValueError:
+            return None
+        if not target.is_file():
+            return None
+        try:
+            return target.read_bytes()
+        except OSError:
+            return None
+
     def delete(self, stored_name: str) -> bool:
         """删除附件物理文件与索引
 
@@ -190,6 +245,14 @@ class AttachmentStore:
         except ValueError:
             logger.warning(f"拒绝删除非法附件路径: {stored_name}")
             return False
+
+        # 缩略图跟着主文件一起走，否则删了照片还留一张没人认领的小图
+        try:
+            side = self._resolve(self.sibling_name(stored_name))
+            if side.is_file():
+                side.unlink()
+        except (ValueError, OSError):
+            pass
 
         try:
             from services.base.attachment_index_service import attachment_index_service

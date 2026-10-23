@@ -9,7 +9,9 @@ import unittest
 
 from utils.qr_label import (
     BOTTLE_PARAM,
+    GOOD_MODULE_MM,
     SHORT_PREFIX,
+    fit,
     label_png,
     parse,
     payload_of,
@@ -68,6 +70,47 @@ class TestParse(unittest.TestCase):
     def test_roundtrip_both_forms(self):
         for payload in (payload_of(BOTTLE, "http://10.0.0.2:8601"), payload_of(BOTTLE)):
             self.assertEqual(parse(payload), BOTTLE)
+
+
+class TestFit(unittest.TestCase):
+    """容量这件事只在「印多大」这个前提下有意义。
+
+    版本 40 能装 2953 字节，但那是 177 个模块，19.5 mm 标签上每模块
+    0.11 mm —— 扫不出来。所以这里测的是模块边长这条硬约束。
+    """
+
+    def test_short_code_is_comfortable(self):
+        """短码（22 字节）在小瓶标签上每模块 ≥0.45 mm。"""
+        info = fit(payload_of(BOTTLE))
+        self.assertEqual(info.grade, "good")
+        self.assertGreaterEqual(info.module_mm, GOOD_MODULE_MM)
+
+    def test_url_is_still_ok_at_label_size(self):
+        """一条普通内网 URL（48 字节）仍在舒适区。"""
+        info = fit(payload_of(BOTTLE, "http://192.168.1.10:8601"))
+        self.assertTrue(info.readable)
+        self.assertLess(info.version, 8)
+
+    def test_long_payload_gets_denser(self):
+        """内容越长版本越高、模块越小——这就是「容量」的真实代价。"""
+        short = fit("a" * 20)
+        long = fit("a" * 200)
+        self.assertGreater(long.version, short.version)
+        self.assertLess(long.module_mm, short.module_mm)
+
+    def test_absurd_payload_is_reported_hopeless(self):
+        info = fit("a" * 1200)
+        self.assertEqual(info.grade, "too_small")
+        self.assertFalse(info.readable)
+
+    def test_bigger_label_restores_readability(self):
+        """同一段内容，把标签打大就又能扫了——所以提示里两条建议都成立。"""
+        payload = "a" * 200
+        self.assertNotEqual(fit(payload, code_mm=19.5).grade, "good")
+        self.assertEqual(fit(payload, code_mm=60.0).grade, "good")
+
+    def test_empty_payload_has_no_fit(self):
+        self.assertIsNone(fit(""))
 
 
 class TestRender(unittest.TestCase):

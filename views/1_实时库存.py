@@ -15,7 +15,7 @@ from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from services.base.system_config_service import EvidenceConfig, system_config_service
 from services.core.reagent_bottle_service import reagent_bottle_service
-from utils.qr_label import label_png, payload_of
+from utils.qr_label import fit, label_png, payload_of
 
 def _derive_bottle_status(bottle):
     """从 borrowable_check 和其他字段派生显示状态"""
@@ -128,6 +128,27 @@ def main():
             for item in re.split(r"[,，;；\s]+", _label_input or "")
             if item.strip()
         ]
+        # 打印前先把「装得下吗」这笔账算出来。码里放 URL 时，地址越长码越密，
+        # 密到一定程度小瓶标签上就扫不动了——这件事必须在贴上去之前知道，
+        # 而不是打完一沓标签、贴到瓶上才发现扫不出。
+        _probe_number = _numbers[0] if _numbers else "B-20261023-001"
+        _fit = fit(payload_of(_probe_number, _base_url))
+        if _fit:
+            st.caption(
+                f"码内容 {_fit.payload_bytes} 字节 → 版本 {_fit.version}"
+                f"（{_fit.modules} 模块），19.5 mm 标签上每模块 "
+                f"{_fit.module_mm:.2f} mm"
+            )
+            if _fit.grade == "tight":
+                st.warning(
+                    "模块偏小，手机得凑近才扫得稳。缩短「手机访问地址」"
+                    "（用主机名代替长 IP），或把标签放大到 1.3 倍以上再打。"
+                )
+            elif _fit.grade == "too_small":
+                st.error(
+                    "这个尺寸下基本扫不出来。请缩短手机访问地址，"
+                    "或按原尺寸 1.5 倍以上放大打印。"
+                )
         if _numbers:
             if st.button(f"生成 {len(_numbers)} 张标签", key="qr_label_build"):
                 _labels = {}

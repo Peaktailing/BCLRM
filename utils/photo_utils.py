@@ -10,8 +10,9 @@
 1. **按 EXIF 方向转正**。手机竖着拍，像素其实是横的、靠 EXIF 的
    ``Orientation`` 标记让浏览器转过来。重编码会丢掉 EXIF，不先转正的话
    竖拍的照片在系统里全是躺着的——这个 bug 只有在手机上看才发现。
-2. **长边压到 1600**。标签上的字在 1600 像素下仍然清晰，一张降到
-   200–400 KB。
+2. **长边压到 1280**。标签上的字在 1280 像素下仍然清晰，一张降到
+   150–230 KB；另存一张 480 px 的缩略图（约 17 KB）给照片墙用——**页面
+   传的是缩略图，不是原图**，这一条比继续降分辨率省得多。
 3. **重编码成 JPEG**。保留原始格式没意义：HEIC 浏览器显示不了，PNG 存
    照片体积反而更大。
 
@@ -27,11 +28,25 @@ from typing import Optional, Tuple
 
 from utils.error_handler import logger
 
-#: 长边上限。1600 是「标签上的小字仍可辨认」与「体积可接受」的交点。
-DEFAULT_MAX_EDGE = 1600
+#: 长边上限。1280 是实测出来的：一张 4000×3000 的手机原图（≈3.5 MB）
+#: 压到 1280 长边、质量 75，典型 150–230 KB；而瓶身标签上那行小字在
+#: 1280 下仍有 30 像素高，批号与效期看得清。再往上加分辨率只是给磁盘
+#: 和上传时间付钱，看的人分辨不出。
+DEFAULT_MAX_EDGE = 1280
 
-#: 重编码质量。82 在照片上肉眼无损，再往上体积涨得快、收益很小。
-DEFAULT_QUALITY = 82
+#: 重编码质量。75 与 82 在照片上肉眼无差，体积小近三成。
+DEFAULT_QUALITY = 75
+
+#: 缩略图长边。手机页照片墙按三列排，360 CSS px 一屏分下来约 110 px，
+#: 480 已经覆盖 3 倍屏，再大只是白传字节。
+DEFAULT_THUMB_EDGE = 480
+
+#: 缩略图质量。72 在 480 px 上仍然干净，一张约 15–20 KB。
+DEFAULT_THUMB_QUALITY = 72
+
+#: 缩略图体积占原图多少以上就认为「不值得单独存」。小图（本来就 40 KB）
+#: 再存一份 30 KB 的缩略图，等于把附件目录翻倍。
+THUMB_WORTH_RATIO = 0.9
 
 #: 认得的输入扩展名。HEIC 故意不在内——见模块文档。
 ALLOWED_EXTS = ("jpg", "jpeg", "png", "webp", "bmp")
@@ -128,6 +143,37 @@ def normalize_or_original(
         return data, False
 
 
+def worth_storing(original_bytes: int, thumb_bytes: int) -> bool:
+    """这份缩略图值不值得单独存一份。
+
+    原图本来就不大（比如从聊天记录里存的 320×240 小图），缩完还是那个量级，
+    多存一份只是让附件目录翻倍、让「删照片」变成删两个文件。
+    """
+    if thumb_bytes <= 0 or original_bytes <= 0:
+        return False
+    return thumb_bytes < original_bytes * THUMB_WORTH_RATIO
+
+
+def thumbnail(
+    data: bytes,
+    max_edge: int = DEFAULT_THUMB_EDGE,
+    quality: int = DEFAULT_THUMB_QUALITY,
+) -> Optional[bytes]:
+    """生成缩略图；不值得存就返回 None。
+
+    为什么单独存一张而不是「显示时临时缩」：照片墙一次列六张，每帧重跑都要
+    把六张 300 KB 的 JPEG 解码再缩放，手机上就是几百毫秒的卡顿；而且
+    ``st.image`` 拿到原始字节会**把整张图发给浏览器**，缩不缩都得先传完。
+    """
+    try:
+        smaller, _ = normalize(data, max_edge=max_edge, quality=quality)
+    except PhotoError:
+        return None
+    if not worth_storing(len(data), len(smaller)):
+        return None
+    return smaller
+
+
 def guess_ext(name: str, default: str = "jpg") -> str:
     """从文件名取扩展名（小写、无点）。"""
     text = (name or "").strip()
@@ -157,9 +203,14 @@ __all__ = [
     "PhotoError",
     "DEFAULT_MAX_EDGE",
     "DEFAULT_QUALITY",
+    "DEFAULT_THUMB_EDGE",
+    "DEFAULT_THUMB_QUALITY",
+    "THUMB_WORTH_RATIO",
     "ALLOWED_EXTS",
     "normalize",
     "normalize_or_original",
+    "thumbnail",
+    "worth_storing",
     "guess_ext",
     "is_supported",
     "human_size",

@@ -20,6 +20,8 @@ from utils.photo_utils import (
     is_supported,
     normalize,
     normalize_or_original,
+    thumbnail,
+    worth_storing,
 )
 
 
@@ -82,6 +84,31 @@ class TestNormalize(unittest.TestCase):
         data, compressed = normalize_or_original(raw)
         self.assertEqual(data, raw)
         self.assertFalse(compressed)
+
+
+class TestThumbnail(unittest.TestCase):
+    def test_long_edge_falls_to_480(self):
+        data = thumbnail(_jpeg((3000, 2000)))
+        self.assertTrue(data)
+        with Image.open(io.BytesIO(data)) as out:
+            self.assertEqual(max(out.size), 480)
+
+    def test_thumb_is_much_smaller_than_full(self):
+        """照片墙读的是这一份：一屏六张，原图要传 1.8 MB，缩略图 200 KB。"""
+        full, _ = normalize(_jpeg((3000, 2000)))
+        thumb = thumbnail(full)
+        self.assertTrue(thumb)
+        self.assertLess(len(thumb), len(full) * 0.5)
+
+    def test_worth_storing_threshold(self):
+        """原图本来就不大时，再存一份只是让目录翻倍。"""
+        self.assertFalse(worth_storing(50_000, 45_000))
+        self.assertFalse(worth_storing(0, 0))
+        self.assertTrue(worth_storing(300_000, 40_000))
+
+    def test_garbage_returns_none_not_raise(self):
+        """缩略图是加速件，做不出来不能把照片上传带崩。"""
+        self.assertIsNone(thumbnail(b"not an image at all"))
 
 
 class TestHelpers(unittest.TestCase):

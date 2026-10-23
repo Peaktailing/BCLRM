@@ -167,6 +167,51 @@ class TestAttach(_Base):
         self.assertIn("超过单张上限", result.data["failed"][0])
 
 
+class TestThumbnail(_Base):
+    """缩略图是照片墙的燃料，但它不该改变「一张照片」这件事的任何语义。"""
+
+    def test_thumbnail_is_written_next_to_the_photo(self):
+        result = self.service.attach(
+            ORDER, PHASE_BORROW, [_FakeUpload("IMG_1.jpg", _photo_bytes((2400, 1800)))], "李四"
+        )
+
+        stored = result.data["saved"][0]["stored_name"]
+        thumb = self.store.load_sibling(stored)
+        self.assertIsNotNone(thumb)
+        self.assertLess(len(thumb), result.data["saved"][0]["size_bytes"])
+
+    def test_thumbnail_does_not_double_the_photo_count(self):
+        """缩略图不进索引：进去了「一张照片」就变两张，必拍判断也跟着错。"""
+        self.service.attach(
+            ORDER, PHASE_BORROW, [_FakeUpload("IMG_1.jpg", _photo_bytes())], "李四"
+        )
+
+        self.assertEqual(self.service.count(ORDER, PHASE_BORROW), 1)
+        self.assertEqual(len(attachment_index_service.list_by_ref(REF_TYPE_ORDER, ORDER)), 1)
+
+    def test_read_thumb_falls_back_to_full(self):
+        """老照片没有缩略图，页面必须还能显示——照片要留好几年。"""
+        result = self.service.attach(
+            ORDER, PHASE_BORROW, [_FakeUpload("scan.jpg", b"broken-bytes")], "李四"
+        )
+        stored = result.data["saved"][0]["stored_name"]
+        self.assertIsNone(self.store.load_sibling(stored))
+        self.assertEqual(self.service.read_thumb(stored), b"broken-bytes")
+
+    def test_delete_takes_the_thumbnail_away(self):
+        """删了照片还留一张没人认领的小图，附件目录会慢慢长草。"""
+        result = self.service.attach(
+            ORDER, PHASE_BORROW, [_FakeUpload("IMG_1.jpg", _photo_bytes())], "李四"
+        )
+        stored = result.data["saved"][0]["stored_name"]
+        self.assertIsNotNone(self.store.load_sibling(stored))
+
+        self.store.delete(stored)
+
+        self.assertIsNone(self.store.load_sibling(stored))
+        self.assertIsNone(self.store.load(stored))
+
+
 class TestRequireSwitch(_Base):
     def test_empty_value_falls_back_to_default(self):
         """配置被清空不能等于「关掉」——那样取证要求会静默消失。"""

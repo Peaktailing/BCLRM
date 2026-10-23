@@ -33,6 +33,19 @@ from utils.error_handler import logger
 # 表名安全校验正则：仅允许字母、数字、下划线
 _TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_]+$')
 
+
+def _estimate_photo(edge: int, quality: int) -> str:
+    """粗估单张照片体积。
+
+    只用来回答「这个旋钮往哪边拧、能省多少」——照片体积随画面内容（噪点、
+    细节）浮动接近一倍，任何精确公式都是假的。按 1280 px / q75 ≈ 235 KB
+    标定（实测一张 4000×3000 手机原图，内容偏碎的偏高值），
+    像素数平方缩放、质量按每 +6 涨 1.18 倍。
+    """
+    pixels = (float(edge) / 1280.0) ** 2
+    grade = 1.18 ** ((float(quality) - 75.0) / 6.0)
+    return f"约 {235 * pixels * grade:.0f} KB"
+
 # 可选角色：显示名 -> 存储值（超级管理员不开放自助添加）
 _ROLE_OPTIONS = {
     "普通用户": "user",
@@ -254,6 +267,8 @@ def main():
     _ev_require_borrow = evidence_service.require(PHASE_BORROW)
     _ev_require_return = evidence_service.require(PHASE_RETURN)
     _ev_max_mb = evidence_service.max_mb()
+    _ev_max_edge = evidence_service.max_edge()
+    _ev_quality = evidence_service.quality()
     _ev_base_url = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
 
     with st.form("evidence_settings"):
@@ -278,7 +293,7 @@ def main():
                 max_value=50,
                 value=int(_ev_max_mb),
                 step=1,
-                help="手机原图会先在服务端压缩到长边 1600 像素，通常 200–400 KB",
+                help="压缩后仍超过这个体积就拒绝入库（防的是异常文件，不是正常照片）",
             )
         with _c4:
             _new_base_url = st.text_input(
@@ -290,6 +305,31 @@ def main():
                     "就能直接打开取证页；不填则二维码里是短码，需要用取证页的摄像头扫"
                 ),
             )
+        _c5, _c6, _c7 = st.columns(3)
+        with _c5:
+            _new_max_edge = st.number_input(
+                "照片长边（像素）",
+                min_value=640,
+                max_value=4096,
+                value=int(_ev_max_edge),
+                step=64,
+                help="越小越省空间，也越看不清标签上的小字。1440 约 180–260 KB",
+            )
+        with _c6:
+            _new_quality = st.slider(
+                "JPEG 质量",
+                min_value=40,
+                max_value=95,
+                value=int(_ev_quality),
+                step=1,
+                help="78 与 85 肉眼看不出差别，体积差三成",
+            )
+        with _c7:
+            st.metric(
+                "单张预计体积",
+                _estimate_photo(_new_max_edge, _new_quality),
+                help="按常见手机照片估算，实际随画面复杂度浮动",
+            )
         if st.form_submit_button("保存取证设置", type="primary"):
             _operator = st.session_state.get("user_name", "")
             _saved = system_config_service.set_many(
@@ -297,6 +337,8 @@ def main():
                     EvidenceConfig.REQUIRE_BORROW: "1" if _new_require_borrow else "0",
                     EvidenceConfig.REQUIRE_RETURN: "1" if _new_require_return else "0",
                     EvidenceConfig.MAX_MB: str(int(_new_max_mb)),
+                    EvidenceConfig.PHOTO_MAX_EDGE: str(int(_new_max_edge)),
+                    EvidenceConfig.PHOTO_QUALITY: str(int(_new_quality)),
                     EvidenceConfig.MOBILE_BASE_URL: (_new_base_url or "").strip(),
                 },
                 _operator,

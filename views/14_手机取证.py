@@ -149,7 +149,9 @@ def _render_photos(order_number: str, phase: str, expanded: bool = False) -> Non
         cols = st.columns(3)
         for index, photo in enumerate(photos):
             with cols[index % 3]:
-                content = evidence_service.read(photo["stored_name"])
+                # 照片墙读缩略图：一屏六张，原图要传 1.8 MB，缩略图 200 KB。
+                # 手机流量和渲染时间都省在这里，不是省在压原图上。
+                content = evidence_service.read_thumb(photo["stored_name"])
                 if content:
                     # 照片可能是竖的，统一限宽，避免手机上被拉成一条
                     st.image(content, use_container_width=True)
@@ -157,6 +159,31 @@ def _render_photos(order_number: str, phase: str, expanded: bool = False) -> Non
                         f"{photo.get('created_at') or ''}"
                         f"　{human_size(photo.get('size_bytes'))}"
                     )
+
+        # 缩略图看不清批号时，得能调出原图；手机上点不开新窗口，
+        # 所以放在同一页里选一张看。
+        if len(photos) > 1:
+            pick = st.selectbox(
+                "看原图",
+                options=list(range(len(photos))),
+                format_func=lambda i: (
+                    f"第 {i + 1} 张　{photos[i].get('created_at') or ''}"
+                ),
+                key=f"m_pick_{phase}_{order_number}",
+            )
+        else:
+            pick = 0
+        full = evidence_service.read(photos[pick]["stored_name"])
+        if full:
+            st.image(full, use_container_width=True)
+            st.download_button(
+                "下载这张原图",
+                data=full,
+                file_name=photos[pick]["stored_name"],
+                mime="image/jpeg",
+                key=f"m_dl_{phase}_{order_number}",
+                use_container_width=True,
+            )
 
 
 def _render_upload(order_number: str, phase: str, default_expanded: bool, key_suffix: str) -> None:

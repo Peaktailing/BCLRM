@@ -33,6 +33,10 @@
 手机原图动辄 8 MB。客户端压缩（canvas）能省流量，但**不能信**：换个浏览器
 或直接调接口就绕过了。所以 ``utils/photo_utils.normalize`` 在服务端再压一遍，
 且压失败不丢证据——原样存，只是标注体积没降。
+
+落盘是「原图 + 缩略图」两份，长边与质量可在系统设置里调。照片墙读缩略图
+（约 17 KB），要看细节再读原图——这一条比继续降原图分辨率有用得多：
+页面每帧发的是缩略图，手机上不卡，原图的分辨率却保住了。
 """
 from __future__ import annotations
 
@@ -46,7 +50,7 @@ from services.base.system_config_service import (
 from utils.attachment_store import attachment_store
 from utils.audit import audit
 from utils.error_handler import ServiceResult, handle_exception, logger
-from utils.photo_utils import human_size, normalize_or_original
+from utils.photo_utils import human_size, normalize_or_original, thumbnail
 
 #: 挂载的业务类型。所有取证照片都挂在借用工单上。
 REF_TYPE_ORDER = "borrow_order"
@@ -107,6 +111,25 @@ class EvidenceService:
         )
         return max(1, value)
 
+    def max_edge(self) -> int:
+        """落盘前的长边上限（像素）。
+
+        没有做成硬编码是有原因的：同一个 1440，对「拍瓶身标签」够用，对
+        「拍台账整页」就不够。哪个更常用只有实验室自己知道，所以给个旋钮。
+        """
+        value = self.config.get_int(
+            EvidenceConfig.PHOTO_MAX_EDGE, int(default_of(EvidenceConfig.PHOTO_MAX_EDGE))
+        )
+        # 下限 640：再低连标签上的批号都糊了，宁可多占点盘
+        return min(max(value, 640), 4096)
+
+    def quality(self) -> int:
+        """JPEG 重编码质量。低于 40 会出现明显块状，高于 95 只涨体积。"""
+        value = self.config.get_int(
+            EvidenceConfig.PHOTO_QUALITY, int(default_of(EvidenceConfig.PHOTO_QUALITY))
+        )
+        return min(max(value, 40), 95)
+
     # ---------------------------------------------------------------- 写
     @handle_exception(context="上传取证照片")
     def attach(
@@ -146,6 +169,8 @@ class EvidenceService:
 
         category = PHASE_CATEGORY[phase]
         max_mb = self.max_mb()
+        max_edge = self.max_edge()
+        quality = self.quality()
         saved: List[Dict[str, Any]] = []
         failed: List[str] = []
         total_bytes = 0
@@ -157,7 +182,9 @@ class EvidenceService:
             except Exception as exc:
                 failed.append(f"{name}：读取失败（{exc}）")
                 continue
-            content, compressed = normalize_or_original(raw)
+            content, compressed = normalize_or_original(
+                raw, max_edge=max_edge, quality=quality
+            )
             if len(content) > max_mb * 1024 * 1024:
                 failed.append(
                     f"{name}：{human_size(len(content))} 超过单张上限 {max_mb} MB"
@@ -183,6 +210,11 @@ class EvidenceService:
             if not stored:
                 failed.append(f"{name}：保存失败")
                 continue
+            # 缩略图是「可选的加速件」：写失败不算这张照片失败，页面读不到
+            # 会自己回落到原图。
+            thumb = thumbnail(content)
+            if thumb:
+                self.store.save_sibling(thumb, stored)
             total_bytes += len(content)
             saved.append(
                 {
@@ -191,6 +223,7 @@ class EvidenceService:
                     "size_bytes": len(content),
                     "compressed": compressed,
                     "phase": phase,
+                    "thumb_bytes": len(thumb) if thumb else 0,
                 }
             )
 
@@ -229,7 +262,18 @@ class EvidenceService:
         return len(self.photos_of(order_number, phase))
 
     def read(self, stored_name: str) -> Optional[bytes]:
-        """读照片内容（页面展示用）。"""
+        """读照片内容（下载、看原图用）。"""
+        return self.store.load(stored_name)
+
+    def read_thumb(self, stored_name: str) -> Optional[bytes]:
+        """读缩略图；没有缩略图（老照片、小图）就回落到原图。
+
+        页面照片墙一律走这里。回落是必须的：v0.9.7 之前存的照片没有缩略图，
+        而照片是要留好几年的——不能因为老照片就显示不出来。
+        """
+        thumb = self.store.load_sibling(stored_name)
+        if thumb:
+            return thumb
         return self.store.load(stored_name)
 
     # ---------------------------------------------------------------- 校验
