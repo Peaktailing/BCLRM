@@ -74,6 +74,10 @@ class ReagentBottleField:
     STORAGE_REQUIREMENT = 'storage_requirement'  # 存储要求
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
+    # ---- 版本号（每次写入由 BaseService 自增，用于「只能改我看到的那一版」）----
+    # 读出来是第几版，写回去就点名第几版；中间有人改过则写入被拒，
+    # 而不是用陈旧的值覆盖对方的结论（见 db/base_service.py）。
+    REV = 'rev'  # 版本号
 
 
 class BorrowRecordField:

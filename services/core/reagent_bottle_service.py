@@ -40,12 +40,25 @@ class ReagentBottleService(BaseService):
             )
         return fields
 
-    def update(self, record_id: int, fields: Dict) -> bool:
-        return super().update(record_id, self._sync_borrowable_fields(fields))
+    def update(self, record_id: int, fields: Dict, expect_rev: Optional[int] = None) -> bool:
+        """更新试剂瓶
 
-    def update_by_field(self, field_name: str, value: Any, fields: Dict) -> bool:
+        Args:
+            record_id: 记录 ID
+            fields: 要更新的字段
+            expect_rev: 读出来时这瓶是第几版。给出时，若期间有人改过（rev
+                已前进），写入被拒并抛 StaleRevisionError，而不是用陈旧值
+                覆盖对方的结论。None = 不比版本。
+
+        「读 → 判断 → 写」三步的写入都应该带上这里读到的 rev：判断用的是
+        旧数据，而写是新的，中间那段窗口正是并发进来的地方。
+        """
+        return super().update(record_id, self._sync_borrowable_fields(fields), expect=expect_rev)
+
+    def update_by_field(self, field_name: str, value: Any, fields: Dict,
+                        expect_rev: Optional[int] = None) -> bool:
         return super().update_by_field(
-            field_name, value, self._sync_borrowable_fields(fields)
+            field_name, value, self._sync_borrowable_fields(fields), expect=expect_rev
         )
 
     def get_by_id(self, record_id: int) -> Optional[ReagentBottle]:

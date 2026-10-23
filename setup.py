@@ -13,7 +13,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="reagent-manager",
-    version="0.9.1",
+    version="0.9.2",
     description="试剂库管理系统 - 化学实验室试剂全生命周期管理",
     author="Peaktailing",
     url="https://github.com/Peaktailing/BCLRM",

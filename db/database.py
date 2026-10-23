@@ -328,6 +328,11 @@ class Database:
                     chemical_id INTEGER,
                     lot_id INTEGER,
                     placement_at TIMESTAMP,
+                    -- 写入版本（追加）：每次写入 +1，供「只能改我看到的那一版」
+                    -- 的乐观锁使用（见 db/base_service.py）。不是同步水位，
+                    -- 与 Lims 的 sync_version 同源不同用：本仓单机单写，
+                    -- 只需要知道「有没有人动过」。
+                    rev INTEGER DEFAULT 0,
                     FOREIGN KEY (supplier) REFERENCES supplier(name),
                     FOREIGN KEY (storage_location) REFERENCES storage_location(name),
                     FOREIGN KEY (chemical_id) REFERENCES chemical_info(id),
@@ -1321,13 +1326,16 @@ class Database:
                     cursor.execute(f"ALTER TABLE controlled_list ADD COLUMN {_col} {_ddl}")
                     logger.info(f"迁移完成：controlled_list 表添加 {_col} 字段（与 Lims 并集）")
 
-            # 3) reagent_bottle 加三个指针：物质、批次、位置时间
+            # 3) reagent_bottle 加三个指针：物质、批次、位置时间；外加写入版本
             cursor.execute("PRAGMA table_info(reagent_bottle)")
             rb_cols = {row[1] for row in cursor.fetchall()}
             for _col, _ddl in (
                 ("chemical_id", "INTEGER"),
                 ("lot_id", "INTEGER"),
                 ("placement_at", "TIMESTAMP"),
+                # 老库没有 rev：加上并留 0。此后每次写入自增（db/base_service.py
+                # 的 update/update_by_field/update_where），存量行从 0 开始数。
+                ("rev", "INTEGER DEFAULT 0"),
             ):
                 if rb_cols and _col not in rb_cols:
                     cursor.execute(f"ALTER TABLE reagent_bottle ADD COLUMN {_col} {_ddl}")

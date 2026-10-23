@@ -148,8 +148,14 @@ class ManagerService:
         changed_at = datetime.now().strftime("%Y/%m/%d %H:%M")
 
         with db.transaction():
+            # 带版本写：上面第 118 行的读取与这次写入之间，另一个会话完全
+            # 可以又流转了一次。expect_rev 让「我改的是我读到的那一版」成立，
+            # 冲突时抛 StaleRevisionError → 事务回滚 → 由 @handle_exception
+            # 变成 ServiceResult.fail，操作人看到「已被改动」而不是两笔
+            # 流转记录都写成功、仓库里只剩最后一个管理人。
             updated = self.bottle_service.update(
-                bottle.id, {ReagentBottleField.MANAGER: new_manager}
+                bottle.id, {ReagentBottleField.MANAGER: new_manager},
+                expect_rev=getattr(bottle, ReagentBottleField.REV, None),
             )
             if not updated:
                 raise RuntimeError("更新试剂瓶管理人失败，已回滚")

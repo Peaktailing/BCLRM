@@ -45,4 +45,5 @@ class ReagentBottle(BaseModel):
     expiry_date: Optional[str] = None       # 到期日期（入库时按未启封有效期计算）
     scrap_flag: Optional[str] = None        # 报废状态（待报废/已报废；空=正常在用）
     bottle_status: Optional[str] = None     # 派生显示状态（可借/已借出/耗尽/空瓶/已过期）
+    rev: Optional[int] = 0                  # 写入版本：读出第几版，写回就点名第几版
     id: Optional[int] = None                # 自增主键

@@ -1,11 +1,28 @@
 """SQLite 数据库基础服务类
 
 该模块提供数据库 CRUD 操作的基础封装。
+
+## 写入版本（rev）
+
+带 ``rev`` 列的表，每次写入都会把 ``rev`` 自增 1；调用方可以把「读出时
+的 rev」交给 ``update(..., expect=rev)``，只有库里仍是那一版才写成功。
+
+为什么需要它：业务方法普遍是「读 → 判断 → 写」，两步之间另一路写入完全
+可以插进来（同一瓶被两个人同时流转、审批与撤回同时发生）。条件更新
+（``update_where``）能防住「状态被改」，但防不住「值被改而状态没变」
+——例如管理人被换成了别人，状态仍是可借。rev 是唯一一个每次写入都动的
+字段，所以它同时是「有没有人动过」的判据。
+
+约定：
+- 版本只由这里推进。调用方 ``fields`` 里塞的 ``rev`` 会被丢掉，
+  否则「改一次 rev 不动」或「手动倒回」会让整套判断失效。
+- ``expect=None`` 表示「我没读，也没有要比的版本」（批量作业、导入），
+  只做写入，不做校验。
 """
 import re
 from typing import List, Dict, Optional, Any
 from db.database import Database
-from utils.error_handler import logger
+from utils.error_handler import StaleRevisionError, logger
 from utils.permission_guard import enforce_write
 
 # SQL 标识符安全校验正则：仅允许 字母/数字/下划线，必须以字母或下划线开头
@@ -20,6 +37,9 @@ class BaseService:
     提供通用的 CRUD 操作，各业务服务类继承此类获得基础数据库操作能力。
     """
 
+    #: 版本列名。子类要换名字（例如 Lims 的 sync_version）时覆盖这个常量。
+    REVISION_COLUMN = "rev"
+
     def __init__(self, table_name: str, db: Database = None):
         """初始化服务
 
@@ -31,6 +51,60 @@ class BaseService:
             raise ValueError(f"非法表名: {table_name}")
         self.table_name = table_name
         self.db = db or Database()
+        # 表有没有版本列：延迟探测一次。表结构在一个进程里不会变，
+        # 但每次写都问一次 PRAGMA 是白花的。
+        self._has_revision: Optional[bool] = None
+
+    # ------------------------------------------------------------------
+    # 版本列
+    # ------------------------------------------------------------------
+    @property
+    def revision_column(self) -> str:
+        return self.REVISION_COLUMN
+
+    def has_revision(self) -> bool:
+        """这张表有没有版本列（结果缓存，首次写入时探测）。"""
+        if self._has_revision is None:
+            try:
+                info = self.db.execute_query(f"PRAGMA table_info({self.table_name})")
+                self._has_revision = any(
+                    (row.get("name") or "") == self.revision_column for row in info
+                )
+            except Exception as exc:              # 表还不存在等：当作没有
+                logger.warning(f"探测版本列失败 [{self.table_name}]: {exc}")
+                self._has_revision = False
+        return self._has_revision
+
+    def _bump_clause(self) -> str:
+        return f", {self.revision_column} = {self.revision_column} + 1"
+
+    def _drop_revision(self, fields: Dict) -> Dict:
+        """丢掉调用方写的版本列：版本只由本类推进。"""
+        if self.revision_column not in fields:
+            return fields
+        return {key: value for key, value in fields.items() if key != self.revision_column}
+
+    def _check_not_stale(self, expect: Optional[int], lookup: Dict) -> None:
+        """条件不成立时判断：是「行没了」还是「版本变了」。
+
+        ``lookup`` 是能唯一定位那一行的条件（``{"id": …}`` 或
+        ``{"field": value}``）。行不存在就静静返回 False（沿用既有语义），
+        存在则抛 StaleRevisionError——这两件事对调用方的意义完全不同。
+        """
+        if expect is None:
+            return
+        where = " AND ".join(f"{key} = ?" for key in lookup)
+        rows = self.db.execute_query(
+            f"SELECT {self.revision_column} AS rev FROM {self.table_name} WHERE {where}",
+            tuple(lookup.values()),
+        )
+        if not rows:
+            return
+        current = rows[0].get("rev")
+        raise StaleRevisionError(
+            f"这行在你读出来之后已被改动过（你看的是第 {int(expect)} 版，现在是第 {current} 版），请刷新后再操作",
+            details={"table": self.table_name, "expected": int(expect), "current": current},
+        )
 
     @staticmethod
     def _validate_field_name(field_name: str) -> None:
@@ -166,15 +240,18 @@ class BaseService:
             logger.error(f"创建记录失败 [{self.table_name}]: {str(e)}", exception=e)
             raise
 
-    def update(self, record_id: int, fields: Dict) -> bool:
+    def update(self, record_id: int, fields: Dict, expect: Optional[int] = None) -> bool:
         """更新记录
 
         Args:
             record_id: 记录 ID
             fields: 要更新的字段字典
+            expect: 期望的版本号。Given（非 None）时只有库里仍是这一版才写，
+                    否则抛 :class:`utils.error_handler.StaleRevisionError`。
+                    None 表示不比版本（批量作业、导入）。
 
         Returns:
-            是否成功
+            是否成功（0 行受影响 = 记录不存在或版本不符）
         """
         if not fields:
             logger.warning(f"更新记录失败 [{self.table_name}]: 字段为空")
@@ -187,31 +264,49 @@ class BaseService:
         for key in fields.keys():
             self._validate_field_name(key)
 
+        fields = self._drop_revision(fields)
+        versioned = self.has_revision()
+
         # 构建更新语句
         set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
+        if versioned:
+            set_clause += self._bump_clause()
         query = f"UPDATE {self.table_name} SET {set_clause} WHERE id = ?"
-
         params = tuple(fields.values()) + (record_id,)
+
+        if versioned and expect is not None:
+            query += f" AND {self.revision_column} = ?"
+            params += (int(expect),)
 
         try:
             affected_rows = self.db.execute_update(query, params)
             success = affected_rows > 0
             if success:
                 logger.info(f"更新记录成功 [{self.table_name}] ID: {record_id}")
+            elif versioned and expect is not None:
+                self._check_not_stale(expect, {"id": record_id})
+                logger.warning(
+                    f"更新记录未找到 [{self.table_name}] ID: {record_id}"
+                )
             else:
                 logger.warning(f"更新记录未找到 [{self.table_name}] ID: {record_id}")
             return success
+        except StaleRevisionError:
+            raise
         except Exception as e:
             logger.error(f"更新记录失败 [{self.table_name}]: {str(e)}", exception=e)
             raise
 
-    def update_by_field(self, field_name: str, value: Any, fields: Dict) -> bool:
+    def update_by_field(self, field_name: str, value: Any, fields: Dict,
+                        expect: Optional[int] = None) -> bool:
         """根据字段值更新记录
 
         Args:
             field_name: 匹配字段名
             value: 匹配字段值
             fields: 要更新的字段字典
+            expect: 期望的版本号（同 :meth:`update`）；配合唯一字段使用时
+                    才有一一对应的意义，否则只有那一版的行会被改。
 
         Returns:
             是否成功
@@ -230,14 +325,26 @@ class BaseService:
 
         self._validate_field_name(field_name)
 
-        set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
-        query = f"UPDATE {self.table_name} SET {set_clause} WHERE {field_name} = ?"
+        fields = self._drop_revision(fields)
+        versioned = self.has_revision()
 
+        set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
+        if versioned:
+            set_clause += self._bump_clause()
+        query = f"UPDATE {self.table_name} SET {set_clause} WHERE {field_name} = ?"
         params = tuple(fields.values()) + (value,)
+
+        if versioned and expect is not None:
+            query += f" AND {self.revision_column} = ?"
+            params += (int(expect),)
 
         try:
             affected_rows = self.db.execute_update(query, params)
+            if not affected_rows and versioned and expect is not None:
+                self._check_not_stale(expect, {field_name: value})
             return affected_rows > 0
+        except StaleRevisionError:
+            raise
         except Exception as e:
             logger.error(f"根据字段更新记录失败 [{self.table_name}]: {str(e)}", exception=e)
             raise
@@ -256,6 +363,11 @@ class BaseService:
 
         Returns:
             是否更新成功（0 行受影响 = 条件不满足，未发生写入）
+
+        注意：这里的条件本身就是版本。调用方把「比较时看到的值」写进
+        ``conditions``（例如 ``remaining_quantity``、``borrowable_flag``），
+        就是一次 compare-and-set，不必再用 ``rev``。仍然自增 ``rev``，
+        是为了让别处的 ``expect`` 也能感知到这次写入。
         """
         if not fields:
             logger.warning(f"更新记录失败 [{self.table_name}]: 字段为空")
@@ -272,7 +384,10 @@ class BaseService:
         for key in list(fields.keys()) + list(conditions.keys()):
             self._validate_field_name(key)
 
+        fields = self._drop_revision(fields)
         set_clause = ', '.join([f"{key} = ?" for key in fields.keys()])
+        if self.has_revision():
+            set_clause += self._bump_clause()
         # None 条件转成 IS NULL，否则 `field = NULL` 永远不成立；
         # 用于「仅当 bottle_number 仍为空时回填」这类原子抢占。
         where_parts = []

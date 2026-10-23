@@ -126,6 +126,25 @@ class NotFoundError(ReagentException):
         super().__init__(message, error_code, details)
 
 
+class StaleRevisionError(ReagentException):
+    """写入的版本已过期（乐观锁冲突）。
+
+    有人在你读出来之后改过同一行：你手里的是第 N 版，库里已是第 N+1 版。
+    这不是错误用法，是并发——正确做法是重新读一遍再决定，而不是把看到
+    的值硬写回去。抛出点：``db/base_service.py`` 的带 ``expect`` 的写入。
+    """
+
+    def __init__(self, message: str, error_code: str = "STALE_REVISION", details: Optional[dict] = None):
+        """初始化版本冲突异常
+
+        Args:
+            message: 冲突描述（可直接展示给操作人）
+            error_code: 错误码，默认为 STALE_REVISION
+            details: 通常含 expected / current 两个版本号
+        """
+        super().__init__(message, error_code, details)
+
+
 class PermissionDeniedError(ReagentException):
     """服务端权限拒绝异常
 
