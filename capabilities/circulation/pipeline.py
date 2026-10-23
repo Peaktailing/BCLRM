@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Optional
 
 from capabilities.circulation.ledger import CustodyLedger
+from capabilities.circulation.picking import ReservePort, ShelfPolicy
 from capabilities.circulation.routing import CustodianRouter
 from capabilities.circulation.stage1 import AcceptanceDesk
 from capabilities.circulation.stage2 import TransferBroker
@@ -36,13 +37,25 @@ class MaterialPipeline:
         ledger: CustodyLedger,
         evaluator: Optional[SupplyEvaluator] = None,
         prefer_same_department: bool = True,
+        policy: Optional[ShelfPolicy] = None,
+        reserve: Optional[ReservePort] = None,
     ) -> None:
         self.router = router
         self.ledger = ledger
         self.evaluator = evaluator or SupplyEvaluator()
-        self.desk = AcceptanceDesk(router, ledger, self.evaluator)
+        # 两段共用同一套抽卡规则与同一个保底来源。各建各的会出现这种
+        # 情况：第一段按「已开封优先」抽了 A 瓶，第二段建议补料时又按
+        # 「先到期先出」抽 B 瓶，同一张单前后指向两个不同的瓶。
+        self.policy = policy or ShelfPolicy()
+        self.desk = AcceptanceDesk(
+            router, ledger, self.evaluator, policy=self.policy, reserve=reserve
+        )
         self.broker = TransferBroker(
-            ledger, self.evaluator, prefer_same_department=prefer_same_department
+            ledger,
+            self.evaluator,
+            prefer_same_department=prefer_same_department,
+            policy=self.policy,
+            reserve=reserve,
         )
 
     # ---------------------------------------------------------------- 整条

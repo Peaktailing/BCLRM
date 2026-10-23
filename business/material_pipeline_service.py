@@ -22,6 +22,7 @@ from typing import Iterable, Optional
 
 from business.manager_service import REASON_ALLOCATION, manager_service
 from capabilities.circulation.ledger import CustodyLedger, EmptyLedger
+from capabilities.circulation.picking import ShelfPolicy
 from capabilities.circulation.pipeline import MaterialPipeline
 from capabilities.circulation.routing import (
     CompositeRouter,
@@ -54,6 +55,7 @@ from services.custodian_route import (
     custodian_route_repository,
 )
 from services.custody_ledger import custody_ledger_assembler
+from services.demand_reserve import demand_reserve
 from utils.error_handler import ServiceResult, handle_exception, logger
 
 
@@ -66,11 +68,21 @@ class MaterialPipelineService:
         routes=None,
         resolver=None,
         managers=None,
+        policy=None,
+        reserve=None,
     ) -> None:
         self.ledger_assembler = ledger_assembler or custody_ledger_assembler
         self.routes = routes or custodian_route_repository
         self.resolver = resolver or CatalogSubstanceResolver()
         self.managers = managers or manager_service
+        # 抽卡规则与保底来源：两段共用同一份，别在三个地方各建一个默认值
+        self.policy = policy or ShelfPolicy()
+        # reserve 为 None 表示不保底。页面装配时注入 DemandReserve，
+        # 测试默认不注入——保底要查库，会让纯计算的用例变得依赖库状态。
+        self.reserve = reserve
+
+    def _evaluator(self) -> SupplyEvaluator:
+        return SupplyEvaluator(resolver=self.resolver)
 
     # ------------------------------------------------------------------
     # 装配
@@ -129,8 +141,13 @@ class MaterialPipelineService:
 
     def pipeline(self, ledger: Optional[CustodyLedger] = None) -> MaterialPipeline:
         ledger = ledger or self.ledger()
-        evaluator = SupplyEvaluator(resolver=self.resolver)
-        return MaterialPipeline(self.router(), ledger, evaluator)
+        return MaterialPipeline(
+            self.router(),
+            ledger,
+            self._evaluator(),
+            policy=self.policy,
+            reserve=self.reserve,
+        )
 
     # ------------------------------------------------------------------
     # 第一段
@@ -158,7 +175,11 @@ class MaterialPipelineService:
         )
         ledger = self.ledger()
         acceptance = AcceptanceDesk(
-            self.router(), ledger, SupplyEvaluator(resolver=self.resolver)
+            self.router(),
+            ledger,
+            self._evaluator(),
+            policy=self.policy,
+            reserve=self.reserve,
         ).receive(request)
         return ServiceResult.ok(
             data=self._acceptance_payload(acceptance), message=acceptance.describe()
@@ -175,9 +196,12 @@ class MaterialPipelineService:
         的不一致，事后对不上账。
         """
         ledger = self.ledger()
-        proposal = TransferBroker(ledger, SupplyEvaluator(resolver=self.resolver)).broker(
-            acceptance
-        )
+        proposal = TransferBroker(
+            ledger,
+            self._evaluator(),
+            policy=self.policy,
+            reserve=self.reserve,
+        ).broker(acceptance)
         result = PipelineResult(
             request=acceptance.request,
             acceptance=acceptance,
@@ -377,7 +401,7 @@ class MaterialPipelineService:
         }
 
 
-material_pipeline_service = MaterialPipelineService()
+material_pipeline_service = MaterialPipelineService(reserve=demand_reserve)
 
 
 __all__ = ["MaterialPipelineService", "material_pipeline_service"]

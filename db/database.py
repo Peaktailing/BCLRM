@@ -841,7 +841,11 @@ class Database:
                     source_code TEXT,
                     warnings TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- 学年（9/1 起算，形如 2026-2027）。需求以学年为周期，
+                    -- 保底只在当前学年内累计，跨年自动翻篇。
+                    -- 新列一律追加在末尾：裸 SQL 里的 SELECT * 按位置取值。
+                    academic_year TEXT
                 )
             """)
 
@@ -1341,9 +1345,28 @@ class Database:
                     cursor.execute(f"ALTER TABLE reagent_bottle ADD COLUMN {_col} {_ddl}")
                     logger.info(f"迁移完成：reagent_bottle 表添加 {_col} 字段（范式化指针）")
 
+            # 4) requirement_sheet 加学年：需求以学年为周期（9/1 起算），
+            #    保底只在当前学年内累计，跨年自动翻篇。回填按 created_at
+            #    推——老库没有这一列，必须给历史单一个归属，否则它们永远
+            #    落在「学年不明」里，既不参与统计也不参与保底。
+            cursor.execute("PRAGMA table_info(requirement_sheet)")
+            rs_cols = {row[1] for row in cursor.fetchall()}
+            if rs_cols and "academic_year" not in rs_cols:
+                cursor.execute("ALTER TABLE requirement_sheet ADD COLUMN academic_year TEXT")
+                from utils.semester_utils import date_to_semester
+
+                for _sid, _created in cursor.execute(
+                        "SELECT id, created_at FROM requirement_sheet").fetchall():
+                    _label = date_to_semester(_created)
+                    if _label:
+                        cursor.execute(
+                            "UPDATE requirement_sheet SET academic_year = ? WHERE id = ?",
+                            (_label, _sid),
+                        )
+                logger.info("迁移完成：requirement_sheet 表添加 academic_year 字段")
+
             if rb_cols:
-                # 4) 回填物质外键：CAS 优先（唯一），名称兜底。CAS 为空不算声明，
-                #    与 chemical_info 的唯一索引口径一致。
+                # 4) 回填物质外键：CAS 优先（唯一），名称兜底。CAS 为空不算声明，                #    与 chemical_info 的唯一索引口径一致。
                 #    用 Python 配对而不是一条相关子查询的 UPDATE：SQLite 在子查询
                 #    里看不到正在被更新的那张表，`reagent_bottle.cas_number` 会报
                 #    no such column（0049 的 Lims 迁移踩过同一个坑）。
