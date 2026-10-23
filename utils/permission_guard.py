@@ -23,9 +23,11 @@ ADMIN_ROLES = {"admin", "super_admin"}
 # 规则1：整表写保护 —— 这些表的任何写操作都要求管理员及以上
 #   person          用户与密码/角色管理（password_hash 自助豁免见 SELF_SERVICE_FIELDS）
 #   controlled_list 管控化学品名录（页面只读，仅数据维护时开放）
+#   system_config   运行时开关（取证必拍、手机地址等），改它等于改制度
 ADMIN_WRITE_TABLES = {
     "person",
     "controlled_list",
+    "system_config",
 }
 
 # 自助豁免字段：仅写入这些字段时无需管理员（用户修改自己的密码）

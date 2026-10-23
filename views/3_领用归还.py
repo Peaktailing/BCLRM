@@ -31,6 +31,11 @@ from services.base.experiment_project_service import experiment_project_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.base.experiment_item_service import experiment_item_service
 from services.base.person_service import person_service
+from business.evidence_service import (
+    PHASE_BORROW,
+    PHASE_RETURN,
+    evidence_service,
+)
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from utils.error_handler import logger
@@ -598,6 +603,18 @@ with tab_approval:
                 key=f"appr_remark_{order.id}",
             )
 
+            # 借出取证：料真的出了库、交到了手上，这一笔才算有物证。
+            # 必拍由系统设置里的开关决定，默认开；上传框无论开不开都给，
+            # 因为「能不能不拍」和「想不想拍」是两件事。
+            _bw_required = evidence_service.require(PHASE_BORROW)
+            _bw_files = st.file_uploader(
+                "📷 发料现场照片" + ("（必填）" if _bw_required else "（可选）"),
+                accept_multiple_files=True,
+                type=["jpg", "jpeg", "png", "webp"],
+                key=f"ev_borrow_{order.id}",
+                help="拍瓶子与交接现场；管理员可在系统设置里关闭必拍",
+            )
+
             if _is_mine:
                 st.caption("该工单由你发起：可撤回，或由你自己审批（指定审批人为你）。")
                 _c_ok, _c_no, _c_wd = st.columns(3)
@@ -610,14 +627,34 @@ with tab_approval:
                     use_container_width=True,
                     key=f"appr_ok_{order.id}",
                 ):
-                    _r = work_order_service.approve_order(
-                        order.id, user_name, _appr_remark
+                    _ev_chk = evidence_service.check(
+                        order.order_number, PHASE_BORROW, len(_bw_files or [])
                     )
-                    if _r.is_success():
-                        st.success(f"✅ {_r.message}")
-                        st.rerun()
+                    if not _ev_chk.success:
+                        st.error(_ev_chk.message)
                     else:
-                        st.error(f"❌ {_r.message}")
+                        _r = work_order_service.approve_order(
+                            order.id, user_name, _appr_remark
+                        )
+                        if _r.is_success():
+                            if _bw_files:
+                                _ev = evidence_service.attach(
+                                    order.order_number,
+                                    PHASE_BORROW,
+                                    _bw_files,
+                                    user_name,
+                                )
+                                if not _ev.success:
+                                    st.success(f"✅ {_r.message}")
+                                    st.warning(
+                                        f"照片未保存：{_ev.message}。"
+                                        "请到「手机取证」页按工单号补拍。"
+                                    )
+                                    st.stop()
+                            st.success(f"✅ {_r.message}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {_r.message}")
             with _c_no:
                 if st.button(
                     "❌ 驳回",
@@ -837,6 +874,16 @@ with tab_return:
                         )
 
                 st.markdown("---")
+                # 归还取证：回库这一刻的剩余量与瓶身状态，是事后核对
+                # 「这瓶到底用掉多少」唯一的实物依据。开关在系统设置里。
+                _ret_required = evidence_service.require(PHASE_RETURN)
+                _ret_files = st.file_uploader(
+                    "📷 回库现场照片" + ("（必填）" if _ret_required else "（可选）"),
+                    accept_multiple_files=True,
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"ev_return_{order_id}",
+                    help="拍剩余量刻度与瓶身状态；管理员可在系统设置里关闭必拍",
+                )
                 if st.button("提交归还", type="primary", use_container_width=True):
                     if not return_entries:
                         st.warning("⚠️ 请至少勾选一瓶要归还的试剂")
@@ -854,14 +901,37 @@ with tab_return:
                             "否则请调整归还比例。"
                         )
                     else:
-                        result = work_order_service.return_items(
-                            order_id, return_entries, user_name
+                        _ev_chk = evidence_service.check(
+                            order.order_number, PHASE_RETURN, len(_ret_files or [])
                         )
-                        if result.is_success():
-                            st.success(f"✅ {result.message}")
-                            st.rerun()
+                        if not _ev_chk.success:
+                            st.error(_ev_chk.message)
                         else:
-                            st.error(f"❌ {result.message}")
+                            result = work_order_service.return_items(
+                                order_id, return_entries, user_name
+                            )
+                            if result.is_success():
+                                if _ret_files:
+                                    _ev = evidence_service.attach(
+                                        order.order_number,
+                                        PHASE_RETURN,
+                                        _ret_files,
+                                        user_name,
+                                    )
+                                    if not _ev.success:
+                                        # 归还已成事实，不能因为照片没存上就
+                                        # 回滚账——只提示补拍。此时不 rerun，
+                                        # 否则这句提示随重跑一起消失。
+                                        st.success(f"✅ {result.message}")
+                                        st.warning(
+                                            f"照片未保存：{_ev.message}。"
+                                            "请到「手机取证」页按工单号补拍。"
+                                        )
+                                        st.stop()
+                                st.success(f"✅ {result.message}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {result.message}")
 
 # ==================== 3. 需求调配（管理员之间流转试剂） ====================
 with tab_allocation:

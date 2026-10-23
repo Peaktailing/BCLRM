@@ -916,8 +916,25 @@ class Database:
                 )
             """)
 
+            # 19. 系统配置（键值对）
+            #
+            # 为什么要一张表而不是写死在 config/settings.py：这里放的是
+            # **随现场变、要由超管当场改**的开关。「借出要不要拍照」这种
+            # 问题，答案取决于这个实验室的危化品管理口径，改一次不该发版。
+            # 常量留在代码里只适合「改了就错」的东西（表名、路径）。
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS system_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    config_key TEXT NOT NULL UNIQUE,
+                    config_value TEXT,
+                    remark TEXT,
+                    updated_by TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # 新增表的 updated_at 触发器（上面通用循环建立时这几张表还不存在）
-            for _tbl in ("recipe", "requirement_sheet", "custodian_route"):
+            for _tbl in ("recipe", "requirement_sheet", "custodian_route", "system_config"):
                 cursor.execute(f"""
                     CREATE TRIGGER IF NOT EXISTS trg_{_tbl}_updated_at
                     AFTER UPDATE ON {_tbl}

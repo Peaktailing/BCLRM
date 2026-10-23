@@ -17,11 +17,13 @@ import secrets
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
+from business.evidence_service import PHASE_BORROW, PHASE_RETURN, evidence_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth, require_super_admin, require_admin
 from utils.password_utils import hash_password
 from services.base.person_service import person_service
 from services.base.operation_log_service import operation_log_service
+from services.base.system_config_service import EvidenceConfig, system_config_service
 from services.core.borrow_record_service import borrow_record_service
 from services.core.return_record_service import return_record_service
 from db.database import db
@@ -239,6 +241,77 @@ def main():
                 st.rerun()
             else:
                 st.error("❌ 修改角色失败，请重试")
+
+    # ========== 现场取证（手机拍照） ==========
+    st.divider()
+    st.subheader("📷 现场取证")
+    st.caption(
+        "借出与归还时的拍照留证。**必拍开关放在这里，是因为「拍不拍」"
+        "是这个实验室的危化品管理口径，不是软件该替人决定的事**——"
+        "学期初可能收紧，期末可能放宽，改一次不该发一次版。"
+    )
+
+    _ev_require_borrow = evidence_service.require(PHASE_BORROW)
+    _ev_require_return = evidence_service.require(PHASE_RETURN)
+    _ev_max_mb = evidence_service.max_mb()
+    _ev_base_url = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
+
+    with st.form("evidence_settings"):
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            _new_require_borrow = st.checkbox(
+                "借出必须拍照",
+                value=_ev_require_borrow,
+                help="打开后，「批准并执行领用」前必须上传发料现场照片",
+            )
+        with _c2:
+            _new_require_return = st.checkbox(
+                "归还必须拍照",
+                value=_ev_require_return,
+                help="打开后，「提交归还」前必须上传回库照片（剩余量、瓶身状态）",
+            )
+        _c3, _c4 = st.columns(2)
+        with _c3:
+            _new_max_mb = st.number_input(
+                "单张照片上限（MB）",
+                min_value=1,
+                max_value=50,
+                value=int(_ev_max_mb),
+                step=1,
+                help="手机原图会先在服务端压缩到长边 1600 像素，通常 200–400 KB",
+            )
+        with _c4:
+            _new_base_url = st.text_input(
+                "手机访问地址",
+                value=_ev_base_url,
+                placeholder="http://192.168.1.10:8601",
+                help=(
+                    "填了之后，瓶身二维码里是一条 URL，手机用系统相机或微信扫一扫"
+                    "就能直接打开取证页；不填则二维码里是短码，需要用取证页的摄像头扫"
+                ),
+            )
+        if st.form_submit_button("保存取证设置", type="primary"):
+            _operator = st.session_state.get("user_name", "")
+            _saved = system_config_service.set_many(
+                {
+                    EvidenceConfig.REQUIRE_BORROW: "1" if _new_require_borrow else "0",
+                    EvidenceConfig.REQUIRE_RETURN: "1" if _new_require_return else "0",
+                    EvidenceConfig.MAX_MB: str(int(_new_max_mb)),
+                    EvidenceConfig.MOBILE_BASE_URL: (_new_base_url or "").strip(),
+                },
+                _operator,
+            )
+            if _saved:
+                st.success(f"✅ 已保存 {_saved} 项取证设置")
+                st.rerun()
+            else:
+                st.error("❌ 保存失败，请重试")
+
+    st.caption(
+        "取证明细：借出照片挂在工单上（`evidence_borrow`），归还照片同挂工单"
+        "（`evidence_return`）。一张单两个阶段互不覆盖，查单时都能看到。"
+        "手机端入口：`/m`，或扫瓶身二维码。"
+    )
 
     # ========== 数据库数据查看 ==========
     st.divider()

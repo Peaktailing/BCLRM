@@ -641,3 +641,21 @@ class CustodianRouteField:
     REMARK = 'remark'  # 备注
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
+
+
+class SystemConfigField:
+    """系统配置表字段名常量
+
+    键值对表：只按 key 取一个值，没有关联查询。值一律是文本，
+    读取走 get_bool / get_int 这类显式转换——不让调用方猜 "1" 还是 "true"。
+    """
+    # ---- 配置键（文本类型，唯一）----
+    CONFIG_KEY = 'config_key'  # 配置键
+    # ---- 配置值（文本类型）----
+    CONFIG_VALUE = 'config_value'  # 配置值
+    # ---- 说明（文本类型）----
+    REMARK = 'remark'  # 说明
+    # ---- 最后修改人（文本类型）----
+    UPDATED_BY = 'updated_by'  # 最后修改人
+    # ---- 记录ID（系统自动生成）----
+    ID = 'id'  # 记录ID

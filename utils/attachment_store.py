@@ -100,6 +100,38 @@ class AttachmentStore:
         if len(content) > max_mb * 1024 * 1024:
             raise ValueError(f"文件超过 {max_mb}MB 大小限制")
 
+        return self.save_bytes(
+            content,
+            original_name,
+            category=category,
+            max_mb=max_mb,
+            ref_type=ref_type,
+            ref_id=ref_id,
+        )
+
+    def save_bytes(
+        self,
+        content: bytes,
+        original_name: str,
+        category: str = "msds",
+        max_mb: int = 10,
+        ref_type: Optional[str] = None,
+        ref_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """保存一段已经处理好的字节（压缩后的照片走这条）。
+
+        与 :meth:`save` 的区别只在入口：那边收 Streamlit 的 UploadedFile，
+        这边收 bytes。写盘与索引登记只有一份实现——两条路径各写一遍，
+        迟早有一条漏掉索引登记，附件就成了找不到的孤儿文件。
+        """
+        original_name = os.path.basename(original_name or "").strip()
+        if not original_name:
+            raise ValueError("上传文件名为空")
+        if not content:
+            raise ValueError("文件内容为空")
+        if len(content) > max_mb * 1024 * 1024:
+            raise ValueError(f"文件超过 {max_mb}MB 大小限制")
+
         stored_name = f"{uuid.uuid4().hex[:12]}_{original_name}"
         target = self._resolve(stored_name)
         target.parent.mkdir(parents=True, exist_ok=True)

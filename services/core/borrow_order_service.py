@@ -78,6 +78,27 @@ class BorrowOrderItemService(BaseService):
             status=record.get('status'),
         )
 
+    def list_by_bottle(self, bottle_number: str, limit: int = 20) -> List[dict]:
+        """这瓶参与过的工单（新→旧），连单头一起取。
+
+        手机取证是「扫码 → 这瓶现在是哪张单」的路径，必须能从瓶反查单。
+        用 join 一次取全，避免每行再查一次单头——现场网络下 20 次往返
+        就是十几秒。
+        """
+        if not (bottle_number or "").strip():
+            return []
+        return self.db.execute_query(
+            "SELECT i.id AS item_id, i.order_id, i.bottle_number, i.reagent_name, "
+            "i.borrow_qty, i.returned_qty, i.unit, i.status AS item_status, "
+            "o.order_number, o.order_type, o.status AS order_status, "
+            "o.applicant, o.borrow_time, o.course_name, o.item_name "
+            "FROM borrow_order_item i "
+            "JOIN borrow_order o ON o.id = i.order_id "
+            "WHERE i.bottle_number = ? "
+            "ORDER BY o.id DESC LIMIT ?",
+            (bottle_number.strip(), int(limit)),
+        )
+
 
 # 全局实例
 borrow_order_service = BorrowOrderService()

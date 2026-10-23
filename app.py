@@ -33,8 +33,13 @@ def _ensure_database():
     同时初始化四库分离的辅助库（日志库/附件索引库/归档冷库）。
     """
     from db.database import init_aux_databases
+    from services.base.system_config_service import ensure_defaults
+
     db.init_tables()
     init_aux_databases()
+    # 系统配置的出厂默认值：只补缺、不覆盖。人工改过（哪怕改成空串）就不碰，
+    # 否则每次启动都会把超管关掉的开关又打开。
+    ensure_defaults()
 
 
 _ensure_database()
@@ -63,6 +68,9 @@ _common_pages = [
     st.Page("views/11_采购管理.py", title="采购管理", icon="🧾"),
     st.Page("views/12_试剂处置.py", title="试剂处置", icon="🧰"),
     st.Page("views/13_配方与需求.py", title="配方与需求", icon="⚗️"),
+    # 手机端入口：url_path="m" 让瓶身二维码可以写成 http://内网地址:8601/m?bottle=xxx
+    # 短路径是刻意的——标签要打印、要手输、要能在手机键盘上敲完。
+    st.Page("views/14_手机取证.py", title="手机取证", icon="📷", url_path="m"),
     st.Page("views/7_化学品信息管理.py", title="化学品信息管理", icon="🧪"),
     st.Page("views/8_管控化学品目录.py", title="管控化学品目录", icon="📋"),
 ]

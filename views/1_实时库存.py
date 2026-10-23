@@ -2,6 +2,10 @@
 
 显示当前试剂库存状态，支持快速查看和筛选。
 """
+import io
+import re
+import zipfile
+
 import streamlit as st
 from business.inventory_service import inventory_service
 from business.query_service import query_service
@@ -9,6 +13,9 @@ from business.manager_service import manager_service
 from business.bottle_state import is_borrowable_now
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
+from services.base.system_config_service import EvidenceConfig, system_config_service
+from services.core.reagent_bottle_service import reagent_bottle_service
+from utils.qr_label import label_png, payload_of
 
 def _derive_bottle_status(bottle):
     """从 borrowable_check 和其他字段派生显示状态"""
@@ -93,6 +100,83 @@ def main():
                 )
             else:
                 st.warning("未找到该条码对应的试剂瓶")
+
+    # ---------- 瓶身二维码标签 ----------
+    #
+    # 手机办借还最难的一步是「说出是哪一瓶」：手输 B-20261023-001 在 4 寸屏
+    # 上是二十几次点击。贴个码，扫一下就进。
+    #
+    # 码里放什么由「手机访问地址」决定：配了就是一条 URL（手机相机直接扫就
+    # 能打开），没配就是短码 BCLRM:B:xxx（得用手机取证页里的摄像头扫）。
+    with st.expander("🖨️ 打印瓶身二维码标签", expanded=False):
+        _base_url = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
+        if _base_url:
+            st.caption(f"二维码将指向：`{_base_url.rstrip('/')}/m?bottle=<瓶号>`")
+        else:
+            st.caption(
+                "还没配「手机访问地址」，二维码里放的是短码 `BCLRM:B:<瓶号>`。"
+                "想让手机相机直接扫开，请到「系统设置 → 现场取证」里填上地址。"
+            )
+        _label_input = st.text_area(
+            "要打印的瓶号（每行一个，也可用逗号分隔）",
+            key="qr_label_input",
+            placeholder="B-20261023-001\nB-20261023-002",
+            height=100,
+        )
+        _numbers = [
+            item
+            for item in re.split(r"[,，;；\s]+", _label_input or "")
+            if item.strip()
+        ]
+        if _numbers:
+            if st.button(f"生成 {len(_numbers)} 张标签", key="qr_label_build"):
+                _labels = {}
+                _missing = []
+                for _number in _numbers:
+                    _bottle = reagent_bottle_service.get_by_bottle_number(_number)
+                    if _bottle is None:
+                        _missing.append(_number)
+                        continue
+                    _png = label_png(
+                        _number,
+                        extra=getattr(_bottle, "reagent_name", "") or "",
+                        payload=payload_of(_number, _base_url),
+                    )
+                    if _png:
+                        _labels[_number] = _png
+                if _missing:
+                    st.warning("这些瓶号在库存里找不到：" + "、".join(_missing))
+                if _labels:
+                    st.session_state["qr_labels"] = _labels
+                else:
+                    st.error("一张都没生成出来。请检查瓶号，或确认已安装 segno。")
+
+        _labels = st.session_state.get("qr_labels") or {}
+        if _labels:
+            _cols = st.columns(3)
+            for _index, (_number, _png) in enumerate(_labels.items()):
+                with _cols[_index % 3]:
+                    st.image(_png, use_container_width=True)
+                    st.download_button(
+                        "下载",
+                        data=_png,
+                        file_name=f"label_{_number}.png",
+                        mime="image/png",
+                        key=f"qr_dl_{_number}_{_index}",
+                    )
+            # 一次打一批标签是常态（新入库几十瓶），逐个下载不现实
+            _buffer = io.BytesIO()
+            with zipfile.ZipFile(_buffer, "w", zipfile.ZIP_DEFLATED) as _zip:
+                for _number, _png in _labels.items():
+                    _zip.writestr(f"label_{_number}.png", _png)
+            st.download_button(
+                f"打包下载全部（{len(_labels)} 张）",
+                data=_buffer.getvalue(),
+                file_name="bottle_labels.zip",
+                mime="application/zip",
+                type="primary",
+                key="qr_dl_zip",
+            )
 
     # 管理权流转已移至「试剂处置」页面（支持多选 / 批量流转）
 
