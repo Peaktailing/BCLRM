@@ -21,6 +21,7 @@ from decimal import Decimal
 from typing import Optional, Sequence
 
 from capabilities.circulation.ledger import CustodyLedger
+from capabilities.circulation.picking import ReservePort, ReserveQuery, ShelfPolicy
 from capabilities.circulation.routing import CustodianRouter
 from capabilities.supply.evaluator import SupplyEvaluator
 from capabilities.supply.stock import StockLot
@@ -44,10 +45,17 @@ class AcceptanceDesk:
         router: CustodianRouter,
         ledger: CustodyLedger,
         evaluator: Optional[SupplyEvaluator] = None,
+        policy: Optional[ShelfPolicy] = None,
+        reserve: Optional[ReservePort] = None,
     ) -> None:
         self.router = router
         self.ledger = ledger
         self.evaluator = evaluator or SupplyEvaluator()
+        # 抽卡规则：窗口内的局部最优（见 capabilities/circulation/picking）
+        self.policy = policy or ShelfPolicy()
+        # 保底来源：窗口内他还够不够用。为 None 时不保底——宁可发得出，
+        # 也不因为算不出未来而把整张申请卡死。
+        self.reserve = reserve
 
     # ---------------------------------------------------------------- 主流程
     def receive(self, request: TeacherRequest) -> Acceptance:
@@ -57,6 +65,13 @@ class AcceptanceDesk:
             RoutingError: 没有为该申请指派受理人（配置缺失，不是业务失败）。
         """
         custodian = self.router.route(request)
+        # 同一来源的单要排除在保底之外：这张单自己还没发出去，若把自己
+        # 算成「他还要用的量」，需求就永远抽不出来。
+        exclude = (
+            (request.source.kind.value, request.source.code)
+            if request.source is not None
+            else None
+        )
 
         # 只拿这个人名下的快照——越界在类型层面就不可能
         subset = self.ledger.subset(custodian)
@@ -72,7 +87,7 @@ class AcceptanceDesk:
 
             if granted.is_positive():
                 issued.append(
-                    self._make_issue(coverage, granted, custodian, notes)
+                    self._make_issue(coverage, granted, custodian, notes, exclude)
                 )
             if not coverage.is_covered:
                 shortfalls.append(
@@ -114,10 +129,11 @@ class AcceptanceDesk:
         granted: Quantity,
         custodian: Custodian,
         notes: list[str],
+        exclude: Optional[tuple[str, str]] = None,
     ) -> IssueLine:
         requirement = coverage.requirement
         custodian_note = custodian.describe()
-        picks = self._pick_lots(custodian, requirement.substance, granted)
+        picks = self._pick_lots(custodian, requirement.substance, granted, exclude)
         if not picks:
             # 跨量纲发放（库存记 mL、需求记 g）：算得出总量，但没法预先指定
             # 具体哪一瓶——由现场按折算量取。这里如实说明，不假装知道批号。
@@ -145,35 +161,61 @@ class AcceptanceDesk:
         )
 
     def _pick_lots(
-        self, custodian: Custodian, ref, quantity: Quantity
+        self,
+        custodian: Custodian,
+        ref,
+        quantity: Quantity,
+        exclude: Optional[tuple[str, str]] = None,
     ) -> tuple[LotPick, ...]:
-        """按「先到期先用」从**受理人名下**该物质的批次上取量。
+        """按抽卡规则从**受理人名下**该物质的批次上取量。
 
-        量纲对不上时返回空——那种情况下不该假装知道是哪一瓶。
+        规则本身在 :class:`ShelfPolicy` 里：先筛掉不能动的（状态、余量、
+        保底），再按全序键挑。量纲对不上时返回空——那种情况下不该假装
+        知道是哪一瓶。
         """
-        lots = self._sorted_lots(custodian, ref, quantity.unit)
-        remaining = quantity
-        picks: list[LotPick] = []
-        for lot in lots:
-            if remaining.base_value() <= 0:
-                break
-            take = lot.quantity if lot.quantity < remaining else remaining
-            if take.is_positive():
-                picks.append(LotPick(lot_id=lot.lot_id, quantity=take))
-                remaining = remaining - take
-        return tuple(picks)
+        lots = self._candidate_lots(custodian, ref, quantity.unit)
+        if not lots:
+            return ()
+        return self.policy.pick(
+            lots,
+            quantity,
+            pool=_total(lots, quantity.unit),
+            reserved=self._reserved(custodian, ref, exclude),
+        )
 
-    def _sorted_lots(self, custodian: Custodian, ref, unit) -> Sequence[StockLot]:
-        """受理人名下同量纲批次，先到期先用（FEFO）。
+    def _candidate_lots(
+        self, custodian: Custodian, ref, unit
+    ) -> tuple[StockLot, ...]:
+        """受理人名下同量纲的候选批次。只从 ``ledger.lots`` 取，不可能
+        拿到别人的瓶子。
 
-        只从 ``ledger.lots(custodian, ...)`` 取，不可能拿到别人的瓶子。
+        这里**不排序**：顺序是抽卡规则的事，放在两处排早晚会走偏。
         """
-        lots = [
+        return tuple(
             lot
             for lot in self.ledger.lots(custodian, ref)
             if lot.quantity.unit.dimension is unit.dimension
-        ]
-        return tuple(sorted(lots, key=lambda lot: lot.fefo_key))
+        )
+
+    def _reserved(
+        self,
+        custodian: Custodian,
+        ref,
+        exclude: Optional[tuple[str, str]] = None,
+    ) -> Optional[Quantity]:
+        """窗口内他还要用的量。算不出来就当没有保底，不阻塞发放。"""
+        if self.reserve is None:
+            return None
+        try:
+            return self.reserve(
+                ReserveQuery(
+                    custodian=custodian,
+                    substance=ref,
+                    exclude_source=exclude,
+                )
+            )
+        except Exception:  # 保底是优化，不该成为发不出料的原因
+            return None
 
     def _shortfall_reason(self, coverage: CoverageLine, custodian_name: str) -> str:
         if coverage.available.is_zero():
@@ -199,4 +241,13 @@ class AcceptanceDesk:
         ]
 
 
-__all__ = ["AcceptanceDesk"]
+def _total(lots: Sequence[StockLot], unit) -> Quantity:
+    """候选批次在该量纲上的合计。"""
+    total = Quantity.zero(unit)
+    for lot in lots:
+        if lot.quantity.unit.dimension is unit.dimension:
+            total = total + lot.quantity
+    return total
+
+
+__all__ = ["AcceptanceDesk", "ReservePort"]

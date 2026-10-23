@@ -97,6 +97,10 @@ class StockLot:
     # 空串表示尚未指定保管人（归超级管理员统一兜底）。它不是"使用者"，
     # 而是"临时所有人"——教师使用试剂但不持有保管权。
     custodian: str = ""
+    # 开封日期：非空即已开封。抽卡时已开封的先出（少开一瓶是一瓶），
+    # 来源是 reagent_bottle.unseal_date。它同时是效期风险的信号——开封后
+    # 的保质期比未开封短，先消耗它两头都对。
+    opened_on: Optional[date] = None
 
     # ---------------------------------------------------------------- 判定
     @property
@@ -114,14 +118,21 @@ class StockLot:
         return (self.expires_on - date.today()).days
 
     @property
+    def urgency(self) -> int:
+        """效期紧急度的数值化（越小越急）。
+
+        抽卡排序单独用这一位，比 ``fefo_key`` 的元组更适合拼进更长的键。
+        """
+        return _EXPIRY_URGENCY.get(self.expiry, 5)
+
+    @property
     def fefo_key(self) -> tuple:
         """先到期先用（First Expired First Out）的排序键。
 
         状态比日期更紧急：标了临期的瓶即使没填日期，也该先出。同状态内
         再按到期日、批次号排，保证顺序稳定可复现。
         """
-        rank = _EXPIRY_URGENCY.get(self.expiry, 5)
-        return (rank, self.expires_on or date.max, self.lot_id)
+        return (self.urgency, self.expires_on or date.max, self.lot_id)
 
     def describe(self) -> str:
         bits = [self.lot_id, self.quantity.format(2)]
@@ -162,6 +173,7 @@ class StockLot:
                 _dec(row.get("unit_price")) if row.get("unit_price") not in (None, "") else None
             ),
             custodian=(row.get("manager") or "").strip(),
+            opened_on=_parse_date(row.get("unseal_date")),
         )
 
 

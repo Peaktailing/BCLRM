@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 from capabilities.circulation.ledger import CustodyLedger
+from capabilities.circulation.picking import ReservePort, ReserveQuery, ShelfPolicy
 from capabilities.supply.evaluator import SupplyEvaluator
 from capabilities.supply.stock import StockLot
 from domain.custody import Custodian
@@ -50,10 +51,17 @@ class TransferBroker:
         ledger: CustodyLedger,
         evaluator: Optional[SupplyEvaluator] = None,
         prefer_same_department: bool = True,
+        policy: Optional[ShelfPolicy] = None,
+        reserve: Optional[ReservePort] = None,
     ) -> None:
         self.ledger = ledger
         self.evaluator = evaluator or SupplyEvaluator()
         self.prefer_same_department = prefer_same_department
+        # 与第一段同一套抽卡规则：建议调哪几瓶、先动哪一瓶，两段必须一致，
+        # 否则「建议的瓶号」和「实际发的瓶」对不上。
+        self.policy = policy or ShelfPolicy()
+        # 出料人在窗口内自己还要用的量，不能被我调走。
+        self.reserve = reserve
 
     # ---------------------------------------------------------------- 主流程
     def broker(self, acceptance: Acceptance) -> TransferProposal:
@@ -66,6 +74,9 @@ class TransferBroker:
             return TransferProposal(beneficiary=acceptance.custodian)
 
         beneficiary = acceptance.custodian
+        # 与第一段同源排除：这张申请自己的需求量不该算进出料人的保底。
+        source = acceptance.request.source
+        exclude = (source.kind.value, source.code) if source is not None else None
         # 剩余待落实量：按物质键跟踪，跨管调拨时逐轮扣减
         remaining: dict[str, Quantity] = {
             line.key: line.quantity for line in sheet.lines
@@ -91,7 +102,9 @@ class TransferBroker:
                 if not take.is_positive():
                     continue
 
-                lot_id = self._lot_hint(supplier, coverage.requirement.substance, take)
+                lot_id = self._lot_hint(
+                    supplier, coverage.requirement.substance, take, exclude
+                )
                 lines.append(
                     TransferLine(
                         from_custodian=supplier,
@@ -179,8 +192,14 @@ class TransferBroker:
             source=sheet.source,
         )
 
-    def _lot_hint(self, supplier: Custodian, ref, quantity: Quantity) -> str:
-        """给出建议取的瓶（先到期先用）；跨量纲时留空。"""
+    def _lot_hint(
+        self,
+        supplier: Custodian,
+        ref,
+        quantity: Quantity,
+        exclude: Optional[tuple[str, str]] = None,
+    ) -> str:
+        """给出建议取的瓶（与第一段同一套抽卡规则）；跨量纲时留空。"""
         lots: Sequence[StockLot] = [
             lot
             for lot in self.ledger.lots(supplier, ref)
@@ -188,22 +207,42 @@ class TransferBroker:
         ]
         if not lots:
             return ""
-        ordered = sorted(lots, key=lambda lot: lot.fefo_key)
-        need = quantity
-        picked: list[LotPick] = []
-        for lot in ordered:
-            if not need.is_positive():
-                break
-            take = lot.quantity if lot.quantity < need else need
-            if take.is_positive():
-                picked.append(LotPick(lot.lot_id, take))
-                need = need - take
-        if not picked:
+        picks = self.policy.pick(
+            lots,
+            quantity,
+            pool=_total(lots, quantity.unit),
+            reserved=self._reserved(supplier, ref, exclude),
+        )
+        if not picks:
             return ""
-        if need.is_positive():
-            # 单瓶不够，给出多瓶（实际执行时按序取，不会超发）
-            return ",".join(pick.lot_id for pick in picked)
-        return picked[0].lot_id
+        if len(picks) == 1 and picks[0].quantity.base_value() >= quantity.base_value():
+            return picks[0].lot_id
+        # 单瓶不够，给出多瓶（实际执行时按序取，不会超发）
+        return ",".join(pick.lot_id for pick in picks)
+
+    def _reserved(
+        self,
+        supplier: Custodian,
+        ref,
+        exclude: Optional[tuple[str, str]] = None,
+    ) -> Optional[Quantity]:
+        """出料人在窗口内还要用的量。算不出来就当没有保底。"""
+        if self.reserve is None:
+            return None
+        try:
+            return self.reserve(
+                ReserveQuery(custodian=supplier, substance=ref, exclude_source=exclude)
+            )
+        except Exception:
+            return None
+
+
+def _total(lots: Sequence[StockLot], unit) -> Quantity:
+    total = Quantity.zero(unit)
+    for lot in lots:
+        if lot.quantity.unit.dimension is unit.dimension:
+            total = total + lot.quantity
+    return total
 
 
 def broker_gaps(
