@@ -289,36 +289,49 @@ class Database:
             # 9. 试剂瓶信息表（核心主表）
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reagent_bottle (
+                    -- 列顺序保持原样：裸 SQL 里的 SELECT * 按位置取值，重排会
+                    -- 静默错位。新列只追加在末尾。
+                    --
+                    -- 这一行只代表「这一瓶」，不代表「这种物质」，也不代表
+                    -- 「这批货」——那两件事在 chemical_info 与 bottle_lot。
+                    -- 带 ☆ 的列是共享或派生值，第二段迁移后删除，读到的是
+                    -- 档案 / 批次表 / 借还汇总视图。
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bottle_number TEXT NOT NULL UNIQUE,
                     barcode TEXT,
-                    reagent_name TEXT,
-                    cas_number TEXT,
-                    remaining_quantity REAL,
-                    specification REAL,
-                    unit TEXT DEFAULT 'g',
-                    purity TEXT,
-                    reagent_type TEXT,
-                    is_controlled INTEGER DEFAULT 0,
-                    storage_requirement TEXT,
-                    unit_price REAL,
-                    supplier TEXT,
-                    production_date TEXT,
-                    inbound_date TEXT,
+                    reagent_name TEXT,          -- ☆ 物质：chemical_info.name
+                    cas_number TEXT,            -- ☆ 物质：chemical_info.cas_number
+                    remaining_quantity REAL,    -- ☆ 派生：借还流水汇总
+                    specification REAL,         -- ☆ 批次：bottle_lot.specification
+                    unit TEXT DEFAULT 'g',      -- ☆ 批次：bottle_lot.unit
+                    purity TEXT,                -- ☆ 物质：chemical_info.purity_default
+                    reagent_type TEXT,          -- ☆ 物质：chemical_info.reagent_type
+                    is_controlled INTEGER DEFAULT 0,   -- ☆ 物质：controlled_list 命中
+                    storage_requirement TEXT,   -- ☆ 物质：chemical_info.storage_requirement
+                    unit_price REAL,            -- ☆ 批次：bottle_lot.unit_price
+                    supplier TEXT,              -- ☆ 批次：bottle_lot.supplier
+                    production_date TEXT,       -- ☆ 批次：bottle_lot.production_date
+                    inbound_date TEXT,          -- ☆ 批次：bottle_lot.inbound_date
                     unseal_date TEXT,
-                    last_borrow_time TEXT,
-                    last_return_time TEXT,
-                    last_return_record_no INTEGER,
-                    storage_location TEXT,
+                    last_borrow_time TEXT,      -- ☆ 派生：最近一张领用单
+                    last_return_time TEXT,      -- ☆ 派生：最近一条归还记录
+                    last_return_record_no INTEGER,     -- ☆ 派生同上
+                    storage_location TEXT,      -- ☆ 位置：bottle_placement 最新一条
                     borrowable_flag TEXT DEFAULT '可借',  -- 业务状态：可借/已借出/耗尽/空瓶（与 borrowable_check 同步）
                     borrowable_check INTEGER DEFAULT 1,  -- borrowable_check: 1=可借, 0=不可借
                     expired_flag TEXT DEFAULT '正常',
-                    expiry_date TEXT,
+                    expiry_date TEXT,           -- ☆ 批次：bottle_lot.expiry_date
                     scrap_flag TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- 范式化指针（追加）：物质、批次、当前位置的落表时间
+                    chemical_id INTEGER,
+                    lot_id INTEGER,
+                    placement_at TIMESTAMP,
                     FOREIGN KEY (supplier) REFERENCES supplier(name),
-                    FOREIGN KEY (storage_location) REFERENCES storage_location(name)
+                    FOREIGN KEY (storage_location) REFERENCES storage_location(name),
+                    FOREIGN KEY (chemical_id) REFERENCES chemical_info(id),
+                    FOREIGN KEY (lot_id) REFERENCES bottle_lot(id)
                 )
             """)
 
@@ -940,6 +953,59 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_custodian_route_scope ON custodian_route(scope_type, scope_key)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_custodian_route_custodian ON custodian_route(custodian)")
 
+            # ── 试剂瓶的批次与位置（范式化的第一步，见 docs/表规范与范式化设计.md）──
+            # bottle_lot：一次采购到货的一批瓶子共享的供应商/货号/批号/日期/
+            # 单价/包装规格。原先这些是 reagent_bottle 上的列，五瓶同一箱到货
+            # 就要写五遍，改一次有效期要改五行。现在写一遍，瓶子指过来。
+            #
+            # 与 Lims 仓的 chem_lot 对应：那边主键 id + substance_id_fk，
+            # 这边 id + chemical_id（主仓的化学品档案是 chemical_info）。
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bottle_lot (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chemical_id INTEGER,
+                    supplier TEXT,
+                    catalog_number TEXT,
+                    lot_number TEXT,
+                    unit_price REAL,
+                    specification REAL,
+                    unit TEXT DEFAULT 'g',
+                    production_date TEXT,
+                    inbound_date TEXT,
+                    expiry_date TEXT,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (chemical_id) REFERENCES chemical_info(id)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_lot_chemical ON bottle_lot(chemical_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_lot_number ON bottle_lot(lot_number)")
+
+            # bottle_placement：一瓶试剂放在哪，以及以前放在哪。原先只有
+            # reagent_bottle.storage_location 一个当前值，历史丢失；而教学
+            # 实验室恰恰要回答「这瓶什么时候、被谁放到学生台上」。
+            # 位置变更是一串事件，当前值是最新那条（v_bottle_current_place）。
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bottle_placement (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bottle_number TEXT NOT NULL,
+                    storage_location TEXT,
+                    moved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    moved_by TEXT,
+                    note TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_placement_bottle ON bottle_placement(bottle_number, moved_at)")
+            # 当前位置 = 这一瓶最新的一条位置记录。用 MAX(id) 而不是
+            # MAX(moved_at)：同一秒挪两次时时间戳并列，id 才是顺序。
+            cursor.execute("""
+                CREATE VIEW IF NOT EXISTS v_bottle_current_place AS
+                SELECT p.bottle_number, p.storage_location, p.moved_at, p.moved_by, p.note
+                FROM bottle_placement p
+                WHERE p.id = (SELECT MAX(q.id) FROM bottle_placement q
+                              WHERE q.bottle_number = p.bottle_number)
+            """)
+
             # 预定单表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_order_number ON reservation_order(order_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_semester ON reservation_order(semester)")
@@ -1216,6 +1282,120 @@ class Database:
                         f"ALTER TABLE {_tbl} ADD COLUMN unit TEXT DEFAULT 'g'"
                     )
                     logger.info(f"迁移完成：{_tbl} 表添加 unit 字段")
+
+            # ── 迁移：化学域范式化（共享信息上移到档案 / 批次 / 位置）──
+            # 判据只有一条：这一列是「随事件变化」「被多行共享」还是「一批货
+            # 共享」。随事件变化 → 事件表；被多行共享 → 物质档案；一批货共享
+            # → 批次表。原 reagent_bottle 三十列里，前三类各占了一部分，
+            # 只有「编号、位置指针、备注、时间戳」真正属于这一瓶。
+            #
+            # 这一段只做加法：新列、新表、回填。旧列一个不删，写入时双写，
+            # 读路径逐步切换（expand → migrate → contract）。设计依据见
+            # docs/表规范与范式化设计.md。
+
+            # 1) chemical_info 补齐物质固有属性：这些原先是每一瓶各写一份的
+            cursor.execute("PRAGMA table_info(chemical_info)")
+            chem_cols = {row[1] for row in cursor.fetchall()}
+            for _col, _ddl in (
+                ("molecular_weight", "REAL"),
+                # g/mL。跨量纲换算唯一依赖的数：需求写克、库存是毫升时，
+                # 没有密度只能拒绝换算，不能猜。
+                ("density", "REAL"),
+                ("purity_default", "REAL"),
+                ("grade_default", "TEXT"),
+                ("alias", "TEXT"),
+                ("hazard", "TEXT"),
+                ("msds_url", "TEXT"),
+            ):
+                if chem_cols and _col not in chem_cols:
+                    cursor.execute(f"ALTER TABLE chemical_info ADD COLUMN {_col} {_ddl}")
+                    logger.info(f"迁移完成：chemical_info 表添加 {_col} 字段（物质固有属性）")
+
+            # 2) controlled_list 取两仓并集：notes 与 sync_version 来自 Lims 仓，
+            #    updated_at 与唯一约束本仓原有。sync_version 本仓不读写，
+            #    留着是为了合仓时 Lims 的离线增量同步不断。
+            cursor.execute("PRAGMA table_info(controlled_list)")
+            ctl_cols = {row[1] for row in cursor.fetchall()}
+            for _col, _ddl in (("notes", "TEXT"), ("sync_version", "INTEGER DEFAULT 0")):
+                if ctl_cols and _col not in ctl_cols:
+                    cursor.execute(f"ALTER TABLE controlled_list ADD COLUMN {_col} {_ddl}")
+                    logger.info(f"迁移完成：controlled_list 表添加 {_col} 字段（与 Lims 并集）")
+
+            # 3) reagent_bottle 加三个指针：物质、批次、位置时间
+            cursor.execute("PRAGMA table_info(reagent_bottle)")
+            rb_cols = {row[1] for row in cursor.fetchall()}
+            for _col, _ddl in (
+                ("chemical_id", "INTEGER"),
+                ("lot_id", "INTEGER"),
+                ("placement_at", "TIMESTAMP"),
+            ):
+                if rb_cols and _col not in rb_cols:
+                    cursor.execute(f"ALTER TABLE reagent_bottle ADD COLUMN {_col} {_ddl}")
+                    logger.info(f"迁移完成：reagent_bottle 表添加 {_col} 字段（范式化指针）")
+
+            if rb_cols:
+                # 4) 回填物质外键：CAS 优先（唯一），名称兜底。CAS 为空不算声明，
+                #    与 chemical_info 的唯一索引口径一致。
+                #    用 Python 配对而不是一条相关子查询的 UPDATE：SQLite 在子查询
+                #    里看不到正在被更新的那张表，`reagent_bottle.cas_number` 会报
+                #    no such column（0049 的 Lims 迁移踩过同一个坑）。
+                _by_cas, _by_name = {}, {}
+                for _cid, _cname, _ccas in cursor.execute(
+                        "SELECT id, name, cas_number FROM chemical_info").fetchall():
+                    if _cname:
+                        _by_name.setdefault(_cname.strip(), _cid)
+                    if _ccas and _ccas.strip():
+                        _by_cas.setdefault(_ccas.strip(), _cid)
+                _matched = 0
+                for _no, _cas, _name in cursor.execute(
+                        "SELECT bottle_number, cas_number, reagent_name FROM reagent_bottle "
+                        "WHERE chemical_id IS NULL").fetchall():
+                    _cid = _by_cas.get((_cas or "").strip()) or _by_name.get((_name or "").strip())
+                    if _cid is not None:
+                        cursor.execute(
+                            "UPDATE reagent_bottle SET chemical_id = ? WHERE bottle_number = ?",
+                            (_cid, _no))
+                        _matched += 1
+                if _matched:
+                    logger.info(f"迁移完成：{_matched} 个试剂瓶已关联物质档案")
+
+                # 5) 回填批次：一次到货 = 同一物质 + 同一供应商 + 同一单价 + 同一规格。
+                #    没有厂家批号可依据，这四项是能拿到的最强签名。
+                cursor.execute("""
+                    SELECT bottle_number, chemical_id, supplier, unit_price, specification,
+                           unit, production_date, inbound_date, expiry_date, created_at
+                    FROM reagent_bottle WHERE lot_id IS NULL
+                """)
+                _lots = {}
+                _filled = 0
+                for (_no, _chem, _sup, _price, _spec, _unit, _prod, _in, _exp, _created) in cursor.fetchall():
+                    _key = (_chem, _sup, _price, _spec)
+                    _lot = _lots.get(_key)
+                    if _lot is None:
+                        cursor.execute("""
+                            INSERT INTO bottle_lot
+                                (chemical_id, supplier, unit_price, specification, unit,
+                                 production_date, inbound_date, expiry_date, notes, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', COALESCE(?, CURRENT_TIMESTAMP))
+                        """, (_chem, _sup, _price, _spec, _unit or "g", _prod, _in, _exp, _created))
+                        _lot = cursor.lastrowid
+                        _lots[_key] = _lot
+                    cursor.execute("UPDATE reagent_bottle SET lot_id = ? WHERE bottle_number = ?", (_lot, _no))
+                    _filled += 1
+                if _filled:
+                    logger.info(f"迁移完成：{_filled} 个试剂瓶已归入 {len(_lots)} 个来源批次")
+
+                # 6) 回填位置：每瓶写一条当前位置。此后每次挪动追加一条，
+                #    当前值取最新那条，历史不再丢。
+                cursor.execute("""
+                    INSERT INTO bottle_placement (bottle_number, storage_location, moved_at, moved_by, note)
+                    SELECT b.bottle_number, b.storage_location,
+                           COALESCE(b.created_at, CURRENT_TIMESTAMP), '', '初始位置（迁移回填）'
+                    FROM reagent_bottle b
+                    WHERE NOT EXISTS (SELECT 1 FROM bottle_placement p WHERE p.bottle_number = b.bottle_number)
+                """)
+                if cursor.rowcount and cursor.rowcount > 0:
+                    logger.info(f"迁移完成：{cursor.rowcount} 个试剂瓶的当前位置已写入 bottle_placement")
 
             self.connection.commit()
 
