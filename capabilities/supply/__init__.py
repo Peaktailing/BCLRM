@@ -1,0 +1,56 @@
+"""供应能力中心：库存 → 可用量 → 缺口 → 采购建议。"""
+from capabilities.supply.availability import (
+    Availability,
+    AvailabilityPolicy,
+    BorrowableOnly,
+    ExcludedLot,
+    ExcludeSubstance,
+    HasQuantity,
+    LotFilter,
+    NotExpired,
+    StandardAvailabilityPolicy,
+    StrictAvailabilityPolicy,
+    WithinDays,
+    standard_policy,
+    strict_policy,
+)
+from capabilities.supply.evaluator import SupplyAssessment, SupplyEvaluator, assess
+from capabilities.supply.procurement import (
+    PackCatalog,
+    PackSpec,
+    ProcurementPlanner,
+    PurchaseProposal,
+    PurchaseProposalLine,
+    StaticPackCatalog,
+    proposal_from_mapping,
+)
+from capabilities.supply.stock import ExpiryState, StockLot, StockSnapshot
+
+__all__ = [
+    "ExpiryState",
+    "StockLot",
+    "StockSnapshot",
+    "Availability",
+    "AvailabilityPolicy",
+    "LotFilter",
+    "HasQuantity",
+    "BorrowableOnly",
+    "NotExpired",
+    "WithinDays",
+    "ExcludeSubstance",
+    "ExcludedLot",
+    "standard_policy",
+    "strict_policy",
+    "StandardAvailabilityPolicy",
+    "StrictAvailabilityPolicy",
+    "SupplyAssessment",
+    "SupplyEvaluator",
+    "assess",
+    "PackSpec",
+    "PackCatalog",
+    "StaticPackCatalog",
+    "ProcurementPlanner",
+    "PurchaseProposal",
+    "PurchaseProposalLine",
+    "proposal_from_mapping",
+]

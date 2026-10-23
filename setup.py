@@ -13,13 +13,15 @@ from setuptools import setup, find_packages
 
 setup(
     name="reagent-manager",
-    version="0.88",
+    version="0.9.0",
     description="试剂库管理系统 - 化学实验室试剂全生命周期管理",
     author="Peaktailing",
     url="https://github.com/Peaktailing/BCLRM",
     packages=find_packages(
         include=["models", "models.*", "services", "services.*",
-                 "business", "components", "db", "utils", "config", "scripts"]
+                 "business", "business.*", "components", "components.*",
+                 "domain", "domain.*", "capabilities", "capabilities.*",
+                 "db", "utils", "config", "scripts"]
     ),
     include_package_data=True,
     package_data={

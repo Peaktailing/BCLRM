@@ -452,3 +452,171 @@ class ControlledListField:
     DANGEROUS_TYPE = 'dangerous_type'  # 危化品类型
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
+
+
+class RecipeField:
+    """配方表字段名常量
+
+    配方的物料侧声明：标题、版本、状态与来源引用。实验属于教学还是科研
+    只体现在 source_kind/source_code，不参与任何业务分支。
+    """
+    # ---- 配方业务键（文本类型，唯一，如 teach:aspirin / research:PRJ-001）----
+    RECIPE_KEY = 'recipe_key'  # 配方业务键
+    # ---- 标题（文本类型）----
+    TITLE = 'title'  # 标题
+    # ---- 版本号（整数类型，内容变化即升版）----
+    VERSION = 'version'  # 版本号
+    # ---- 状态（文本类型：draft / validated / archived）----
+    STATUS = 'status'  # 状态
+    # ---- 来源类别（文本类型：teaching / research / manual）----
+    SOURCE_KIND = 'source_kind'  # 来源类别
+    # ---- 来源编码（文本类型，课程/实验名或项目编号）----
+    SOURCE_CODE = 'source_code'  # 来源编码
+    # ---- 来源标题（文本类型）----
+    SOURCE_TITLE = 'source_title'  # 来源标题
+    # ---- 负责人（文本类型）----
+    OWNER = 'owner'  # 负责人
+    # ---- 备注（文本类型）----
+    NOTE = 'note'  # 备注
+    # ---- 记录ID（系统自动生成）----
+    ID = 'id'  # 记录ID
+
+
+class RecipeComponentField:
+    """配方组分表字段名常量
+
+    一行组分 = 一个物质 + 一个角色 + 一条计量规则。计量规则用
+    amount_type 判别，其余列是该规则扁平化后的参数。
+    """
+    # ---- 所属配方ID（整数类型）----
+    RECIPE_ID = 'recipe_id'  # 所属配方ID
+    # ---- 显示顺序（整数类型）----
+    SEQ = 'seq'  # 显示顺序
+    # ---- 角色（文本类型：reactant/reagent/solvent/catalyst/indicator/consumable/product）----
+    ROLE = 'role'  # 角色
+    # ---- 物质引用键（文本类型，cas:xxx / formula:xxx / name:xxx）----
+    SUBSTANCE_KEY = 'substance_key'  # 物质引用键
+    # ---- 显示名称（文本类型）----
+    DISPLAY_NAME = 'display_name'  # 显示名称
+    # ---- CAS号（文本类型）----
+    CAS_NUMBER = 'cas_number'  # CAS号
+    # ---- 分子式（文本类型）----
+    FORMULA = 'formula'  # 分子式
+    # ---- 计量方式（文本类型：fixed/per_person/per_batch/equivalents/ratio/concentration）----
+    AMOUNT_TYPE = 'amount_type'  # 计量方式
+    # ---- 计量数值（数字类型）----
+    AMOUNT_VALUE = 'amount_value'  # 计量数值
+    # ---- 计量单位（文本类型）----
+    AMOUNT_UNIT = 'amount_unit'  # 计量单位
+    # ---- 基准组分引用键（文本类型，当量/配比/浓度用）----
+    REF_KEY = 'ref_key'  # 基准组分引用键
+    # ---- 浓度值（数字类型）----
+    CONCENTRATION = 'concentration'  # 浓度值
+    # ---- 浓度单位（文本类型，如 mol/L）----
+    CONCENTRATION_UNIT = 'concentration_unit'  # 浓度单位
+    # ---- 化学计量系数（数字类型）----
+    COEFFICIENT = 'coefficient'  # 化学计量系数
+    # ---- 纯度要求（数字类型，0~1）----
+    PURITY_REQUIRED = 'purity_required'  # 纯度要求
+    # ---- 备注（文本类型）----
+    NOTE = 'note'  # 备注
+    # ---- 记录ID（系统自动生成）----
+    ID = 'id'  # 记录ID
+
+
+class RequirementSheetField:
+    """需求单头表字段名常量
+
+    配方 × 规模 的一次计算结果，只追加不改写：谁在什么库存状态下批的
+    这批料，事后查得到。
+    """
+    # ---- 单据号（文本类型，唯一）----
+    SHEET_NUMBER = 'sheet_number'  # 单据号
+    # ---- 配方ID（整数类型）----
+    RECIPE_ID = 'recipe_id'  # 配方ID
+    # ---- 配方业务键（文本类型）----
+    RECIPE_KEY = 'recipe_key'  # 配方业务键
+    # ---- 单据标题（文本类型）----
+    TITLE = 'title'  # 单据标题
+    # ---- 状态（文本类型：draft/submitted/approved/issued/closed）----
+    STATUS = 'status'  # 状态
+    # ---- 人数（整数类型）----
+    PERSONS = 'persons'  # 人数
+    # ---- 批次数（整数类型）----
+    BATCHES = 'batches'  # 批次数
+    # ---- 容器体积（数字类型）----
+    VESSEL_VOLUME = 'vessel_volume'  # 容器体积
+    # ---- 容器体积单位（文本类型）----
+    VESSEL_UNIT = 'vessel_unit'  # 容器体积单位
+    # ---- 规模说明（文本类型）----
+    SCALE_LABEL = 'scale_label'  # 规模说明
+    # ---- 申请人（文本类型）----
+    REQUESTER = 'requester'  # 申请人
+    # ---- 来源类别（文本类型）----
+    SOURCE_KIND = 'source_kind'  # 来源类别
+    # ---- 来源编码（文本类型）----
+    SOURCE_CODE = 'source_code'  # 来源编码
+    # ---- 告警摘要（文本类型，JSON 数组）----
+    WARNINGS = 'warnings'  # 告警摘要
+    # ---- 记录ID（系统自动生成）----
+    ID = 'id'  # 记录ID
+
+
+class RequirementLineField:
+    """需求明细表字段名常量
+
+    明细里同时保留「算出来的需求」与「评估时的可用量/缺口」，因此这张
+    单子本身就是一份可对账的凭证。
+    """
+    # ---- 所属需求单ID（整数类型）----
+    SHEET_ID = 'sheet_id'  # 所属需求单ID
+    # ---- 显示顺序（整数类型）----
+    SEQ = 'seq'  # 显示顺序
+    # ---- 物质引用键（文本类型）----
+    SUBSTANCE_KEY = 'substance_key'  # 物质引用键
+    # ---- 显示名称（文本类型）----
+    DISPLAY_NAME = 'display_name'  # 显示名称
+    # ---- CAS号（文本类型）----
+    CAS_NUMBER = 'cas_number'  # CAS号
+    # ---- 角色（文本类型）----
+    ROLE = 'role'  # 角色
+    # ---- 需求数量（数字类型）----
+    QUANTITY = 'quantity'  # 需求数量
+    # ---- 单位（文本类型）----
+    UNIT = 'unit'  # 单位
+    # ---- 计量依据（文本类型，如「人均 2 g」）----
+    BASIS_TEXT = 'basis_text'  # 计量依据
+    # ---- 完整推导（文本类型，如「人均 2 g × 12 人」）----
+    EXPLANATION = 'explanation'  # 完整推导
+    # ---- 纯度要求（数字类型）----
+    PURITY_REQUIRED = 'purity_required'  # 纯度要求
+    # ---- 是否受管控（整数类型，0/1）----
+    IS_CONTROLLED = 'is_controlled'  # 是否受管控
+    # ---- 可用量快照（数字类型）----
+    AVAILABLE_QUANTITY = 'available_quantity'  # 可用量快照
+    # ---- 缺口快照（数字类型）----
+    GAP_QUANTITY = 'gap_quantity'  # 缺口快照
+    # ---- 覆盖率快照（数字类型，0~1）----
+    COVERAGE_RATIO = 'coverage_ratio'  # 覆盖率快照
+    # ---- 记录ID（系统自动生成）----
+    ID = 'id'  # 记录ID
+
+
+class CustodianRouteField:
+    """保管人路由表字段名常量
+
+    这张表回答「这门课该找谁要料」。它是第一段（受理）能成立的前提：
+    没有指派，系统只能去全院撮合，受理人永远看不到自己的缺口。
+    """
+    # ---- 匹配维度（文本类型：course / project / department / person）----
+    SCOPE_TYPE = 'scope_type'  # 匹配维度
+    # ---- 匹配键（文本类型，课程名或「课程/班级」、项目号、科室名）----
+    SCOPE_KEY = 'scope_key'  # 匹配键
+    # ---- 受理管理员（文本类型，person.name）----
+    CUSTODIAN = 'custodian'  # 受理管理员
+    # ---- 优先级（整数类型，数值小的先匹配）----
+    PRIORITY = 'priority'  # 优先级
+    # ---- 备注（文本类型）----
+    REMARK = 'remark'  # 备注
+    # ---- 记录ID（系统自动生成）----
+    ID = 'id'  # 记录ID

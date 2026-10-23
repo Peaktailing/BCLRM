@@ -753,6 +753,137 @@ class Database:
                 )
             """)
 
+            # ------------------------------------------------------------------
+            # 18. 物料交叉点：配方 → 需求单
+            #
+            # 这四张表是「试剂流转」与「实验过程」两条纵线的唯一交汇处：
+            # 配方只声明「要什么、多少」，不关心实验属于教学还是科研；
+            # 需求单是算出来的快照，只追加不改写，历史可复盘。
+            # ------------------------------------------------------------------
+
+            # 18.1 配方（实验方案的物料侧）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS recipe (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    recipe_key TEXT NOT NULL UNIQUE,
+                    title TEXT NOT NULL,
+                    version INTEGER DEFAULT 1,
+                    status TEXT DEFAULT 'draft',
+                    source_kind TEXT,
+                    source_code TEXT,
+                    source_title TEXT,
+                    owner TEXT,
+                    note TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 18.2 配方组分（计量规则多态落库：amount_type + 扁平参数）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS recipe_component (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    recipe_id INTEGER NOT NULL,
+                    seq INTEGER DEFAULT 0,
+                    role TEXT NOT NULL,
+                    substance_key TEXT NOT NULL,
+                    display_name TEXT,
+                    cas_number TEXT,
+                    formula TEXT,
+                    amount_type TEXT NOT NULL DEFAULT 'per_person',
+                    amount_value REAL,
+                    amount_unit TEXT,
+                    ref_key TEXT,
+                    concentration REAL,
+                    concentration_unit TEXT,
+                    coefficient REAL DEFAULT 1,
+                    purity_required REAL,
+                    note TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (recipe_id) REFERENCES recipe(id) ON DELETE CASCADE
+                )
+            """)
+
+            # 18.3 需求单头（配方 × 规模 的一次计算结果，只追加）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS requirement_sheet (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sheet_number TEXT NOT NULL UNIQUE,
+                    recipe_id INTEGER,
+                    recipe_key TEXT,
+                    title TEXT,
+                    status TEXT DEFAULT 'draft',
+                    persons INTEGER DEFAULT 1,
+                    batches INTEGER DEFAULT 1,
+                    vessel_volume REAL,
+                    vessel_unit TEXT,
+                    scale_label TEXT,
+                    requester TEXT,
+                    source_kind TEXT,
+                    source_code TEXT,
+                    warnings TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 18.4 需求明细（含评估时的可用量/缺口快照）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS requirement_line (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sheet_id INTEGER NOT NULL,
+                    seq INTEGER DEFAULT 0,
+                    substance_key TEXT,
+                    display_name TEXT,
+                    cas_number TEXT,
+                    role TEXT,
+                    quantity REAL,
+                    unit TEXT,
+                    basis_text TEXT,
+                    explanation TEXT,
+                    purity_required REAL,
+                    is_controlled INTEGER DEFAULT 0,
+                    available_quantity REAL,
+                    gap_quantity REAL,
+                    coverage_ratio REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (sheet_id) REFERENCES requirement_sheet(id) ON DELETE CASCADE
+                )
+            """)
+
+            # 18.5 保管人路由（谁受理哪门课/哪个项目/哪个科室的申请）
+            #
+            # 这张表补的是 BCLRM 一直缺的那一环：课程与管理员之间没有映射。
+            # 没有它，教师申领时系统只能去全院撮合，于是"该课的管理员"永远
+            # 不知道自己名下缺货，第二段的横向调配也就永远不会被触发。
+            #
+            # 用独立表而不是给 experiment_course 加列：同一套路由规则还要
+            # 覆盖科研项目、教研室，甚至"某个老师个人"，加列加不完。
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS custodian_route (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scope_type TEXT NOT NULL,          -- course / project / department / person
+                    scope_key TEXT NOT NULL DEFAULT '',-- 课程名或「课程/班级」、项目号、科室名
+                    custodian TEXT NOT NULL,           -- 受理管理员
+                    priority INTEGER DEFAULT 100,      -- 数值小的先匹配
+                    remark TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(scope_type, scope_key)
+                )
+            """)
+
+            # 新增表的 updated_at 触发器（上面通用循环建立时这几张表还不存在）
+            for _tbl in ("recipe", "requirement_sheet", "custodian_route"):
+                cursor.execute(f"""
+                    CREATE TRIGGER IF NOT EXISTS trg_{_tbl}_updated_at
+                    AFTER UPDATE ON {_tbl}
+                    FOR EACH ROW
+                    BEGIN
+                        UPDATE {_tbl} SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                    END;
+                """)
+
             # 创建索引以提高查询性能
             # 试剂瓶表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bottle_number ON reagent_bottle(bottle_number)")
@@ -796,6 +927,18 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_time ON operation_log(created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_action ON operation_log(action)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_operation_log_operator ON operation_log(operator)")
+
+            # 配方 / 需求单索引
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_status ON recipe(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_source ON recipe(source_kind, source_code)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_component_recipe ON recipe_component(recipe_id, seq)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_component_key ON recipe_component(substance_key)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_requirement_sheet_recipe ON requirement_sheet(recipe_key)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_requirement_sheet_status ON requirement_sheet(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_requirement_line_sheet ON requirement_line(sheet_id, seq)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_requirement_line_key ON requirement_line(substance_key)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_custodian_route_scope ON custodian_route(scope_type, scope_key)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_custodian_route_custodian ON custodian_route(custodian)")
 
             # 预定单表索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reservation_order_number ON reservation_order(order_number)")

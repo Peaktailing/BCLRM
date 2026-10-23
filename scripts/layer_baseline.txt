@@ -1,0 +1,20 @@
+# 分层依赖基线（既有债务）
+#
+# 每行：相对路径<TAB>被导入的项目内模块
+# 这些是本次改造之前就存在的反向/越层依赖，先记账不阻断；修好一条就删一行。
+# 新增的违规不允许进本文件——那正是这个脚本存在的意义。
+
+# 业务层直接管理数据库事务（应下沉为仓储/工作单元）
+business/allocation_service.py	db.database
+business/borrow_service.py	db.database
+business/demand_service.py	db.database
+business/manager_service.py	db.database
+business/purchase_service.py	db.database
+business/return_service.py	db.database
+business/work_order_service.py	db.database
+
+# 业务层用 pandas 解析上传的分组表（导入适配，可后续移到 services）
+business/course_import_service.py	pandas
+
+# 数据层反向依赖业务层的状态机（该状态机应迁到 domain）
+services/core/reagent_bottle_service.py	business.bottle_state
