@@ -489,6 +489,9 @@ class Database:
                     unit TEXT DEFAULT 'g',
                     status TEXT DEFAULT '待归还',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- 这张明细兑付的是哪一条需求行。一行分两瓶时这里相同，
+                    -- 一行分两次发时每次一张单、各自指回同一条需求行。
+                    requirement_line_id INTEGER,
                     FOREIGN KEY (order_id) REFERENCES borrow_order(id) ON DELETE CASCADE
                 )
             """)
@@ -877,6 +880,16 @@ class Database:
                     gap_quantity REAL,
                     coverage_ratio REAL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- 兑付落在**行**上，不是单头。一张单可能今天只发得出 5 项，
+                    -- 剩下 15 项要等料。整单置 issued 会把那 15 项静默吞掉：
+                    -- 既不在保底里（状态不是 submitted），也不在任何待办上。
+                    --   issued_quantity  累计已发（记回本行的 unit，可直接与
+                    --                    quantity 相减得余量）
+                    --   status           open / partial / issued
+                    --   order_number     最后一次兑付本行的那张借出单
+                    issued_quantity REAL DEFAULT 0,
+                    status TEXT DEFAULT 'open',
+                    order_number TEXT,
                     FOREIGN KEY (sheet_id) REFERENCES requirement_sheet(id) ON DELETE CASCADE
                 )
             """)
@@ -1384,7 +1397,31 @@ class Database:
                     cursor.execute(f"ALTER TABLE requirement_sheet ADD COLUMN {_col} {_ddl}")
                     logger.info(f"迁移完成：requirement_sheet 表添加 {_col} 字段（兑付）")
 
-            # 6) borrow_order 加来源需求单：借出单要能反查「这张单是为哪张需求
+            # 6) requirement_line 加兑付三列：兑付粒度从单头下沉到明细行。
+            #    老单一个都没兑过，issued_quantity 补 0、status 补 open 即可
+            #    ——这两个默认值本身就是「没兑付」的正确表达，不需要别的回填。
+            cursor.execute("PRAGMA table_info(requirement_line)")
+            rl_cols = {row[1] for row in cursor.fetchall()}
+            for _col, _ddl in (
+                ("issued_quantity", "REAL DEFAULT 0"),
+                ("status", "TEXT DEFAULT 'open'"),
+                ("order_number", "TEXT"),
+            ):
+                if rl_cols and _col not in rl_cols:
+                    cursor.execute(f"ALTER TABLE requirement_line ADD COLUMN {_col} {_ddl}")
+                    logger.info(f"迁移完成：requirement_line 表添加 {_col} 字段（逐项兑付）")
+
+            # 7) borrow_order_item 加来源需求行：一张借出单里两个瓶可能来自
+            #    两条需求行，回头要对「这条需求行发了多少」只能靠它。
+            cursor.execute("PRAGMA table_info(borrow_order_item)")
+            boi_cols = {row[1] for row in cursor.fetchall()}
+            if boi_cols and "requirement_line_id" not in boi_cols:
+                cursor.execute(
+                    "ALTER TABLE borrow_order_item ADD COLUMN requirement_line_id INTEGER"
+                )
+                logger.info("迁移完成：borrow_order_item 表添加 requirement_line_id 字段")
+
+            # 8) borrow_order 加来源需求单：借出单要能反查「这张单是为哪张需求
             #    单发的」，否则兑付对账只能靠人回忆。
             cursor.execute("PRAGMA table_info(borrow_order)")
             bo_cols = {row[1] for row in cursor.fetchall()}

@@ -49,6 +49,7 @@ from domain.recipe import SourceRef
 from domain.requirement import RequirementLine, RequirementSheet
 from domain.substance import ComponentRole, SubstanceRef
 from domain.units import Quantity
+from services.core.requirement_sheet_service import requirement_sheet_service
 from services.custodian_route import (
     SCOPE_COURSE,
     SCOPE_DEPARTMENT,
@@ -160,8 +161,16 @@ class MaterialPipelineService:
         source: Optional[SourceRef] = None,
         due_hint: str = "",
         note: str = "",
+        sheet_number: str = "",
+        operator: str = "",
     ) -> ServiceResult:
         """受理一张申请（只走第一段）。
+
+        给出 ``sheet_number`` 时，受理成功就把这张单推到 ``submitted``。
+        这一步不能省：``draft`` 是老师自己算着玩的单，不该锁料；受理才是
+        承诺——从这一刻起它占保底，也才轮到「逐项兑付」把状态往前推。
+        页面生成的需求单落库就是 ``draft``，中间没有别的提交动作，不在这
+        里推进的话，保底永远算不到任何一张单。
 
         Returns:
             ServiceResult，``data`` 含 ``acceptance``（快照）与摘要字段。
@@ -181,6 +190,12 @@ class MaterialPipelineService:
             policy=self.policy,
             reserve=self.reserve,
         ).receive(request)
+        if sheet_number:
+            # 只在草稿上推进。已经 submitted/partial/issued 的单不能被打回，
+            # 否则第二次受理会把兑付进度踩平——保底又会把发出去的料算成欠量。
+            requirement_sheet_service.promote_to_submitted(
+                sheet_number, operator or requester
+            )
         return ServiceResult.ok(
             data=self._acceptance_payload(acceptance), message=acceptance.describe()
         )

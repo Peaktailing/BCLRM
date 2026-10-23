@@ -7,8 +7,13 @@
    不是月、也不是无限期。跨学年的单不参与——去年的账不该压着今年的料。
 2. **单上有来源**。``requirement_sheet.source_code`` 记着「课程/实验」
    或项目号，可以反查它归谁管。
-3. **能算出还没发多少**。这里只认 ``submitted`` 的单，受理后应当把状态
-   推进到已发放，否则同一张单会被反复算成保底（见文档「已知限制」）。
+3. **能算出还没发多少**。这一条分两层：
+
+   - 单头层面，只认 ``submitted`` 与 ``partial``。``issued`` 是全部兑完，
+     ``draft`` 是老师自己还没想好，两者都不占料。
+   - 行层面，取 ``quantity − issued_quantity``。**这是关键**：整单置
+     ``issued`` 会把没发出去的行一起吞掉，而按全量算又把已经发到手上的
+     料当成欠量。逐行扣减是唯一同时对得上账、又不压料的口径。
 
 算不出来时返回 None，表示**不锁料**。保底是优化，让一件事"宁可发不出"
 比"多发了一点"危险得多：料没发出去，实验当堂停；料多抽了，下一节还能
@@ -27,8 +32,9 @@ from domain.units import Quantity, parse_unit
 from services.custodian_route import custodian_route_repository
 from utils.error_handler import logger
 
-#: 只算「已提交但还没发」的单。草稿是老师自己还没想好的，不该占料。
-OPEN_STATUSES = ("submitted",)
+#: 还占着料的状态。``partial`` 是逐项兑付引入的：有一部分行发了，剩下的
+#: 仍然要留。``draft`` 是老师自己还没想好的，不该占料；``issued`` 全发完了。
+OPEN_STATUSES = ("submitted", "partial")
 
 #: 路由范围 → 需求单来源类别。对不上的范围（科室/个人）无法从单据反查，
 #: 不参与计算——宁可少保一点，也不猜。
@@ -37,6 +43,9 @@ SCOPE_TO_SOURCE_KIND = {
     "course_class": "teaching",
     "project": "research",
 }
+
+#: 余量的浮点容差。
+_EPS = 1e-9
 
 
 class DemandReserve:
@@ -104,7 +113,10 @@ class DemandReserve:
                 (semester, *OPEN_STATUSES),
             )
         except Exception as exc:
-            logger.warning(f"保底查询失败（requirement_sheet 可能缺 academic_year 列，重启应用即可）: {exc}")
+            logger.warning(
+                f"保底查询失败（requirement_sheet 可能缺 academic_year 列，"
+                f"重启应用即可）：{exc}"
+            )
             return []
 
         exclude_kind = exclude_source[0] if exclude_source else None
@@ -125,11 +137,18 @@ class DemandReserve:
         return hits
 
     def _quantity_of(self, sheet_ids: list[int], ref: SubstanceRef) -> Optional[Quantity]:
-        """这些单里该物质的合计。量纲按第一行同量纲的来。"""
+        """这些单里该物质**还没兑付**的合计。量纲按第一行同量纲的来。
+
+        逐行扣减已发量，不是按单全量。分两次发料时第二次的保底必须只剩
+        尾数——否则已经交到老师手上的那部分会让系统以为还欠着，抽卡时把
+        本可以动的料锁住。
+        """
         placeholders = ",".join("?" for _ in sheet_ids)
         try:
             rows = self.db.execute_query(
-                f"SELECT quantity, unit FROM requirement_line "
+                f"SELECT quantity, unit, "
+                f"COALESCE(issued_quantity, 0) AS issued_quantity "
+                f"FROM requirement_line "
                 f"WHERE sheet_id IN ({placeholders}) AND substance_key = ?",
                 (*sheet_ids, ref.key),
             )
@@ -146,12 +165,15 @@ class DemandReserve:
             value = row.get("quantity")
             if value in (None, ""):
                 continue
+            remaining = float(value) - float(row.get("issued_quantity") or 0)
+            if remaining <= _EPS:
+                continue  # 这一项已兑完，不占料
             if total is None:
                 total = Quantity(0, unit)
             if total.unit.dimension is not unit.dimension:
                 # 跨量纲不在这里折算：换算要物性，中台才有（SupplyEvaluator）
                 continue
-            total = total + Quantity(value, unit)
+            total = total + Quantity(remaining, unit)
         return total
 
 

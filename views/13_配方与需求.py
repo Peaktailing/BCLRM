@@ -65,6 +65,13 @@ AMOUNT_LABELS = {
     "ratio": "基准倍数",
     "concentration": "浓度",
 }
+#: 需求行的兑付进度。兑付是按项结算的，不是整单——一门课 20 项今天只到
+#: 5 项时，剩下 15 项要留在单里继续占保底，不能跟着一起被「已兑付」。
+_LINE_STATUS_LABELS = {
+    "open": "待发",
+    "partial": "部分",
+    "issued": "已发",
+}
 
 tab_lib, tab_edit, tab_plan, tab_ticket, tab_pipe = st.tabs(
     ["📚 配方库", "✍️ 配方编制", "🧮 需求试算", "📄 需求量与单据", "🔀 申领流转"]
@@ -538,6 +545,8 @@ with tab_pipe:
                     sheet=sheet_obj,
                     source=sheet_obj.source,
                     due_hint=due,
+                    sheet_number=picked,
+                    operator=current_user,
                 )
                 if result.success:
                     st.session_state["pipe_acceptance"] = result.data["acceptance"]
@@ -581,31 +590,114 @@ with tab_pipe:
                 st.caption(f"· {note}")
 
             # ------------------------------------------------------------ 转单
-            st.markdown("##### 转借出单：借出即兑付")
+            st.markdown("##### 转借出单：逐项勾选，借出即兑付")
             sheet_row = requirement_issue_service.sheets.get_by_number(picked) or {}
-            already = (sheet_row.get(RequirementSheetField.ORDER_NUMBER) or "").strip()
+            sheet_status = (sheet_row.get(RequirementSheetField.STATUS) or "").strip()
+            first_order = (sheet_row.get(RequirementSheetField.ORDER_NUMBER) or "").strip()
             accepted_sheet = st.session_state.get("pipe_acceptance_sheet")
             if accepted_sheet and accepted_sheet != picked:
                 st.caption("上面的受理结论属于另一张单。换单后请重新受理，再转借出单。")
-            elif already:
-                st.success(f"这张需求单已兑付，借出单 {already}；不再占用学年保底。")
-            elif not acceptance.issued:
-                st.info("受理结论里没有可发的料，无从转单；缺口请走第二段或采购。")
+            elif sheet_status == "issued":
+                st.success(f"这张需求单已全部兑付（首张借出单 {first_order or '—'}），不再占学年保底。")
             else:
+                if sheet_status == "partial":
+                    st.info(
+                        f"这张需求单已部分兑付（首张借出单 {first_order or '—'}）。"
+                        "已发的项不再占保底，剩下没勾的项可以下次再发。"
+                    )
                 st.caption(
-                    "转单会逐瓶扣库存、生成一张借出单（一单多瓶），并把需求单置为"
-                    "「已兑付」。兑付之后，这张单不再占本学年保底——否则同一门课"
-                    "第二周再申领，会被自己上一张单压住。"
+                    "兑付是按**项**结算的，不是整单：今天发得出的先勾上签发，剩下的留在单里"
+                    "继续占保底，等料到齐再发第二批。每次勾选生成一张借出单，逐瓶扣库存，"
+                    "并把勾中的需求行记为已兑付。"
                 )
-                if st.button("签发借出单（借出即兑付）", type="primary", key="pipe_issue"):
-                    drafted = requirement_issue_service.issue(picked, acceptance, current_user)
-                    if drafted.success:
-                        st.success(drafted.message)
-                        for key in ("pipe_acceptance", "pipe_acceptance_sheet", "pipe_proposal"):
-                            st.session_state.pop(key, None)
-                        st.rerun()
+                pending = requirement_issue_service.pending_rows(picked, acceptance)
+                if not pending.success:
+                    st.error(pending.message)
+                else:
+                    rows = pending.data["lines"]
+                    if not rows:
+                        st.info("这张单没有明细行，无从逐项兑付。请重新保存需求单生成明细。")
                     else:
-                        st.error(drafted.message)
+                        frame = pd.DataFrame(
+                            [
+                                {
+                                    "本次签发": bool(item["issuable"]),
+                                    "序": item["seq"] + 1,
+                                    "物质": item["name"],
+                                    "需求": f'{item["need"]:g} {item["unit"]}',
+                                    "已发": f'{item["issued"]:g} {item["unit"]}',
+                                    "余量": f'{item["remaining"]:g} {item["unit"]}',
+                                    "本次可发": (
+                                        f'{item["suggest"]:g} {item["unit"]}'
+                                        if item["issuable"]
+                                        else "—"
+                                    ),
+                                    "状态": _LINE_STATUS_LABELS.get(
+                                        item["status"], item["status"]
+                                    ),
+                                }
+                                for item in rows
+                            ]
+                        )
+                        # key 带上「已发量」指纹：兑付完一批，表格数据变了，
+                        # key 也跟着变，勾选状态自然重置——否则刚发过的项
+                        # 还勾在那儿，下一次点签发就撞「已兑付」。
+                        stamp = "-".join(
+                            f'{item["line_id"]}.{item["issued"]:g}' for item in rows
+                        )
+                        edited = st.data_editor(
+                            frame,
+                            use_container_width=True,
+                            hide_index=True,
+                            key=f"pipe_issue_pick_{picked}_{stamp}",
+                            disabled=[
+                                "序", "物质", "需求", "已发", "余量", "本次可发", "状态",
+                            ],
+                            column_config={
+                                "本次签发": st.column_config.CheckboxColumn(
+                                    "本次签发", help="勾上 = 这次就发这一项"
+                                ),
+                            },
+                        )
+                        chosen_rows = [
+                            rows[i]["index"]
+                            for i, flag in enumerate(edited["本次签发"])
+                            if flag and rows[i]["index"] is not None
+                        ]
+                        chosen_names = [
+                            rows[i]["name"]
+                            for i, flag in enumerate(edited["本次签发"])
+                            if flag and rows[i]["index"] is not None
+                        ]
+                        if not chosen_rows:
+                            st.warning("一项都没勾。勾上要发的项再签发。")
+                        else:
+                            st.caption(
+                                f"本次将签发 {len(chosen_rows)} 项："
+                                + "、".join(chosen_names)
+                            )
+                            if st.button(
+                                "签发借出单（借出即兑付）",
+                                type="primary",
+                                key="pipe_issue",
+                            ):
+                                drafted = requirement_issue_service.issue(
+                                    picked,
+                                    acceptance,
+                                    current_user,
+                                    selections=chosen_rows,
+                                )
+                                if drafted.success:
+                                    st.success(drafted.message)
+                                    for key in (
+                                        "pipe_acceptance",
+                                        "pipe_acceptance_sheet",
+                                        "pipe_proposal",
+                                    ):
+                                        st.session_state.pop(key, None)
+                                    st.rerun()
+                                else:
+                                    st.error(drafted.message)
 
             # ------------------------------------------------------------ 第二段
             if acceptance.is_complete:

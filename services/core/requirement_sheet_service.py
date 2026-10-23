@@ -16,6 +16,19 @@ from utils.field_mapper import RequirementLineField, RequirementSheetField
 _SHEET_TABLE = "requirement_sheet"
 _LINE_TABLE = "requirement_line"
 
+#: 明细行的兑付状态。**兑付粒度是行，不是单头**——一张单可能今天只发得出
+#: 5 项，剩下 15 项要等料；整单置 issued 会把那 15 项静默吞掉。单头状态
+#: 由这些行状态聚合出来，不独立驱动。
+LINE_OPEN = "open"
+LINE_PARTIAL = "partial"
+LINE_ISSUED = "issued"
+
+#: 单头状态。``partial`` 是新增的：有一部分行兑完了，这张单还没结。
+SHEET_PARTIAL = "partial"
+
+#: 兑付量的浮点容差。g 与 mg 换算会带尾数，卡死等号会永远兑不完。
+_QTY_EPS = 1e-9
+
 _LINE_COLUMNS = {
     RequirementLineField.SEQ,
     RequirementLineField.SUBSTANCE_KEY,
@@ -74,6 +87,58 @@ class RequirementSheetService(BaseService):
             audit(operator, "变更需求单状态", "requirement_sheet", sheet_number, status)
         return ok
 
+    def promote_to_submitted(self, sheet_number: str, operator: str = "") -> bool:
+        """草稿 → 已提交。受理这张申请的那一刻调用。
+
+        **只推草稿**。已经 submitted/partial/issued 的单不碰：把它们打回
+        ``submitted`` 会把兑付进度踩平，保底又把已经发出去的料算成欠量。
+        """
+        row = self.get_by_number(sheet_number)
+        if not row:
+            return False
+        if (row.get(RequirementSheetField.STATUS) or "").strip() not in ("", "draft"):
+            return False
+        return self.set_status(sheet_number, "submitted", operator)
+
+    # ------------------------------------------------------------ 单头聚合
+    def lines_of(self, sheet_id: int) -> List[Dict[str, Any]]:
+        """这张单的全部明细行（含兑付进度）。
+
+        单头要聚合状态就得看得见明细，所以这里跨表只读查一次。反向的
+        「行改完再来改单头」不这么做——那会绕开单据服务自己写状态。
+        """
+        return self.db.execute_query(
+            "SELECT id, seq, substance_key, display_name, quantity, unit, "
+            "COALESCE(issued_quantity, 0) AS issued_quantity, "
+            "COALESCE(status, 'open') AS status, order_number "
+            "FROM requirement_line WHERE sheet_id = ? ORDER BY seq ASC, id ASC",
+            (sheet_id,),
+        )
+
+    def recount_status(self, sheet_id: int) -> Optional[str]:
+        """按明细行的兑付进度推单头状态。
+
+        Returns:
+            ``issued``（全部行兑完）/ ``partial``（有行兑过但没兑完）/
+            ``None``（一眼没兑过，不改单头——draft 与 submitted 的区分是
+            老师那边的意图，不该被一次空聚合抹平）。
+        """
+        rows = self.lines_of(sheet_id)
+        if not rows:
+            return None
+        done = sum(1 for row in rows if (row.get("status") or "") == LINE_ISSUED)
+        touched = sum(
+            1 for row in rows if float(row.get("issued_quantity") or 0) > _QTY_EPS
+        )
+        if done == len(rows):
+            status = LINE_ISSUED
+        elif touched:
+            status = SHEET_PARTIAL
+        else:
+            return None
+        self.update(sheet_id, {RequirementSheetField.STATUS: status})
+        return status
+
 
 class RequirementLineService(BaseService):
     """需求明细数据访问。"""
@@ -87,6 +152,7 @@ class RequirementLineService(BaseService):
         )
 
     def replace_all(self, sheet_id: int, records: List[Dict[str, Any]]) -> int:
+        """整单重写明细。兑付三列不在白名单里，重写即归零——重算就是新账。"""
         self.delete_by_field(RequirementLineField.SHEET_ID, sheet_id)
         written = 0
         for record in records:
@@ -95,6 +161,40 @@ class RequirementLineService(BaseService):
             if self.create(payload):
                 written += 1
         return written
+
+    # ------------------------------------------------------------ 逐项兑付
+    @staticmethod
+    def remaining_of(row: Dict[str, Any]) -> float:
+        """这条行还欠多少（需求量 − 已兑付量），不会为负。"""
+        need = float(row.get(RequirementLineField.QUANTITY) or 0)
+        done = float(row.get(RequirementLineField.ISSUED_QUANTITY) or 0)
+        return max(need - done, 0.0)
+
+    def settle(
+        self, line_id: int, add_quantity: float, order_number: str = ""
+    ) -> Optional[Dict[str, Any]]:
+        """把一条行的兑付量往前推，并同步行状态。
+
+        量的单位必须与 ``quantity`` 同——调用方先换回行单位再传。跨量纲
+        （g ↔ mL）在兑付这一步已经被拒了，见 ``RequirementIssueService``。
+        """
+        row = self.get_by_id(line_id)
+        if not row:
+            return None
+        need = float(row.get(RequirementLineField.QUANTITY) or 0)
+        done = float(row.get(RequirementLineField.ISSUED_QUANTITY) or 0) + float(add_quantity)
+        # 兜底再夹一次：服务层已经按余量截断过，这里防的是调用方绕过
+        done = min(max(done, 0.0), need)
+        status = LINE_ISSUED if need - done <= _QTY_EPS else LINE_PARTIAL
+        payload = {
+            RequirementLineField.ISSUED_QUANTITY: done,
+            RequirementLineField.STATUS: status,
+        }
+        if order_number:
+            payload[RequirementLineField.ORDER_NUMBER] = order_number
+        if not self.update(line_id, payload):
+            return None
+        return {"issued_quantity": done, "status": status, "quantity": need}
 
 
 def encode_warnings(warnings: List[str]) -> str:
@@ -121,6 +221,10 @@ __all__ = [
     "RequirementLineService",
     "requirement_sheet_service",
     "requirement_line_service",
+    "LINE_OPEN",
+    "LINE_PARTIAL",
+    "LINE_ISSUED",
+    "SHEET_PARTIAL",
     "encode_warnings",
     "decode_warnings",
 ]

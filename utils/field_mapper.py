@@ -316,6 +316,7 @@ class BorrowOrderItemField:
     BORROW_QTY = 'borrow_qty'      # 领用量
     RETURNED_QTY = 'returned_qty'  # 已归还量
     STATUS = 'status'              # 待归还 / 已归还
+    REQUIREMENT_LINE_ID = 'requirement_line_id'  # 来源需求行
 
 
 # ============================================================================
@@ -611,6 +612,13 @@ class RequirementLineField:
     GAP_QUANTITY = 'gap_quantity'  # 缺口快照
     # ---- 覆盖率快照（数字类型，0~1）----
     COVERAGE_RATIO = 'coverage_ratio'  # 覆盖率快照
+    # ---- 累计已兑付量（数字类型，记回本行的 unit）----
+    # 兑付粒度是行，不是单头：单头置 issued 会把没发出的行一起吞掉。
+    ISSUED_QUANTITY = 'issued_quantity'  # 累计已兑付量
+    # ---- 兑付状态（文本类型：open / partial / issued）----
+    STATUS = 'status'  # 兑付状态
+    # ---- 最后一次兑付本行的借出单号（文本类型）----
+    ORDER_NUMBER = 'order_number'  # 兑付借出单号
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 
