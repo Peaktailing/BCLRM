@@ -7,21 +7,37 @@
 
 两种，按有没有配「手机访问地址」决定：
 
-1. **配了** → 放一个完整 URL：``http://192.168.1.10:8601/m?bottle=B-001``。
+1. **配了** → 放一个完整 URL：``http://192.168.1.10:8601/m?bottle=202610230001``。
    手机用**系统相机或微信扫一扫**就能打开，不需要页面里再实现一个扫码器。
-   这是首选：零 JS、零兼容性问题，iOS 微信也能用。
-2. **没配** → 放短码 ``BCLRM:B:B-001``。此时必须用页面里的扫码器解析。
-   短码是退路：内网地址会变（换路由器、换服务器），昨天打印的标签今天
-   就打不开了；短码永远有效，只是多一步。
+   这是首选：零 JS、零兼容性问题，iOS 微信也能用。**URL 只带瓶号**——
+   URL 模式的前提是能联网，联网就该问系统，而不是让码替系统记档案。
+2. **没配** → 放短码 ``BCLRM:2:202610230001;64-17-5;2026-10-23``（瓶号 /
+   CAS / 入库日期，字段可空）。此时必须用页面里的扫码器解析。
+
+短码是退路，但它比 URL 多背了信息：内网地址会变（换路由器、换服务器），
+昨天打印的标签今天就打不开了；短码永远有效，而且**不依赖系统活着**。所以
+短码里带 CAS 与入库日期不是冗余，是刻意的：瓶子漏了、仓库着火了、或者被
+人从柜子里拿错，用任意扫码工具（微信、系统相机）扫一下就能读出「这是什么
+物质、哪天进来的」——那正是系统宕机、断网、或者根本没登账号的时候。
 
 两条都支持的另一个原因是**纸质标签会旧**。贴上去的标签可能用两年，而
-服务器 IP 半年就变一次。所以 :func:`parse` 两种都认，页面拿到哪种都能用。
+服务器 IP 半年就变一次。所以 :func:`parse_fields` 三种都认（URL / v2 短码 /
+v1 老短码），页面拿到哪种都能用。
 
 ## 为什么不用「编号即内容」
 
 把裸瓶号当二维码内容看起来更简单，但扫出来是一串没人认识的字，系统之外的
-工具（手机相机、微信）打开会说「无法识别」。带上 ``BCLRM:B:`` 前缀或是 URL，
+工具（手机相机、微信）打开会说「无法识别」。带上 ``BCLRM:2:`` 前缀或是 URL，
 至少能被人看出这是本系统的码——出事时捡到一张掉落的标签，也知道去哪查。
+
+## 为什么字段之间用分号
+
+瓶号是 ``YYYYMMDD`` + 4 位序号（12 位纯数字），CAS 是 ``64-17-5``，日期是
+``2026-10-23``，三者都不含分号，用 ``;`` 分割不会歧义。逗号不行——有些
+扫码工具会把含逗号的内容当 CSV 预览；``|`` 在部分机型上被转义成 ``%7C``。
+
+**空字段保留位置**：CAS 缺失时写 ``; ;`` 而不是直接省掉，因为 ``parse_fields``
+按位置取值——省掉位置会把日期读成 CAS。
 
 ## 能装多少，取决于「印多大」
 
@@ -44,13 +60,19 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from utils.error_handler import logger
 
-#: 短码前缀。加前缀是为了让码「看得出属于谁」，也便于和裸编号区分。
+#: v1 短码前缀（只有瓶号）。新标签不再生成，但老标签要认。
 SHORT_PREFIX = "BCLRM:B:"
+
+#: v2 短码前缀。后面跟 ``瓶号;CAS;入库日期``。
+LONG_PREFIX = "BCLRM:2:"
+
+#: 字段分隔符。三者都不含分号，见模块文档。
+FIELD_SEP = ";"
 
 #: 手机页的 URL 路径（与 ``st.Page(..., url_path=...)`` 保持一致）。
 MOBILE_PATH = "/m"
@@ -100,12 +122,23 @@ class Fit:
         return self.grade != "too_small"
 
 
-def payload_of(bottle_number: str, base_url: str = "") -> str:
+def payload_of(
+    bottle_number: str,
+    base_url: str = "",
+    cas: str = "",
+    inbound_date: str = "",
+) -> str:
     """生成二维码内容。
 
     Args:
         bottle_number: 瓶号
         base_url: 手机访问基地址（如 ``http://192.168.1.10:8601``）。空则出短码。
+        cas: CAS 号（可为空；混合物、自制试剂、未建档的历史瓶没有）
+        inbound_date: 入库日期 ``YYYY-MM-DD``（可为空）
+
+    Returns:
+        短码 ``BCLRM:2:<瓶号>;<CAS>;<入库日期>``，或 URL 形式。
+        URL 只带瓶号——URL 的前提是能联网，联网就该问系统。
     """
     number = (bottle_number or "").strip()
     if not number:
@@ -113,32 +146,62 @@ def payload_of(bottle_number: str, base_url: str = "") -> str:
     base = (base_url or "").strip().rstrip("/")
     if base:
         return f"{base}{MOBILE_PATH}?{BOTTLE_PARAM}={quote(number, safe='')}"
-    return f"{SHORT_PREFIX}{number}"
+
+    code = (cas or "").strip()
+    day = (inbound_date or "").strip()
+    if not code and not day:
+        return f"{LONG_PREFIX}{number}"
+    # 尾部空段可以省（``a;b`` 与 ``a;b;`` 等价），中间的不能省——
+    # 省掉位置会把日期读成 CAS。
+    tail = f"{code}{FIELD_SEP}{day}" if day else code
+    return f"{LONG_PREFIX}{number}{FIELD_SEP}{tail}"
+
+
+def parse_fields(text: str) -> Dict[str, str]:
+    """把扫到的内容拆成字段。认不出返回空字典。
+
+    返回值键：``bottle`` / ``cas`` / ``inbound``。老短码与 URL 只有瓶号，
+    另两个字段给空串——调用方不必判断「这个码是哪一版」。
+
+    认四种：v2 短码、v1 老短码、本模块生成的 URL、裸瓶号（有人拿瓶号直接
+    生成码，或者手工输入）。
+    """
+    raw = unquote((text or "").strip())
+    if not raw:
+        return {}
+    if raw.startswith(LONG_PREFIX):
+        parts = raw[len(LONG_PREFIX):].split(FIELD_SEP)
+        number = (parts[0] if parts else "").strip()
+        if not number:
+            return {}
+        return {
+            "bottle": number,
+            "cas": (parts[1] if len(parts) > 1 else "").strip(),
+            "inbound": (parts[2] if len(parts) > 2 else "").strip(),
+        }
+    if raw.startswith(SHORT_PREFIX):
+        number = raw[len(SHORT_PREFIX):].strip()
+        return {"bottle": number, "cas": "", "inbound": ""} if number else {}
+    if "://" in raw or raw.startswith("/"):
+        try:
+            query = parse_qs(urlparse(raw).query)
+        except ValueError:
+            return {}
+        values = query.get(BOTTLE_PARAM) or []
+        if values and values[0].strip():
+            return {"bottle": values[0].strip(), "cas": "", "inbound": ""}
+        return {}
+    # 裸瓶号：收下，但只当它是瓶号——页面查不到会说「没有这瓶」
+    return {"bottle": raw, "cas": "", "inbound": ""}
 
 
 def parse(text: str) -> Optional[str]:
     """从扫到的内容里取出瓶号。认不出返回 None。
 
-    认三种：本函数生成的 URL、短码、以及裸瓶号（有人拿瓶号直接生成码，
-    或者手工输入）。
+    只取瓶号：页面拿到瓶号就能查库，CAS 与入库日期以库里为准——码里那份
+    是「离线时给人看」的，不能拿来覆盖账本。
     """
-    raw = unquote((text or "").strip())
-    if not raw:
-        return None
-    if raw.startswith(SHORT_PREFIX):
-        number = raw[len(SHORT_PREFIX):].strip()
-        return number or None
-    if "://" in raw or raw.startswith("/"):
-        try:
-            query = parse_qs(urlparse(raw).query)
-        except ValueError:
-            return None
-        values = query.get(BOTTLE_PARAM) or []
-        if values and values[0].strip():
-            return values[0].strip()
-        return None
-    # 裸瓶号：收下，但只当它是瓶号——页面查不到会说「没有这瓶」
-    return raw
+    return parse_fields(text).get("bottle") or None
 
 
 def _make(payload: str, error: str = ERROR_LEVEL):
@@ -220,17 +283,22 @@ def label_png(
     extra: str = "",
     payload: str = "",
     width: int = 480,
+    cas: str = "",
+    inbound_date: str = "",
 ) -> Optional[bytes]:
-    """生成一张可打印的标签：二维码 + 瓶号 + 一行补充信息。
+    """生成一张可打印的标签：二维码 + 瓶号 + 物质信息。
 
-    尺寸按 300 dpi 下约 40×24 mm 出，贴 100 mL 试剂瓶刚好；更大的瓶
+    尺寸按 300 dpi 下约 40×30 mm 出，贴 100 mL 试剂瓶刚好；更大的瓶
     看着空，但统一尺寸比「按瓶定制」好管理。
 
     **码按整数倍模块尺寸直接生成，不做缩放**。先把码画大再用 LANCZOS 缩到
     目标宽度，模块边界会变成半灰的斜边——屏幕上看只是「有点糊」，打印出来
     就是边缘模糊的方格，手机对焦时容易判错。整数倍缩放是二维码的硬要求。
+
+    CAS 与入库日期既进码也印在标签上：码是给机器读的，字是给人读的——
+    瓶子从架上拿下来那一刻，没人会先掏手机。
     """
-    text = payload or payload_of(bottle_number)
+    text = payload or payload_of(bottle_number, cas=cas, inbound_date=inbound_date)
     if not text:
         return None
     try:
@@ -257,23 +325,35 @@ def label_png(
         return code_bytes
 
     qr = Image.open(io.BytesIO(code_bytes)).convert("RGB")
-    height = max(qr_px + 24, 160)
+    height = max(qr_px + 24, 210)
     canvas = Image.new("RGB", (width, height), (255, 255, 255))
     canvas.paste(qr, (12, 12))
 
     draw = ImageDraw.Draw(canvas)
     font_big = _font(30)
     font_small = _font(20)
+    font_tiny = _font(16)
     text_x = 12 + qr_px + 16
-    draw.text((text_x, 20), bottle_number, fill=(0, 0, 0), font=font_big)
+    draw.text((text_x, 16), bottle_number, fill=(0, 0, 0), font=font_big)
+
+    y = 58
     if extra:
-        # 长名字截断：标签上留两行，超出部分省略——打印出来反正看不清
-        draw.text((text_x, 64), extra[:18], fill=(60, 60, 60), font=font_small)
+        # 长名字截断：标签上留一行，超出部分省略——打印出来反正看不清
+        draw.text((text_x, y), extra[:14], fill=(60, 60, 60), font=font_small)
+        y += 34
+    if cas:
+        draw.text((text_x, y), f"CAS {cas}", fill=(60, 60, 60), font=font_small)
+        y += 30
+    if inbound_date:
+        draw.text(
+            (text_x, y), f"入库 {inbound_date}", fill=(60, 60, 60), font=font_small
+        )
+
     draw.text(
-        (text_x, height - 40),
+        (text_x, height - 34),
         "手机扫码办理",
         fill=(120, 120, 120),
-        font=font_small,
+        font=font_tiny,
     )
 
     out = io.BytesIO()
@@ -307,6 +387,8 @@ def _font(size: int):
 
 __all__ = [
     "SHORT_PREFIX",
+    "LONG_PREFIX",
+    "FIELD_SEP",
     "MOBILE_PATH",
     "BOTTLE_PARAM",
     "ERROR_LEVEL",
@@ -315,6 +397,7 @@ __all__ = [
     "TIGHT_MODULE_MM",
     "Fit",
     "payload_of",
+    "parse_fields",
     "parse",
     "fit",
     "png_bytes",

@@ -30,7 +30,7 @@ _TABLES = (
 
 class TestSemesterMath(unittest.TestCase):
     def test_date_to_semester(self):
-        # 以每年 9 月 1 日为学年起点（v0.9.4 起，原先是 8 月）
+        # 以每年 9 月 1 日为学年起点（v0.8.16 起，原先是 8 月）
         self.assertEqual(date_to_semester("2025/10/01"), "2025-2026")
         self.assertEqual(date_to_semester("2026/01/15"), "2025-2026")
         self.assertEqual(date_to_semester("2026/07/31"), "2025-2026")

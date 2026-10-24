@@ -268,7 +268,7 @@ class EvidenceService:
     def read_thumb(self, stored_name: str) -> Optional[bytes]:
         """读缩略图；没有缩略图（老照片、小图）就回落到原图。
 
-        页面照片墙一律走这里。回落是必须的：v0.9.7 之前存的照片没有缩略图，
+        页面照片墙一律走这里。回落是必须的：这一版之前存的照片没有缩略图，
         而照片是要留好几年的——不能因为老照片就显示不出来。
         """
         thumb = self.store.load_sibling(stored_name)

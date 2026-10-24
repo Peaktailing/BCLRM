@@ -103,7 +103,7 @@ def main():
 
     # ---------- 瓶身二维码标签 ----------
     #
-    # 手机办借还最难的一步是「说出是哪一瓶」：手输 B-20261023-001 在 4 寸屏
+    # 手机办借还最难的一步是「说出是哪一瓶」：手输 202610230001 在 4 寸屏
     # 上是二十几次点击。贴个码，扫一下就进。
     #
     # 码里放什么由「手机访问地址」决定：配了就是一条 URL（手机相机直接扫就
@@ -120,7 +120,7 @@ def main():
         _label_input = st.text_area(
             "要打印的瓶号（每行一个，也可用逗号分隔）",
             key="qr_label_input",
-            placeholder="B-20261023-001\nB-20261023-002",
+            placeholder="202610230001\n202610230002",
             height=100,
         )
         _numbers = [
@@ -131,11 +131,31 @@ def main():
         # 打印前先把「装得下吗」这笔账算出来。码里放 URL 时，地址越长码越密，
         # 密到一定程度小瓶标签上就扫不动了——这件事必须在贴上去之前知道，
         # 而不是打完一沓标签、贴到瓶上才发现扫不出。
-        _probe_number = _numbers[0] if _numbers else "B-20261023-001"
-        _fit = fit(payload_of(_probe_number, _base_url))
+        _probe_number = _numbers[0] if _numbers else "202610230001"
+        # 探测也得用真实的 CAS 与入库日期：这两个字段让码从 20 字节涨到 39 字节，
+        # 用空值探测会算小一个版本，报账就白报了。
+        _probe = (
+            reagent_bottle_service.get_by_bottle_number(_probe_number)
+            if _numbers
+            else None
+        )
+        if _probe is not None:
+            _probe_payload = payload_of(
+                _probe_number,
+                _base_url,
+                getattr(_probe, "cas_number", "") or "",
+                getattr(_probe, "inbound_date", "") or "",
+            )
+        else:
+            # 库里的瓶查不到（或还没输入瓶号）时按最长形态估：宁可报密，不可报松
+            _probe_payload = payload_of(
+                _probe_number, _base_url, "0000000-00-0", "2026-10-23"
+            )
+        _fit = fit(_probe_payload)
         if _fit:
             st.caption(
-                f"码内容 {_fit.payload_bytes} 字节 → 版本 {_fit.version}"
+                ("预估：" if _probe is None else "")
+                + f"码内容 {_fit.payload_bytes} 字节 → 版本 {_fit.version}"
                 f"（{_fit.modules} 模块），19.5 mm 标签上每模块 "
                 f"{_fit.module_mm:.2f} mm"
             )
@@ -158,10 +178,14 @@ def main():
                     if _bottle is None:
                         _missing.append(_number)
                         continue
+                    _cas = getattr(_bottle, "cas_number", "") or ""
+                    _day = getattr(_bottle, "inbound_date", "") or ""
                     _png = label_png(
                         _number,
                         extra=getattr(_bottle, "reagent_name", "") or "",
-                        payload=payload_of(_number, _base_url),
+                        payload=payload_of(_number, _base_url, _cas, _day),
+                        cas=_cas,
+                        inbound_date=_day,
                     )
                     if _png:
                         _labels[_number] = _png
