@@ -43,7 +43,7 @@ from services.base.system_config_service import EvidenceConfig, system_config_se
 from services.core.borrow_order_service import borrow_order_item_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from utils.photo_utils import human_size
-from utils.qr_label import parse as parse_scan
+from utils.qr_label import human_expiry, parse_fields
 
 st.set_page_config(page_title="手机取证", page_icon="📷", layout="centered")
 
@@ -225,7 +225,11 @@ base_url = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
 # 一次新的页面加载，值必然变；用户手输不会动 URL，就永远走不到这个分支。
 _scanned_raw = (st.query_params.get("bottle") or "").strip()
 if _scanned_raw and _scanned_raw != st.session_state.get("_m_qs_mark", ""):
-    st.session_state["m_bottle_input"] = parse_scan(_scanned_raw) or ""
+    _scanned = parse_fields(_scanned_raw)
+    st.session_state["m_bottle_input"] = _scanned.get("bottle", "")
+    # 输入框里只放瓶号（一串短码在手机上看不清），但码上的 CAS / 效期 /
+    # 名字记在会话里——这个页面最要紧的用途就是「库查不到这瓶」的时候。
+    st.session_state["_m_scanned_fields"] = _scanned
     st.session_state["_m_qs_mark"] = _scanned_raw
 
 bottle_number = ""
@@ -240,10 +244,18 @@ with st.expander("📷 扫一张", expanded=not st.session_state.get("m_bottle_i
         )
 
 manual = st.text_input(
-    "瓶号", key="m_bottle_input", placeholder="例如 B-20261023-001"
+    "瓶号", key="m_bottle_input", placeholder="例如 202610230001"
 )
-if manual and manual.strip():
-    bottle_number = parse_scan(manual.strip()) or ""
+# 拆全部字段而不是只取瓶号：短码里还带着 CAS、效期、试剂名，那是**系统挂掉
+# 或断网时唯一能读到的信息**。查库成功时以库里为准，这里只作旁证。
+scanned = parse_fields(manual.strip()) if manual and manual.strip() else {}
+_cached = st.session_state.get("_m_scanned_fields") or {}
+if _cached.get("bottle") and _cached.get("bottle") == scanned.get("bottle"):
+    # 扫码跳转进来的：输入框只有瓶号，其余字段在上面那一步记着
+    for _key in ("cas", "expiry", "name"):
+        scanned[_key] = scanned.get(_key) or _cached.get(_key, "")
+if scanned.get("bottle"):
+    bottle_number = scanned["bottle"]
 
 if not bottle_number:
     st.info("还没有选瓶。扫二维码，或在上面的输入框里填瓶号。")
@@ -253,11 +265,27 @@ if not bottle_number:
 bottle = reagent_bottle_service.get_by_bottle_number(bottle_number)
 if bottle is None:
     bottle = reagent_bottle_service.get_by_barcode(bottle_number)
+
 if bottle is None:
-    st.error(f"没有这瓶：{bottle_number}。请核对瓶号，或先在「实时库存」里建档。")
+    # 查不到还能说什么？说码上写着什么。这是标签存在的意义：瓶子掉了、
+    # 账本没了，扫一下至少知道这是什么物质、哪天过期。
+    offline = " · ".join(
+        part for part in (
+            scanned.get("name", ""),
+            f"CAS {scanned['cas']}" if scanned.get("cas") else "",
+            f"效期 {human_expiry(scanned.get('expiry', ''))}"
+            if scanned.get("expiry") else "",
+        ) if part
+    )
+    st.warning(f"没有这瓶：{bottle_number}。请核对瓶号，或先在「实时库存」里建档。")
+    if offline:
+        st.info(f"瓶身码上写着：{offline}")
     st.stop()
 
 _bottle_card(bottle)
+_real_expiry = human_expiry(scanned.get("expiry", ""))
+if _real_expiry and _real_expiry != human_expiry(getattr(bottle, "expiry_date", "") or ""):
+    st.caption(f"瓶身码上的效期是 {_real_expiry}，与系统里的不一致——以系统为准，建议重打标签。")
 real_number = getattr(bottle, "bottle_number", "") or bottle_number
 
 st.divider()

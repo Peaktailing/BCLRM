@@ -15,7 +15,7 @@ from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from services.base.system_config_service import EvidenceConfig, system_config_service
 from services.core.reagent_bottle_service import reagent_bottle_service
-from utils.qr_label import fit, label_png, payload_of
+from utils.qr_label import NAME_MAX_CHARS, label_fit, label_png, payload_of
 
 def _derive_bottle_status(bottle):
     """从 borrowable_check 和其他字段派生显示状态"""
@@ -107,14 +107,16 @@ def main():
     # 上是二十几次点击。贴个码，扫一下就进。
     #
     # 码里放什么由「手机访问地址」决定：配了就是一条 URL（手机相机直接扫就
-    # 能打开），没配就是短码 BCLRM:B:xxx（得用手机取证页里的摄像头扫）。
+    # 能打开），没配就是短码 BCLRM:3:（瓶号 + CAS + 效期 + 试剂名，得用手机
+    # 取证页里的摄像头扫）。短码多背的那几段是给「系统不在」的时候用的。
     with st.expander("🖨️ 打印瓶身二维码标签", expanded=False):
         _base_url = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
         if _base_url:
             st.caption(f"二维码将指向：`{_base_url.rstrip('/')}/m?bottle=<瓶号>`")
         else:
             st.caption(
-                "还没配「手机访问地址」，二维码里放的是短码 `BCLRM:B:<瓶号>`。"
+                "还没配「手机访问地址」，二维码里放的是短码 "
+                "`BCLRM:3:<瓶号>;<CAS>;<效期>;<名>`。"
                 "想让手机相机直接扫开，请到「系统设置 → 现场取证」里填上地址。"
             )
         _label_input = st.text_area(
@@ -132,8 +134,8 @@ def main():
         # 密到一定程度小瓶标签上就扫不动了——这件事必须在贴上去之前知道，
         # 而不是打完一沓标签、贴到瓶上才发现扫不出。
         _probe_number = _numbers[0] if _numbers else "202610230001"
-        # 探测也得用真实的 CAS 与入库日期：这两个字段让码从 20 字节涨到 39 字节，
-        # 用空值探测会算小一个版本，报账就白报了。
+        # 探测也得用真实的 CAS、效期与试剂名：这三个字段让码从 21 字节涨到
+        # 100 字节以上，用空值探测会算小两三个版本，报账就白报了。
         _probe = (
             reagent_bottle_service.get_by_bottle_number(_probe_number)
             if _numbers
@@ -144,20 +146,33 @@ def main():
                 _probe_number,
                 _base_url,
                 getattr(_probe, "cas_number", "") or "",
-                getattr(_probe, "inbound_date", "") or "",
+                getattr(_probe, "expiry_date", "") or "",
+                getattr(_probe, "reagent_name", "") or "",
             )
         else:
-            # 库里的瓶查不到（或还没输入瓶号）时按最长形态估：宁可报密，不可报松
+            # 库里的瓶查不到（或还没输入瓶号）时按最长形态估：宁可报密，
+            # 不可报松——名字按 NAME_MAX_CHARS 个汉字顶格填。
             _probe_payload = payload_of(
-                _probe_number, _base_url, "0000000-00-0", "2026-10-23"
+                _probe_number,
+                _base_url,
+                "0000000-00-0",
+                "2027-06-30",
+                "试" * NAME_MAX_CHARS,
             )
-        _fit = fit(_probe_payload)
+        # 用 label_fit 而不是 fit：fit 算的是名义尺寸，实际出图按整数倍模块
+        # 取整后会小一两毫米，判级能差一档（名义 good、打出来 tight）。
+        _fit = label_fit(_probe_payload)
         if _fit:
             st.caption(
                 ("预估：" if _probe is None else "")
                 + f"码内容 {_fit.payload_bytes} 字节 → 版本 {_fit.version}"
-                f"（{_fit.modules} 模块），19.5 mm 标签上每模块 "
-                f"{_fit.module_mm:.2f} mm"
+                f"（{_fit.modules} 模块），码在标签上占 {_fit.print_mm:.1f} mm、"
+                f"每模块 {_fit.module_mm:.2f} mm"
+            )
+            st.caption(
+                f"短码格式：`BCLRM:3:<瓶号>;<CAS>;<效期>;<名>`。"
+                f"试剂名最多放 {NAME_MAX_CHARS} 个汉字，超了自动截断"
+                "（优先保留括号里的缩写，如 DTNB）。"
             )
             if _fit.grade == "tight":
                 st.warning(
@@ -179,13 +194,14 @@ def main():
                         _missing.append(_number)
                         continue
                     _cas = getattr(_bottle, "cas_number", "") or ""
-                    _day = getattr(_bottle, "inbound_date", "") or ""
+                    _expiry = getattr(_bottle, "expiry_date", "") or ""
+                    _name = getattr(_bottle, "reagent_name", "") or ""
                     _png = label_png(
                         _number,
-                        extra=getattr(_bottle, "reagent_name", "") or "",
-                        payload=payload_of(_number, _base_url, _cas, _day),
+                        name=_name,
+                        payload=payload_of(_number, _base_url, _cas, _expiry, _name),
                         cas=_cas,
-                        inbound_date=_day,
+                        expiry=_expiry,
                     )
                     if _png:
                         _labels[_number] = _png
