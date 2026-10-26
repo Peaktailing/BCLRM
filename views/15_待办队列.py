@@ -29,6 +29,7 @@ from business.assignment_service import (
     KIND_REQUIREMENT,
     assignment_service,
 )
+from business.transfer_service import transfer_service
 from components.auth import require_auth
 from components.sidebar_nav import render_sidebar
 from domain.assignment import Assignment
@@ -97,6 +98,16 @@ if my_groups:
     )
 else:
     st.caption("⚠️ 你还没有登记所属的组，只能看到指定给你和全院池的单。")
+
+# 调配单不进这个队列（队列是「谁该发料」，调拨是「谁该点头」），
+# 但完全看不见也不行——出料人不点头，缺料的人就一直等。
+_pending_transfers = transfer_service.pending_for(user_name)
+_pending_count = len(_pending_transfers.data or [])
+if _pending_count:
+    st.info(
+        f"另有 {_pending_count} 张调拨单等你点头（别人要从你名下调料）。"
+        "这类单不进上面的队列——去「🔀 调配台」处理。"
+    )
 
 with st.expander("筛选", expanded=False):
     filter_kind = st.radio(
