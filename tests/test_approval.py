@@ -210,6 +210,57 @@ class TestBorrowApproval(unittest.TestCase):
         order = borrow_order_service.get_by_id(order_id)
         self.assertEqual(order.approval_status, "待审批")
 
+    def test_department_pool_order_approvable_by_colleague(self):
+        """归教研室池的单，本室任一管理员都能批。
+
+        这是「指定审批人休假」的正常出路：本人（或超管）把单退回教研室池，
+        组里接手的人能直接批，签名落实际操作人，不留代签。
+        """
+        self._make_controlled("CN-111")
+        self._make_bottle("B9201", "管控试剂", 100.0, cas="CN-111")
+        created = self._create_controlled_course_order("B9201")
+        order_id = created.data["order_id"]
+
+        self._make_person("李管理员", "admin")
+        TEST_DB.execute_update(
+            "UPDATE person SET department = ? WHERE name IN (?, ?)",
+            ("化学教研室", "王管理员", "李管理员"),
+        )
+        # 王管理员休假 → 单退回教研室池
+        TEST_DB.execute_update(
+            "UPDATE borrow_order SET custodian_scope = 'department', "
+            "custodian_key = '化学教研室', claimed_at = NULL, "
+            "claimed_from_scope = '', claimed_from_key = '' WHERE id = ?",
+            (order_id,),
+        )
+
+        result = work_order_service.approve_order(order_id, "李管理员")
+        self.assertTrue(result.is_success(), result.message)
+        order = borrow_order_service.get_by_id(order_id)
+        self.assertEqual(order.approver, "李管理员", "签名必须跟实际操作人走")
+
+    def test_other_department_administrator_cannot_approve(self):
+        """别的教研室的管理员批不了：收窄与放宽都只在本层成员内生效。"""
+        self._make_controlled("CN-111")
+        self._make_bottle("B9202", "管控试剂", 100.0, cas="CN-111")
+        created = self._create_controlled_course_order("B9202")
+        order_id = created.data["order_id"]
+
+        self._make_person("赵管理员", "admin")
+        TEST_DB.execute_update(
+            "UPDATE person SET department = ? WHERE name = ?",
+            ("生物教研室", "赵管理员"),
+        )
+        TEST_DB.execute_update(
+            "UPDATE borrow_order SET custodian_scope = 'department', "
+            "custodian_key = '化学教研室' WHERE id = ?",
+            (order_id,),
+        )
+
+        result = work_order_service.approve_order(order_id, "赵管理员")
+        self.assertTrue(result.is_failure())
+        self.assertEqual(result.error_code, "NOT_ASSIGNED_APPROVER")
+
     def test_approve_executes_borrow(self):
         """批准后自动执行领用：扣库存、工单借用中、待办清空。"""
         self._make_controlled("CN-111")

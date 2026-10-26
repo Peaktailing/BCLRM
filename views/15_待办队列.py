@@ -39,7 +39,8 @@ render_sidebar()
 st.title("📋 待办队列")
 st.caption(
     "所有还在办的单在这里排成一队：零星/课程领用工单 + 配方需求单。"
-    "归属三级降级——指定给我 → 本教研室谁接都行 → 全院谁接都行。"
+    "归属三级：指定给某人（只有他看得见）→ 本教研室（本室任一管理员可接可办）"
+    "→ 全院池（全院管理员可接可办）。退回永远放宽一级。"
 )
 
 user_name = st.session_state.get("user_name") or ""
@@ -131,7 +132,6 @@ def _row_view(row: dict) -> dict:
         "提交时间": (row.get("created_at") or "")[:19],
     }
 
-
 st.dataframe(
     pd.DataFrame([_row_view(row) for row in rows]),
     use_container_width=True,
@@ -155,26 +155,41 @@ row = options[choice]
 kind = row.get("kind")
 ref = row.get("ref")
 current = Assignment.of(row.get("custodian_scope") or "", row.get("custodian_key") or "")
+# 能不能办（审批/发料）与能不能接是两件事：组池里的单两件都能做，谁办谁的
+# 签名进流水。这里只做提示，真正的拦截在服务端。
+_can_do, _why_not = assignment_service.can_handle(kind, ref, user_name)
 
 st.markdown(
     f"**{KIND_LABELS.get(kind, kind)} {ref}** ｜ 申请人 {row.get('applicant') or '—'} ｜ "
-    f"{current.describe()}"
+    f"{current.describe()} ｜ "
+    + ("✅ 你可以受理这张单" if _can_do else f"⛔ {_why_not}")
 )
 
 col_claim, col_release, col_transfer = st.columns([1, 1, 2])
 
-if current.can_claim(user_name, my_department, is_super_admin=is_super):
+_can_claim = current.can_claim(user_name, my_department, is_super_admin=is_super)
+_can_release = current.can_release(user_name, my_department, is_super_admin=is_super)
+_can_transfer = current.can_transfer(user_name, is_super_admin=is_super)
+
+if _can_claim:
     if col_claim.button("接单", type="primary", use_container_width=True):
         _flash(assignment_service.claim(kind, ref, user_name, my_department))
         st.rerun()
 
-if current.can_release(user_name, is_super_admin=is_super):
-    hint = "接单人本人或超管才能退回" if not is_super else "超管代退"
-    if col_release.button("退回池", help=hint, use_container_width=True):
+if _can_release:
+    # 退回永远放宽一级：人 → 组，组 → 全院。按钮上把落点写清楚，别让人
+    # 点完才知道单去了哪。
+    if current.is_person:
+        _release_label = "退回教研室池"
+        _release_hint = "放回原持有人的教研室；他室与本院其他管理员之后都能接"
+    else:
+        _release_label = "推回全院池"
+        _release_hint = "本室都不接：放回全院池，全院管理员都能接"
+    if col_release.button(_release_label, help=_release_hint, use_container_width=True):
         _flash(assignment_service.release(kind, ref, user_name, my_department))
         st.rerun()
 
-if current.can_transfer(user_name, is_super_admin=is_super):
+if _can_transfer:
     candidates = [n for n in assignment_service.admin_names() if n != current.key]
     if candidates:
         target = col_transfer.selectbox("转交给", options=candidates, key=f"transfer_{kind}_{ref}")
@@ -182,8 +197,7 @@ if current.can_transfer(user_name, is_super_admin=is_super):
             _flash(assignment_service.transfer(kind, ref, target, user_name))
             st.rerun()
 
-if not (
-    current.can_claim(user_name, my_department, is_super_admin=is_super)
-    or current.can_release(user_name, is_super_admin=is_super)
-):
-    st.caption("这张单已指定他人受理；如确需改派，请联系超级管理员。")
+if not (_can_claim or _can_release or _can_transfer):
+    st.caption(
+        f"{current.describe()}；这张单不归你办。需要改派请联系超级管理员。"
+    )

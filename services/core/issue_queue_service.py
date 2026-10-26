@@ -125,15 +125,28 @@ class IssueQueueService:
         )
 
     def release(
-        self, kind: str, ref: str, scope: str, key: str, from_key: str
+        self,
+        kind: str,
+        ref: str,
+        scope: str,
+        key: str,
+        from_scope: str,
+        from_key: str,
     ) -> int:
+        """放宽归属：本层 → 上一级（``person`` → ``department``/``all``，
+        ``department`` → ``all``）。
+
+        条件同样是**读到的旧状态的字面量**（scope + key 一起），所以一条
+        UPDATE 同时回答「还是我看到的那张单吗」和「它还在我以为的那一层吗」。
+        组池里的单被人抢先认领，`rowcount=0`，不会把别人名下的单悄悄推回池。
+        """
         table, column = self._table(kind)
         return self.db.execute_update(
             f"UPDATE {table} SET custodian_scope = ?, custodian_key = ?, "
             "claimed_at = NULL, claimed_from_scope = '', claimed_from_key = '' "
-            f"WHERE {column} = ? AND COALESCE(custodian_scope, '') = 'person' "
+            f"WHERE {column} = ? AND COALESCE(custodian_scope, '') = ? "
             "AND COALESCE(custodian_key, '') = ?",
-            (scope, key, ref, from_key),
+            (scope, key, ref, from_scope, from_key),
         )
 
     def transfer(self, kind: str, ref: str, target: str, from_key: str) -> int:

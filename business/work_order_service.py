@@ -79,6 +79,16 @@ class WorkOrderService:
         """管理员及以上（admin / super_admin）"""
         return self._role_of(name) in ADMIN_ROLES
 
+    @staticmethod
+    def _department_of(name: Optional[str]) -> str:
+        """查询人员登记的教研室（判断「本室任一管理员」用）。"""
+        if not name:
+            return ""
+        for p in person_service.get_all_persons():
+            if p.name == name:
+                return (getattr(p, "department", "") or "").strip()
+        return ""
+
     def is_super_admin(self, name: Optional[str]) -> bool:
         """是否超级管理员（用于页面候选标注「应急」与脏配置提示）"""
         return self._role_of(name) == "super_admin"
@@ -624,20 +634,41 @@ class WorkOrderService:
         return None
 
     def list_pending_approvals(self, approver_name: Optional[str] = None) -> List:
-        """待审批工单列表（可按审批人过滤）"""
+        """待审批工单列表。
+
+        传了人名就按**能不能批**过滤（归属判定），不是按 ``approver`` 字段
+        等值匹配：归教研室池的单组里谁都能批，字段里那个名字只是上一手。
+        """
         orders = [
             order for order in borrow_order_service.get_all_parsed()
             if order.approval_status == APPROVAL_PENDING
         ]
         if approver_name:
-            orders = [o for o in orders if o.approver == approver_name]
+            orders = [o for o in orders if self.can_approve(o, approver_name)]
         return orders
 
     def can_approve(self, order, user_name: Optional[str], is_admin: bool = False) -> bool:
-        """审批权限：仅该工单指定的审批人（超管也不代办，保证审批留痕）"""
+        """审批权限：跟**单据归属**走，不跟某个人名绑定。
+
+        收窄到人（``person``）时只有本人；归教研室时本室任一管理员都能审
+        ——这正是「指定审批人休假，退回池后组里接手」的那条路。归属为空的老
+        单没有登记主人，仍按原字段 ``approver`` 判，不借兼容放宽权限。
+        """
         if not (order and user_name):
             return False
-        return order.approver == user_name
+        from business.assignment_service import KIND_ORDER, assignment_service
+
+        explicit = assignment_service.explicit_assignment(
+            KIND_ORDER, getattr(order, "order_number", "") or ""
+        )
+        if explicit is None:
+            return order.approver == user_name
+        return explicit.can_handle(
+            user_name,
+            self._department_of(user_name),
+            is_admin=self._is_admin_plus(user_name),
+            is_super_admin=self.is_super_admin(user_name),
+        )
 
     @handle_exception(context="审批领用工单")
     def approve_order(
@@ -683,6 +714,9 @@ class WorkOrderService:
                     "approval_status": APPROVAL_APPROVED,
                     "approval_time": now,
                     "approval_remark": remark,
+                    # 签名跟着实际操作人走：一张归教研室池的单可能由组里任何
+                    # 一位管理员批，approver 若还留着原指派人就成了代签。
+                    "approver": approver_name,
                 },
             )
             if not claimed:
@@ -694,6 +728,18 @@ class WorkOrderService:
                     ),
                     error_code="APPROVAL_RACE_LOST",
                 )
+
+            # 谁批的归谁：把归属一并收窄到实际操作人，别让审批记录和归属各说
+            # 一套。失败不影响审批本身（这一列只用于追溯，不参与业务判定）。
+            try:
+                from business.assignment_service import KIND_ORDER, assignment_service as _asg
+                from domain.assignment import Assignment as _Assignment
+
+                _asg.assign(
+                    KIND_ORDER, order.order_number, _Assignment.person(approver_name)
+                )
+            except Exception as _asg_err:  # pragma: no cover - 只为不阻断审批
+                logger.warning(f"审批后回写归属失败：{_asg_err}")
 
             for item in items:
                 result = borrow_service.reagent_borrow(
@@ -803,6 +849,7 @@ class WorkOrderService:
                 "approval_status": APPROVAL_REJECTED,
                 "approval_time": now,
                 "approval_remark": remark,
+                "approver": approver_name,
             },
         ):
             current = borrow_order_service.get_by_id(order_id)
@@ -956,6 +1003,17 @@ class WorkOrderService:
 
         old_approver = order.approver
         borrow_order_service.update(order_id, {"approver": new_approver})
+        # 改派就是改归属：只改 approver 不改归属，会出现「单子上写着甲、
+        # 系统只让乙批」的僵局（审批判定已经按归属走了）。
+        try:
+            from business.assignment_service import KIND_ORDER, assignment_service as _asg
+            from domain.assignment import Assignment as _Assignment
+
+            _asg.assign(
+                KIND_ORDER, order.order_number, _Assignment.person(new_approver)
+            )
+        except Exception as _asg_err:  # pragma: no cover - 只为不阻断改派
+            logger.warning(f"改派后同步归属失败：{_asg_err}")
 
         logger.info(
             "应急重新指定审批人",

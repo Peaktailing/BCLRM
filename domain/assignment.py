@@ -14,14 +14,33 @@ BCLRM 原来只有一条「全院都能看见、谁点谁办」的隐含规则�
 3            ``all``                全院任一管理员（滴滴式抢单）
 ===========  ====================  ================================
 
-本模块只回答「谁能看、谁能接、谁能退、退回落到哪」，不碰数据库、不认识
-SQL。判定之所以要独立成领域逻辑，是因为它有一条容易被写散的不变量：
+本模块只回答「谁能看、谁能接、谁能办、谁能退、退回落到哪」，不碰数据库、
+不认识 SQL。
 
-    **同教研室的其他管理员没有退回权。**
+判定只有一条总纲：**权限由「当前归属」决定，不由历史决定。**
 
-认领是一条单向收窄（组 → 人）。如果同室旁人能把它改回去，认领就退化成
-一个可被第三方撤回的临时状态，抢单只是从「接单」挪到了「退回」按钮上。
-可见性解决「不漏单」，可改性解决「谁负责」——两件事不能共用一条规则。
+每一层归属就是一个成员集合，五类动作全部从集合里派生：
+
+============  ==================  ====  ====  ====  ====  ====
+当前归属       成员集合             可见   接单   受理   退回
+============  ==================  ====  ====  ====  ====
+person:张三    {张三}               张三   —     张三   张三
+department:X  X 的全体管理员        全组   任一人  任一人  任一人
+all           全院管理员            全院   任一人  任一人   —
+============  ==================  ====  ====  ====  ====  ====
+
+（可见三列对超管一律放行，超管是兜底角色，不属于「其他人」。）
+
+两个差别的来源不是特权，而是这个动作在这一层有没有意义：接单只对「还没到
+人」的单有意义，退回只对「还没到全院」的单有意义。
+
+于是收窄与放宽互为镜像：**认领把集合从一组人改成一个人，其他人当场既看不见
+也动不了；退回把集合改回一组人，组里每个人当场既看得见也退得动、批得动。**
+
+上一版在这里写过「同教研室可见但不可退」。那句话对 ``person`` 层是对的
+（收窄之后同室本来就看不见），对 ``department`` 层是错的：组池里的单还没有
+主人，主人就是整个组，组里任何人放它回全院池，只是把「没人认」这件事说得更
+大声一点，并没有替谁做决定。
 """
 from __future__ import annotations
 
@@ -41,9 +60,11 @@ CLAIM_ASSIGNED = "assigned"                # 本来就指定了某人
 CLAIM_NOT_ALLOWED = "not_allowed"          # 不是管理员 / 状态不允许
 
 #: 退回被拒的原因
-RELEASE_NOT_OWNER = "not_owner"            # 不是当前接单人，也不是超管
-RELEASE_NOT_PERSON = "not_person"          # 不在个人名下，没有「退」这个动作
+RELEASE_NOT_OWNER = "not_owner"            # 不在当前归属的成员集合里
 RELEASE_ROOT = "root"                      # 已经落在 all，退无可退
+
+#: 受理/审批被拒
+ACT_NOT_MEMBER = "not_member"              # 不在当前归属的成员集合里
 
 
 class AssignmentError(ValueError):
@@ -156,28 +177,71 @@ class Assignment:
             return True
         return bool(my_department) and self.key == my_department.strip()
 
-    def can_release(self, me: str, is_super_admin: bool = False) -> bool:
-        """能不能把这张单退回池。
+    def can_handle(
+        self,
+        me: str,
+        my_department: str = "",
+        is_admin: bool = False,
+        is_super_admin: bool = False,
+    ) -> bool:
+        """能不能办这张单的业务动作（受理、审批、发料、兑付）。
 
-        **同教研室的其他管理员不算。** 组内可见是为了不漏单，不代表组内
-        互相可以改单据归属。唯一的例外是超管：真人离职、账号停用时，只有
-        他能替当事人把单放回去。
+        与「接单」的分工：接单是**声明负责**（收窄归属），受理是**把事做掉**。
+        组池里的单两件事都能做——先接后办、直接办都行，谁办的谁的签名进流水。
+
+        ``person`` 层超管也不代办：审批要留痕，代签等于把「谁批的」写错。
+        超管要动这类单，只能走「退回/转交」这两个显式动作，改完归属再由成员
+        本人办。
+        """
+        me = (me or "").strip()
+        if self.is_person:
+            return self.key == me
+        if self.is_department:
+            return bool(is_admin) and bool(my_department) and self.key == my_department.strip()
+        return bool(is_admin)
+
+    def can_release(
+        self, me: str, my_department: str = "", is_super_admin: bool = False
+    ) -> bool:
+        """能不能把这张单退回上一级（放宽归属）。
+
+        成员集合里的每个人都能放，不设「必须本人」：
+        ``person`` 层只有本人（别人本来就看不见），``department`` 层是**组里
+        任何一个人**。组池里的单没有主，组员把它推回全院池，是把「还没人认」
+        这件事说得更明白，不是替谁做决定。
+
+        退回永远只能放宽：本层 → 上一级，落到的具体位置由
+        :meth:`after_release` 按来源算，不由退的人算。
         """
         if self.is_all:
             return False
         if self.is_person:
             return self.key == (me or "").strip() or is_super_admin
-        return is_super_admin
+        return is_super_admin or (
+            bool(my_department) and self.key == my_department.strip()
+        )
 
     def can_transfer(self, me: str, is_super_admin: bool = False) -> bool:
-        """能不能把这张单转给别人（与退回同一套权限）。"""
+        """能不能把这张单点名叫别人办。
+
+        只在 ``person`` 层有意义。组池里的单要「给某人」，正确动作是认领
+        （自己接）而不是替同事指定——替别人接活不叫分工，叫代签。
+        """
         return self.is_person and (
             self.key == (me or "").strip() or is_super_admin
         )
 
+    def handle_blocked_message(self) -> str:
+        """办不了时的提示语（要说清楚该找谁）。"""
+        if self.is_person:
+            return f"这张单指定由 {self.key} 受理，其他人不能办理"
+        if self.is_department:
+            return f"这张单归 {self.key}，只有该教研室的管理员可以办理"
+        return "只有管理员可以办理单据"
+
     def after_release(
         self,
-        my_department: str = "",
+        holder_department: str = "",
         claimed_from: Optional["Assignment"] = None,
     ) -> Optional["Assignment"]:
         """退回之后落到哪一级。``None`` 表示退无可退。
@@ -188,13 +252,17 @@ class Assignment:
           还回全院池，不能因为接单人有教研室就降成「他的教研室」。
         - 指定来的单（没有 ``claimed_from``）：降到下一级。指定给某人 → 本
           教研室（没有教研室就全院）；教研室 → 全院。
+
+        ``holder_department`` 必须是**原持有人的科室**，不是操作人的科室：
+        超管替张三退回时，单要落回张三的教研室，不能落到超管自己的室——那
+        是「退回」变成「改派」。
         """
         if self.is_all:
             return None
         if claimed_from is not None and not claimed_from.is_person:
             return claimed_from
         if self.is_person:
-            department = (my_department or "").strip()
+            department = (holder_department or "").strip()
             return Assignment.department(department) if department else Assignment.everywhere()
         return Assignment.everywhere()
 
@@ -202,8 +270,8 @@ class Assignment:
         if self.is_person:
             return f"指定由 {self.key} 受理"
         if self.is_department:
-            return f"归 {self.key}（任一管理员可接）"
-        return "全院池（任一管理员可接）"
+            return f"归 {self.key}（本室任一管理员可接可办）"
+        return "全院池（任一管理员可接可办）"
 
     def __str__(self) -> str:  # pragma: no cover - 便于调试
         return f"{self.scope}:{self.key}" if self.key else self.scope
@@ -240,8 +308,8 @@ __all__ = [
     "CLAIM_ASSIGNED",
     "CLAIM_NOT_ALLOWED",
     "RELEASE_NOT_OWNER",
-    "RELEASE_NOT_PERSON",
     "RELEASE_ROOT",
+    "ACT_NOT_MEMBER",
     "AssignmentError",
     "ClaimError",
     "ReleaseError",

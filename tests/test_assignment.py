@@ -1,12 +1,11 @@
-"""归属三级降级：谁能看、谁能接、谁能退。
+"""归属三级降级：谁能看、谁能接、谁能办、谁能退。
 
-这一组用例守的是一条容易被写散的不变量：
+这一组用例守的是同一条总纲：
 
-    **同教研室的其他管理员没有退回权。**
+    **权限由「当前归属」决定，不由历史决定。**
 
-认领是单向收窄（组 → 人）。如果同室旁人能把归属改回去，认领就退化成
-一个可被第三方撤回的临时状态，抢单只是从「接单」挪到了「退回」按钮上。
-所以「可见」与「可改」必须是两条规则，不能共用一条。
+收窄到人，别人当场看不见也动不了；放宽回组，组里每个人当场看得见、退得
+动、批得动。两个方向互为镜像，所以用例也成对写。
 """
 from __future__ import annotations
 
@@ -70,7 +69,9 @@ PEOPLE = _People(
         _Person("李四", "化学教研室"),     # 与张三同室
         _Person("王五", "生物教研室"),
         _Person("赵六", "化学教研室", role="teacher"),
-        _Person("超管", "化学教研室", role="super_admin"),
+        # 超管的科室故意与化学教研室不同：用它验证「代退落到原持有人的
+        # 教研室，而不是操作人的教研室」。
+        _Person("超管", "生物教研室", role="super_admin"),
     ]
 )
 
@@ -111,17 +112,42 @@ class TestAssignmentRules(unittest.TestCase):
         self.assertTrue(target.can_claim("超管", "生物教研室", is_super_admin=True))
 
     def test_same_department_administrator_cannot_release(self):
-        """本轮的定盘星：组内可见 ≠ 组内可改。"""
+        """收窄到人之后，同室的人既看不见也退不了。"""
         target = Assignment.person("张三")
-        self.assertTrue(target.can_release("张三"))
-        self.assertFalse(target.can_release("李四", is_super_admin=False))
+        self.assertTrue(target.can_release("张三", "化学教研室"))
+        self.assertFalse(target.can_release("李四", "化学教研室"))
+        self.assertFalse(target.visible_to("李四", "化学教研室"))
         self.assertFalse(target.can_transfer("李四"))
-        self.assertTrue(target.can_release("超管", is_super_admin=True))
+        self.assertTrue(target.can_release("超管", "生物教研室", is_super_admin=True))
 
-    def test_department_row_can_only_be_released_by_super(self):
+    def test_department_pool_member_can_release(self):
+        """放宽回组之后，组里每个人都能退（再退一级就是全院池）。"""
         target = Assignment.department("化学教研室")
-        self.assertFalse(target.can_release("张三"))
-        self.assertTrue(target.can_release("超管", is_super_admin=True))
+        self.assertTrue(target.can_release("张三", "化学教研室"))
+        self.assertTrue(target.can_release("李四", "化学教研室"))
+        # 别的教研室不行，没登记科室的人也不行（不能靠空值命中）
+        self.assertFalse(target.can_release("王五", "生物教研室"))
+        self.assertFalse(target.can_release("无科室", ""))
+        self.assertTrue(target.can_release("超管", "生物教研室", is_super_admin=True))
+        # 组池再退只能退到全院，退无可退时由 after_release 返回 all
+        self.assertTrue(target.after_release("化学教研室").is_all)
+
+    def test_handle_follows_scope(self):
+        """「能办」跟「能看」同一套成员集合；person 层超管也不代办。"""
+        person = Assignment.person("张三")
+        self.assertTrue(person.can_handle("张三", "化学教研室", is_admin=True))
+        self.assertFalse(person.can_handle("李四", "化学教研室", is_admin=True))
+        self.assertFalse(person.can_handle("超管", "生物教研室", is_super_admin=True))
+
+        room = Assignment.department("化学教研室")
+        self.assertTrue(room.can_handle("李四", "化学教研室", is_admin=True))
+        self.assertFalse(room.can_handle("赵六", "化学教研室", is_admin=False))  # 教师
+        self.assertFalse(room.can_handle("王五", "生物教研室", is_admin=True))
+        self.assertFalse(room.can_handle("超管", "生物教研室", is_super_admin=True))
+
+        pool = Assignment.everywhere()
+        self.assertTrue(pool.can_handle("王五", "生物教研室", is_admin=True))
+        self.assertFalse(pool.can_handle("赵六", "化学教研室", is_admin=False))
 
     def test_root_pool_has_no_release(self):
         self.assertFalse(Assignment.everywhere().can_release("张三", is_super_admin=True))
@@ -283,8 +309,49 @@ class TestAssignmentService(unittest.TestCase):
 
     def test_super_admin_can_release_other_people(self):
         number = self._order("r4", scope="person", key="张三")
-        result = self.service.release(KIND_ORDER, number, "超管", "化学教研室")
+        result = self.service.release(KIND_ORDER, number, "超管", "生物教研室")
         self.assertTrue(result.is_success(), result.message)
+
+    def test_department_pool_member_releases_to_root(self):
+        """组池里的单，组里任何人能推回全院池——退的是「没人认」，不是别人。"""
+        number = self._order("r5", scope="department", key="化学教研室")
+        result = self.service.release(KIND_ORDER, number, "李四", "化学教研室")
+        self.assertTrue(result.is_success(), result.message)
+        row = TEST_DB.execute_query(
+            "SELECT custodian_scope, custodian_key FROM borrow_order WHERE order_number = ?",
+            (number,),
+        )[0]
+        self.assertEqual(row["custodian_scope"], "all")
+        self.assertEqual(row["custodian_key"], "")
+
+    def test_other_department_cannot_release_pool_item(self):
+        number = self._order("r6", scope="department", key="化学教研室")
+        result = self.service.release(KIND_ORDER, number, "王五", "生物教研室")
+        self.assertFalse(result.is_success())
+        self.assertEqual(result.error_code, RELEASE_NOT_OWNER.upper())
+
+    def test_super_admin_release_lands_in_holder_department(self):
+        """超管代退落到**原持有人**的教研室，不是超管自己的教研室。"""
+        number = self._order("r7", scope="person", key="张三")
+        result = self.service.release(KIND_ORDER, number, "超管", "生物教研室")
+        self.assertTrue(result.is_success(), result.message)
+        row = TEST_DB.execute_query(
+            "SELECT custodian_scope, custodian_key FROM borrow_order WHERE order_number = ?",
+            (number,),
+        )[0]
+        self.assertEqual(row["custodian_scope"], "department")
+        self.assertEqual(row["custodian_key"], "化学教研室")
+
+    def test_claimed_item_leaves_colleague_queue(self):
+        """收窄到人之后，同室同事的待办里就看不见了。"""
+        number = self._order("r8", scope="department", key="化学教研室")
+        before = [r["ref"] for r in self.service.queue("李四", "化学教研室")]
+        self.assertIn(number, before)
+
+        self.service.claim(KIND_ORDER, number, "张三", "化学教研室")
+        after = [r["ref"] for r in self.service.queue("李四", "化学教研室")]
+        self.assertNotIn(number, after)
+        self.assertIn(number, [r["ref"] for r in self.service.queue("张三", "化学教研室")])
 
     # ---------------------------------------------------------------- 转交
     def test_transfer_requires_admin_target(self):

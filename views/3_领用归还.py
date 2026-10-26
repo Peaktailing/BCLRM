@@ -53,6 +53,7 @@ user_name = st.session_state.get("user_name")
 user_role = st.session_state.get("user_role", "user")
 is_admin = bool(st.session_state.get("is_admin", False))
 is_teacher_or_above = user_role in ("super_admin", "admin", "teacher")
+is_super = user_role == "super_admin"
 
 # 可发起的工单类型
 order_types = []
@@ -569,14 +570,18 @@ def _render_reassign_ui(order):
 
 with tab_approval:
     _all_pending = work_order_service.list_pending_approvals(None)
-    _my_approvals = [o for o in _all_pending if o.approver == user_name]
+    # 待我审批 = 归属成员判定，不是 approver 字段等值匹配：归教研室池的单
+    # 组里谁都能批（原指派人休假退回池后，组里接手就靠这条）。
+    _my_approvals = [o for o in _all_pending if work_order_service.can_approve(o, user_name)]
     _my_submissions = [
         o for o in _all_pending
-        if o.applicant == user_name and o.approver != user_name
+        if o.applicant == user_name and o not in _my_approvals
     ]
+    # 别人名下的单不再列给常规管理员：一张单同时挂在两个人眼前，两个人都会
+    # 以为对方在办。全域可见只留超管（改派与兜底的唯一入口）。
     _admin_visible = [
         o for o in _all_pending
-        if o not in _my_approvals and o not in _my_submissions
+        if is_super and o not in _my_approvals and o not in _my_submissions
     ]
 
     st.caption(
@@ -693,12 +698,12 @@ with tab_approval:
                 _render_order_items(order)
                 _render_withdraw_button(order)
 
-    # ---------- 管理视图：其余待审批工单（应急重新指定审批人） ----------
-    if is_admin and _admin_visible:
-        st.subheader("🔧 全部待审批工单（管理员）")
+    # ---------- 超管视图：其余待审批工单（应急重新指定审批人） ----------
+    if is_super and _admin_visible:
+        st.subheader("🔧 其他管理员名下的待审批工单（超管）")
         st.caption(
-            "可应急重新指定审批人（候选含超管并标注「应急」）；"
-            "审批操作仍由工单指定的审批人执行。"
+            "这些单已指定他人受理，常规管理员看不到；超管可见并可应急重新指定"
+            "审批人（候选含超管并标注「应急」）。"
         )
         for order in _admin_visible:
             with st.expander(

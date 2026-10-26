@@ -14,8 +14,9 @@
    混在一起会让 `RoutingError` 失去信号意义。
 2. **认领是一条带条件的 UPDATE**，`rowcount=0` 就是判定结果，不需要事务外
    加锁、不需要租约。判定点放在写，不放在读。
-3. **退回只能放宽**。认领来的单退回原处，指定来的单降一级。同教研室的其他
-   管理员无权退——见 `domain.assignment`。
+3. **权限跟着当前归属走，不跟历史走**。收窄到人，别人当场看不见也动不了；
+   放宽回组，组里每个人当场看得见、退得动、批得动。退回只能放宽，落点按
+   来源算、按原持有人的科室算——见 `domain.assignment`。
 """
 from __future__ import annotations
 
@@ -23,12 +24,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from domain.assignment import (
+    ACT_NOT_MEMBER,
     CLAIM_ASSIGNED,
     CLAIM_NOT_ALLOWED,
     CLAIM_OTHER_DEPARTMENT,
     CLAIM_TAKEN,
     RELEASE_NOT_OWNER,
-    RELEASE_NOT_PERSON,
     RELEASE_ROOT,
     Assignment,
     assignment_of,
@@ -241,47 +242,112 @@ class AssignmentService:
         return CLAIM_NOT_ALLOWED, "当前状态不能接单"
 
     # ------------------------------------------------------------------
+    # 能不能看 / 能不能办
+    # ------------------------------------------------------------------
+    def assignment_for(self, kind: str, ref: str) -> Optional[Assignment]:
+        row = self.issues.row(kind, ref)
+        return assignment_of(row) if row else None
+
+    def explicit_assignment(self, kind: str, ref: str) -> Optional[Assignment]:
+        """库里**真的写了**归属吗。空返回 ``None``（升级前的老单）。
+
+        为什么要留这个区分：``assignment_of`` 把空规范成 ``all`` 是为了显示
+        和过滤（老单不能从待办里消失），但「没登记归属」不等于「登记成全院
+        池」。老单的审批权仍按原字段 ``approver`` 判——不能凭空给老单换一个
+        更宽的主人，那是借兼容之名放宽权限。
+        """
+        row = self.issues.row(kind, ref)
+        if not row:
+            return None
+        if not (row.get("custodian_scope") or "").strip():
+            return None
+        return assignment_of(row)
+
+    def can_see(self, kind: str, ref: str, me: str) -> bool:
+        """这张单该不该出现在我的任何列表里。
+
+        收窄到人之后，同室的其他人也看不见——这不是隐私偏好，是「谁负责」
+        这件事必须只有一个答案：一张单同时挂在两个人眼前，两个人都会以为
+        对方在办。
+        """
+        if self.is_super_admin(me):
+            return True
+        row = self.issues.row(kind, ref)
+        if not row:
+            return False
+        return assignment_of(row).visible_to(me, self.department_of(me))
+
+    def can_handle(self, kind: str, ref: str, me: str):
+        """能不能办这张单的业务动作。返回 ``(bool, 提示语)``。
+
+        页面用它决定给不给按钮，服务端用它拦写入——两处用同一个判定，才
+        不会出现「按钮是灰的但接口能调」。
+        """
+        row = self.issues.row(kind, ref)
+        if not row:
+            return False, f"单据不存在：{ref}"
+        current = assignment_of(row)
+        allowed = current.can_handle(
+            me,
+            self.department_of(me),
+            is_admin=self.is_admin(me),
+            is_super_admin=self.is_super_admin(me),
+        )
+        return (True, "") if allowed else (False, current.handle_blocked_message())
+
+    # ------------------------------------------------------------------
     # 退回 / 转交
     # ------------------------------------------------------------------
     @handle_exception(context="退回池")
     def release(self, kind: str, ref: str, me: str, my_department: str = "") -> ServiceResult:
-        """把单从某人名下放回池里。
+        """把单放宽一级：人 → 组、组 → 全院。
 
-        权限只有两种人：当前接单人本人、超管。**同教研室的其他管理员不在
-        其中**——组内可见是为了不漏单，不代表组内互相可以改归属。旁人代退
-        是替当事人做决定，而「他干不了这件」只有当事人知道。
+        权限是「当前归属的成员集合」，所以组池里的单组里谁都能放回全院池。
+        **落点不看退的人是谁**：指定来的单落到原持有人的教研室，认领来的单
+        恢复认领前的原处。超管替张三退，不能因为超管自己是生物室就落到生物室
+        ——那是退回，不是改派。
         """
         row = self.issues.row(kind, ref)
         if not row:
             return ServiceResult.fail(message=f"单据不存在：{ref}", error_code="NOT_FOUND")
 
         current = assignment_of(row)
-        is_super = self.is_super_admin(me)
-        if not current.is_person:
+        if current.is_all:
             return ServiceResult.fail(
-                message="这张单还没到人手上，没有「退回」这个动作",
-                error_code=RELEASE_NOT_PERSON.upper(),
-            )
-        if not current.can_release(me, is_super_admin=is_super):
-            return ServiceResult.fail(
-                message=f"只有 {current.key} 本人或超级管理员可以退回这张单",
-                error_code=RELEASE_NOT_OWNER.upper(),
+                message="这张单已经在全院池，退无可退", error_code=RELEASE_ROOT.upper()
             )
 
-        target = current.after_release(
-            my_department or self.department_of(me), claimed_from_of(row)
-        )
+        my_department = (my_department or self.department_of(me) or "").strip()
+        is_super = self.is_super_admin(me)
+        if not current.can_release(me, my_department, is_super_admin=is_super):
+            if current.is_person:
+                message = f"只有 {current.key} 本人或超级管理员可以退回这张单"
+            else:
+                message = f"只有 {current.key} 的管理员可以退回这张单"
+            return ServiceResult.fail(message=message, error_code=RELEASE_NOT_OWNER.upper())
+
+        # 落点按「原持有人」的科室算，不按操作人的科室算。
+        holder_department = self.department_of(current.key) if current.is_person else ""
+        target = current.after_release(holder_department, claimed_from_of(row))
         if target is None:
             return ServiceResult.fail(
                 message="这张单已经在全院池，退无可退", error_code=RELEASE_ROOT.upper()
             )
 
-        changed = self.issues.release(kind, ref, target.scope, target.key, current.key)
+        changed = self.issues.release(
+            kind, ref, target.scope, target.key, current.scope, current.key
+        )
         if not changed:
             return ServiceResult.fail(
                 message="这张单刚被改动过，请刷新后再试", error_code="STALE"
             )
-        audit(me, "退回池", _table_of(kind), ref, f"{current.key} → {target.describe()}")
+        audit(
+            me,
+            "退回池",
+            _table_of(kind),
+            ref,
+            f"{current.describe()} → {target.describe()}",
+        )
         return ServiceResult.ok(
             data={"kind": kind, "ref": ref, "custodian_scope": target.scope,
                   "custodian_key": target.key},
