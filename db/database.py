@@ -448,6 +448,50 @@ class Database:
                 )
             """)
 
+            # 9.6 调拨单（管理员之间的横向通道：缺口 → 建议 → 对方点头 → 平账）
+            #
+            # 与 9.4 的 allocation_order 是两种东西：那张是 demand 驱动的
+            # 「智能分配算够不够」，没有双方确认、没有 lot 级明细；这张是
+            # 「这批货从谁名下转到谁名下」，一次点头对应一张单。
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS transfer_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transfer_number TEXT NOT NULL UNIQUE,
+                    from_manager TEXT NOT NULL,
+                    to_manager TEXT NOT NULL,
+                    reason TEXT,
+                    origin_kind TEXT,
+                    origin_ref TEXT,
+                    status TEXT,
+                    requested_by TEXT,
+                    requested_at TEXT,
+                    respondent TEXT,
+                    answered_at TEXT,
+                    answer_remark TEXT,
+                    executed_at TEXT,
+                    forced INTEGER DEFAULT 0,
+                    picked_up_at TEXT,
+                    note TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS transfer_order_item (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transfer_id INTEGER NOT NULL,
+                    line_no INTEGER,
+                    lot_id TEXT,
+                    substance_key TEXT,
+                    cas_number TEXT,
+                    display_name TEXT,
+                    quantity REAL,
+                    unit TEXT,
+                    line_status TEXT,
+                    note TEXT
+                )
+            """)
+
             # 10. 领用记录表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS borrow_record (

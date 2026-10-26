@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from db.base_service import BaseService
 from db.database import db
@@ -65,6 +65,31 @@ class RequirementSheetService(BaseService):
         return self.get_all_by_field(
             RequirementSheetField.RECIPE_KEY, recipe_key, order_by="created_at DESC"
         )[:limit]
+
+    def list_by_custodian(
+        self, person_name: str, statuses: Sequence[str] = ()
+    ) -> List[Dict[str, Any]]:
+        """某人名下（已认领到人）的单。
+
+        **只认 ``person`` 层**：组池与全院池的单还没有主人，缺口也就没有
+        主人——谁先认领谁负责调。所以按 `custodian_key = 我` 精确匹配，
+        不把 `department` / `all` 也算进来（那样每个人都会看到同一批单，
+        谁都以为别人去调了）。
+        """
+        person_name = (person_name or "").strip()
+        if not person_name:
+            return []
+        sql = (
+            f"SELECT * FROM {_SHEET_TABLE} "
+            "WHERE custodian_scope = ? AND custodian_key = ?"
+        )
+        params: list = ["person", person_name]
+        if statuses:
+            placeholders = ", ".join("?" for _ in statuses)
+            sql += f" AND status IN ({placeholders})"
+            params.extend(statuses)
+        sql += " ORDER BY created_at DESC"
+        return self.db.execute_query(sql, tuple(params))
 
     def next_sequence(self, prefix: str) -> int:
         """当日流水号（同前缀的最大值 +1）。"""

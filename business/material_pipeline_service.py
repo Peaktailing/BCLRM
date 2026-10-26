@@ -245,11 +245,17 @@ class MaterialPipelineService:
     # ------------------------------------------------------------------
     # 执行：把调拨建议变成真实的保管权流转
     # ------------------------------------------------------------------
-    @handle_exception(context="执行调拨")
-    def commit_transfers(
+    @handle_exception(context="强制平账")
+    def force_transfer(
         self, proposal: TransferProposal, operator: str, note: str = ""
     ) -> ServiceResult:
-        """按建议逐瓶转保管权。
+        """超管一键平账：**不问出料人**，直接把保管权划过去。
+
+        这条路是应急通道，不是正常流程。正常流程在「调配台」
+        （``business/transfer_service.py``）：先发给对方，本人点头才生效。
+        之所以两条都留着，是因为**出一趟差三周、人不在岗的柜子不能一直锁着**
+        ——但代价必须显性：留痕写成 ``pipeline_forced``，事后一眼能看出这是
+        绕过了同意的一笔。
 
         只处理能精确到瓶的行。跨量纲那类（只知道"折合 40 mL"、不知道是哪
         一瓶）不猜——交给现场人工办理，并如实报告，而不是随便挑一瓶把账
@@ -279,7 +285,7 @@ class MaterialPipelineService:
                     line.to_custodian.name,
                     operator,
                     reason=REASON_ALLOCATION,
-                    ref_type="pipeline",
+                    ref_type="pipeline_forced",
                     ref_id=note or datetime.now().strftime("PIPE%Y%m%d%H%M%S"),
                 )
                 if result.is_success():

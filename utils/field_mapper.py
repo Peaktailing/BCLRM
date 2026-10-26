@@ -673,3 +673,44 @@ class SystemConfigField:
     UPDATED_BY = 'updated_by'  # 最后修改人
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
+
+
+class TransferOrderField:
+    """调拨单表字段名常量
+
+    与 :class:`AllocationOrderField` 的区别：那张是需求驱动的「算够不够」，
+    这张是保管权流转的单据——有出料人、有受益人、有谁点的头。
+    """
+    ID = 'id'
+    TRANSFER_NUMBER = 'transfer_number'  # 调拨单号
+    FROM_MANAGER = 'from_manager'        # 出料的管理员（保管权转出方）
+    TO_MANAGER = 'to_manager'            # 受益的管理员（保管权转入方）
+    REASON = 'reason'                    # 缺口调配 / 手工借调 / 超管强平
+    ORIGIN_KIND = 'origin_kind'          # requirement_sheet / work_order / manual
+    ORIGIN_REF = 'origin_ref'            # 来源单号
+    STATUS = 'status'                    # 待发送 / 待点头 / 已同意 / 已拒绝 / 已撤回
+    REQUESTED_BY = 'requested_by'
+    REQUESTED_AT = 'requested_at'
+    RESPONDENT = 'respondent'            # 点头或拒绝的人
+    ANSWERED_AT = 'answered_at'
+    ANSWER_REMARK = 'answer_remark'      # 拒绝理由（必填）
+    EXECUTED_AT = 'executed_at'          # 保管权真正流转的时刻
+    FORCED = 'forced'                    # 1 = 超管跳过对方点头
+    PICKED_UP_AT = 'picked_up_at'        # 实物取走时刻（可选，不阻断流程）
+    NOTE = 'note'
+    CREATED_AT = 'created_at'
+
+
+class TransferOrderItemField:
+    """调拨单明细表字段名常量"""
+    ID = 'id'
+    TRANSFER_ID = 'transfer_id'
+    LINE_NO = 'line_no'
+    LOT_ID = 'lot_id'                    # 瓶号；空 = 现场指定
+    SUBSTANCE_KEY = 'substance_key'
+    CAS_NUMBER = 'cas_number'
+    DISPLAY_NAME = 'display_name'
+    QUANTITY = 'quantity'
+    UNIT = 'unit'
+    LINE_STATUS = 'line_status'          # 待点头 / 已同意 / 已拒绝 / 执行失败
+    NOTE = 'note'

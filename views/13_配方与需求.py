@@ -903,8 +903,13 @@ with tab_pipe:
                         )
 
                     if proposal.lines:
-                        if st.button("执行调拨（转保管权）", key="pipe_commit"):
-                            committed = material_pipeline_service.commit_transfers(
+                        if st.button("强制平账（跳过对方点头）", key="pipe_commit"):
+                            st.caption(
+                                "⚠️ 这条路不问出料人：正常请走「调配台」，"
+                                "由他本人点头。这里只是超管应急通道，"
+                                "留痕会写成 pipeline_forced。"
+                            )
+                            committed = material_pipeline_service.force_transfer(
                                 proposal, current_user, note=acceptance.request.sheet.recipe_key
                             )
                             if committed.success:
