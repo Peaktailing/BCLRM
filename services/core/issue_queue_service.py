@@ -48,27 +48,35 @@ class IssueQueueService:
     def open_rows(
         self,
         me: str,
-        my_department: str = "",
+        my_groups: Any = "",
         is_super_admin: bool = False,
         kinds: Optional[Iterable[str]] = None,
         limit: int = 300,
     ) -> List[Dict[str, Any]]:
         """在办单，按提交时间升序（先来的先办）。
 
-        过滤是三条 OR：指定给我 / 归我教研室 / 全院池。空归属也必须算进来
-        ——老数据两列都是空的，只写 ``= 'all'`` 会让所有在办的历史单从待办
-        里消失，那不是收窄，是丢失。
+        过滤是三条 OR：指定给我 / 归我所在的某个组 / 全院池。空归属也必须算
+        进来——老数据两列都是空的，只写 ``= 'all'`` 会让所有在办的历史单从待
+        办里消失，那不是收窄，是丢失。
+
+        ``my_groups`` 可以是一个组名，也可以是这个人所属的全部组：一个人可能
+        同时在教研室和科研组，两个组池的单都该进他的待办。空集合不命中任何
+        组——空字符串当组名会让一张组池的单跑进所有没登记组的人那里。
         """
         clauses = [OPEN_CONDITION]
         params: list[Any] = []
 
         if not is_super_admin:
-            department = (my_department or "").strip()
+            groups = [g for g in _group_list(my_groups) if g]
             visibility = "(custodian_scope = 'person' AND custodian_key = ?)"
             params.append(me)
-            if department:
-                visibility += " OR (custodian_scope = 'department' AND custodian_key = ?)"
-                params.append(department)
+            if groups:
+                visibility += (
+                    " OR (custodian_scope = 'department' AND custodian_key IN ("
+                    + ", ".join("?" for _ in groups)
+                    + "))"
+                )
+                params.extend(groups)
             visibility += (
                 " OR custodian_scope = 'all'"
                 " OR custodian_scope IS NULL OR custodian_scope = ''"
@@ -92,6 +100,25 @@ class IssueQueueService:
             # 视图没建（升级后没重启）不该白屏：空队列 + 一条日志。
             logger.warning(f"读取待办队列失败（v_issue_queue 可能尚未创建）: {exc}")
             return []
+
+    def open_sheets_of_requester(
+        self, requester: str, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """这个人提交的、还在办的需求单。
+
+        走 ``requirement_sheet`` 而不是 ``v_issue_queue``：待办视图按**收件人**
+        过滤，申请人自己常常不在收件人里（单已经指定给别人了），从视图里查会
+        得到「我的单不见了」——而这条列表的用途恰恰是让他把单放给别人。
+        """
+        requester = (requester or "").strip()
+        if not requester:
+            return []
+        return self.db.execute_query(
+            "SELECT * FROM requirement_sheet WHERE requester = ? "
+            "AND COALESCE(status, '') IN ('submitted', 'partial') "
+            "ORDER BY created_at DESC LIMIT ?",
+            (requester, int(limit)),
+        )
 
     # ---------------------------------------------------------------- 写
     def set_assignment(self, kind: str, ref: str, scope: str, key: str) -> int:
@@ -172,13 +199,62 @@ class IssueQueueService:
             (requester, reason, ref, from_scope, from_key),
         )
 
-    def transfer(self, kind: str, ref: str, target: str, from_key: str) -> int:
+    def escalate(
+        self,
+        kind: str,
+        ref: str,
+        scope: str,
+        key: str,
+        from_scope: str,
+        from_key: str,
+    ) -> int:
+        """放宽归属（申请人侧）：``person`` → 组、组 → 全院。
+
+        与 :meth:`return_to_requester` 的方向**相反**：退回是「单要改」，单
+        离开在办；放宽是「人不在」，单还在办，只是收件人从一个人变成一群人。
+        所以这里**一个字都不碰状态字段**——单据的业务状态不因为换了人办而改变。
+        """
+        return self.move(kind, ref, scope, key, from_scope, from_key)
+
+    def transfer(
+        self,
+        kind: str,
+        ref: str,
+        scope: str,
+        key: str,
+        from_scope: str,
+        from_key: str,
+    ) -> int:
+        """改派：换成另一个**具体**的受理方（人，或另一个组）。
+
+        与 :meth:`escalate` 的差别只是目标谁说了算：放宽的目标是「上一级」，
+        改派的目标由操作人挑。SQL 一样，语义不同，所以分成两个入口——将来
+        其中一个要加条件（比如改派要求目标必须是管理员）时不会互相牵连。
+        """
+        return self.move(kind, ref, scope, key, from_scope, from_key)
+
+    def move(
+        self,
+        kind: str,
+        ref: str,
+        scope: str,
+        key: str,
+        from_scope: str,
+        from_key: str,
+    ) -> int:
+        """换收件人（不改业务状态）。
+
+        条件带读到的旧 scope + key 两个字面量：组池的单被人抢先认领时
+        `rowcount=0`，不会把别人手上的单又推走。``claimed_at`` 一并清掉——它
+        记的是「这张单被人认领过」，换了收件人之后那件事已经跟当前状态无关了。
+        """
         table, column = self._table(kind)
         return self.db.execute_update(
-            f"UPDATE {table} SET custodian_key = ? WHERE {column} = ? "
-            "AND COALESCE(custodian_scope, '') = 'person' "
+            f"UPDATE {table} SET custodian_scope = ?, custodian_key = ?, "
+            "claimed_at = NULL, claimed_from_scope = '', claimed_from_key = '' "
+            f"WHERE {column} = ? AND COALESCE(custodian_scope, '') = ? "
             "AND COALESCE(custodian_key, '') = ?",
-            (target, ref, from_key),
+            (scope, key, ref, from_scope, from_key),
         )
 
     # ---------------------------------------------------------------- 内部
@@ -191,6 +267,16 @@ class IssueQueueService:
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _group_list(groups: Any) -> List[str]:
+    """组名归一：单个字符串与集合都认，空值一律归一成空列表。"""
+    if groups is None:
+        return []
+    if isinstance(groups, str):
+        value = groups.strip()
+        return [value] if value else []
+    return [str(item).strip() for item in groups if str(item or "").strip()]
 
 
 issue_queue_service = IssueQueueService()

@@ -571,8 +571,9 @@ def _render_reassign_ui(order):
 with tab_approval:
     _all_pending = work_order_service.list_pending_approvals(None)
     # 待我审批 = 归属成员判定，不是 approver 字段等值匹配：归教研室池的单
-    # 组里谁都能批（原指派人休假退回池后，组里接手就靠这条）。
-    _my_approvals = [o for o in _all_pending if work_order_service.can_approve(o, user_name)]
+    # 组里谁都能批（原指派人休假退回池后，组里接手就靠这条）。含管控的单在
+    # 等复核时也算待办，但只对**被指定的复核人**显示。
+    _my_approvals = work_order_service.list_pending_approvals(user_name)
     _my_submissions = [
         o for o in _all_pending
         if o.applicant == user_name and o not in _my_approvals
@@ -603,14 +604,31 @@ with tab_approval:
             st.caption(f"发起时间：{order.borrow_time or '—'}")
             _render_order_items(order)
 
+            # 含管控化学品的单要两签：第一签只签字，第二签才发料。这里把当前
+            # 处在哪一签说清楚，否则审批人点完发现库存没动会以为系统坏了。
+            _is_second = work_order_service.is_second_pending(order)
+            _needs_two = bool(getattr(order, "controlled_flag", 0)) and not _is_second
+            if _is_second:
+                st.warning(
+                    f"⚠️ 含管制化学品，需要两个人签字。第一签：{order.approver or '—'}"
+                    f"（{order.approval_time or '—'}）；现在等你复核——"
+                    "**复核通过后才扣库存**。"
+                )
+            elif _needs_two:
+                st.warning(
+                    "⚠️ 含管制化学品，需要两个人签字：你这一签只签字、不发料，"
+                    "复核人通过后才真正出库。"
+                )
+
             _appr_remark = st.text_input(
-                "审批意见（批准/驳回原因，可选）",
+                "审批意见（可选）",
                 key=f"appr_remark_{order.id}",
             )
 
             # 借出取证：料真的出了库、交到了手上，这一笔才算有物证。
             # 必拍由系统设置里的开关决定，默认开；上传框无论开不开都给，
             # 因为「能不能不拍」和「想不想拍」是两件事。
+            # 两签的单，照片要等**真正发料**那一刻拍，所以第一签不拦。
             _bw_required = evidence_service.require(PHASE_BORROW)
             _bw_files = st.file_uploader(
                 "📷 发料现场照片" + ("（必填）" if _bw_required else "（可选）"),
@@ -620,29 +638,66 @@ with tab_approval:
                 help="拍瓶子与交接现场；管理员可在系统设置里关闭必拍",
             )
 
+            _second_pick = ""
+            if _needs_two:
+                _candidates = [
+                    n for n in work_order_service.manager_names()
+                    if n not in (user_name, order.applicant)
+                ]
+                if not _candidates:
+                    st.error(
+                        "没有可用的复核人：本系统的管理员不足两人。"
+                        "请先增设一名管理员，管制试剂不能一个人签完。"
+                    )
+                else:
+                    _second_pick = st.selectbox(
+                        "复核人（必须是另一名管理员）",
+                        options=[""] + _candidates,
+                        format_func=lambda n: "（请选择复核人）" if n == "" else n,
+                        key=f"second_pick_{order.id}",
+                    )
+
             if _is_mine:
                 st.caption("该工单由你发起：可撤回，或由你自己审批（指定审批人为你）。")
                 _c_ok, _c_no, _c_wd = st.columns(3)
             else:
                 _c_ok, _c_no = st.columns(2)
             with _c_ok:
+                _ok_label = (
+                    "✅ 复核通过并发料" if _is_second
+                    else ("✅ 一审通过（送复核）" if _needs_two else "✅ 批准并执行领用")
+                )
                 if st.button(
-                    "✅ 批准并执行领用",
+                    _ok_label,
                     type="primary",
                     use_container_width=True,
                     key=f"appr_ok_{order.id}",
                 ):
-                    _ev_chk = evidence_service.check(
-                        order.order_number, PHASE_BORROW, len(_bw_files or [])
+                    # 只有真正发料的那一步才校验现场照片。
+                    _will_borrow = _is_second or not _needs_two
+                    _ev_chk = (
+                        evidence_service.check(
+                            order.order_number, PHASE_BORROW, len(_bw_files or [])
+                        )
+                        if _will_borrow
+                        else None
                     )
-                    if not _ev_chk.success:
+                    if _ev_chk is not None and not _ev_chk.success:
                         st.error(_ev_chk.message)
                     else:
-                        _r = work_order_service.approve_order(
-                            order.id, user_name, _appr_remark
-                        )
+                        if _is_second:
+                            _r = work_order_service.approve_second(
+                                order.id, user_name, _appr_remark
+                            )
+                        else:
+                            _r = work_order_service.approve_order(
+                                order.id,
+                                user_name,
+                                _appr_remark,
+                                second_approver=_second_pick,
+                            )
                         if _r.is_success():
-                            if _bw_files:
+                            if _bw_files and _will_borrow:
                                 _ev = evidence_service.attach(
                                     order.order_number,
                                     PHASE_BORROW,
@@ -664,21 +719,19 @@ with tab_approval:
                 if st.button(
                     "📝 退回修改",
                     help="单有问题才退（数量、瓶子、用途）：单回到申请人手上，"
-                         "库存不动。手上没料请走调配，不要把单推走",
+                         "库存不动。原因可不填，细节线下说；手上没料请走调配，"
+                         "不要把单推走",
                     use_container_width=True,
                     key=f"appr_no_{order.id}",
                 ):
-                    if not (_appr_remark or "").strip():
-                        st.error("退回必须写原因：申请人要据此知道改哪里")
+                    _r = work_order_service.reject_order(
+                        order.id, user_name, _appr_remark
+                    )
+                    if _r.is_success():
+                        st.warning(_r.message)
+                        st.rerun()
                     else:
-                        _r = work_order_service.reject_order(
-                            order.id, user_name, _appr_remark
-                        )
-                        if _r.is_success():
-                            st.warning(_r.message)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {_r.message}")
+                        st.error(f"❌ {_r.message}")
             if _is_mine:
                 with _c_wd:
                     _render_withdraw_button(order)

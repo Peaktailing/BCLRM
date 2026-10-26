@@ -49,6 +49,13 @@ class BorrowOrderService(BaseService):
             approval_remark=record.get('approval_remark'),
             remark=record.get('remark'),
             created_by=record.get('created_by'),
+            # 双人审批五列：老单这五列是默认值（0 / 空），解析出来就是
+            # 「不需要复核」，与升级前行为一致。
+            controlled_flag=record.get('controlled_flag') or 0,
+            second_approver=record.get('second_approver'),
+            second_approval_status=record.get('second_approval_status'),
+            second_approval_time=record.get('second_approval_time'),
+            second_approval_remark=record.get('second_approval_remark'),
         )
 
 

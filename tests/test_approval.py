@@ -98,6 +98,30 @@ class TestBorrowApproval(unittest.TestCase):
             "seq": 1, "item_name": item_name,
         })
 
+    def _second_approver(self, name: str = "李管理员", avoid: str = "") -> str:
+        """保证复核人存在：双人审批要求系统里真有两个管理员账号。"""
+        if avoid and name == avoid:
+            name = "复核管理员"
+        TEST_DB.connection.execute(
+            "INSERT OR IGNORE INTO person (name, role) VALUES (?, 'admin')", (name,)
+        )
+        TEST_DB.connection.commit()
+        return name
+
+    def _two_sign(self, order_id, first="王管理员", remark=None, second=None):
+        """走完整的两签：一审（不发料）→ 复核（发料）。
+
+        含管控的工单不再接受单签，所以凡是「批准后扣库存」的用例都必须走这里
+        ——这也是本轮的行为变更本身。
+        """
+        second = second or self._second_approver(avoid=first)
+        first_result = work_order_service.approve_order(
+            order_id, first, remark, second_approver=second
+        )
+        if not first_result.is_success():
+            return first_result
+        return work_order_service.approve_second(order_id, second, remark)
+
     def _create_controlled_course_order(self, bottle_number, applicant="李老师",
                                         approver="王管理员"):
         # 合格审批人须为人员表中的 admin 账号（正常提交排除超管）
@@ -234,7 +258,7 @@ class TestBorrowApproval(unittest.TestCase):
             (order_id,),
         )
 
-        result = work_order_service.approve_order(order_id, "李管理员")
+        result = self._two_sign(order_id, "李管理员")
         self.assertTrue(result.is_success(), result.message)
         order = borrow_order_service.get_by_id(order_id)
         self.assertEqual(order.approver, "李管理员", "签名必须跟实际操作人走")
@@ -269,7 +293,7 @@ class TestBorrowApproval(unittest.TestCase):
         created = self._create_controlled_course_order("B9005")
         order_id = created.data["order_id"]
 
-        result = work_order_service.approve_order(order_id, "王管理员", "同意")
+        result = self._two_sign(order_id, "王管理员", "同意")
         self.assertTrue(result.is_success(), result.message)
 
         order = borrow_order_service.get_by_id(order_id)
@@ -314,11 +338,17 @@ class TestBorrowApproval(unittest.TestCase):
                        data={"record_id": 9001})
         fail = mock.Mock(is_success=mock.Mock(return_value=False),
                          message="该试剂已被其他用户领用")
+        # 含管控 → 一审只签字，真正调 reagent_borrow 的是复核那一步。
+        second = self._second_approver()
+        first = work_order_service.approve_order(
+            order_id, "王管理员", second_approver=second
+        )
+        self.assertTrue(first.is_success(), first.message)
         with mock.patch.object(
             borrow_service, "reagent_borrow",
             side_effect=[ok, fail],
         ):
-            result = work_order_service.approve_order(order_id, "王管理员")
+            result = work_order_service.approve_second(order_id, second)
 
         self.assertTrue(result.is_success(), result.message)
         statuses = {
@@ -524,7 +554,7 @@ class TestBorrowApproval(unittest.TestCase):
         self.assertEqual(order.approver, "超管甲")
 
         # 改派后由新审批人审批
-        approved = work_order_service.approve_order(order_id, "超管甲")
+        approved = self._two_sign(order_id, "超管甲")
         self.assertTrue(approved.is_success(), approved.message)
 
     def test_reassign_permission_and_self_check(self):

@@ -24,6 +24,14 @@ APPROVAL_PENDING = "待审批"
 APPROVAL_APPROVED = "已批准"
 APPROVAL_REJECTED = "已驳回"
 APPROVAL_WITHDRAWN = "已撤回"
+#: 一审通过、等第二个人复核（只有含管控试剂的单会到这里）。
+#: 它不是「已批准」的别名：这个状态下库存一动没动，谁都不能发料。
+APPROVAL_SECOND_PENDING = "待复核"
+
+# 第二签（复核）状态
+SECOND_PENDING = "待审批"
+SECOND_APPROVED = "已复核"
+SECOND_REJECTED = "已驳回"
 
 # 明细状态
 ITEM_STATUS_PENDING = "待归还"
@@ -51,6 +59,12 @@ class BorrowOrder:
     approval_remark: Optional[str] = None  # 审批意见 / 驳回原因
     remark: Optional[str] = None
     created_by: Optional[str] = None
+    # ---- 双人审批（管控试剂）----
+    controlled_flag: Optional[int] = 0     # 1 = 含管制化学品，须两签
+    second_approver: Optional[str] = None   # 第二签（复核）人
+    second_approval_status: Optional[str] = None  # 待审批 / 已复核 / 已驳回
+    second_approval_time: Optional[str] = None
+    second_approval_remark: Optional[str] = None
 
 
 @dataclass

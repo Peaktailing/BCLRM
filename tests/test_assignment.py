@@ -27,7 +27,7 @@ from domain.assignment import (
     CLAIM_OTHER_DEPARTMENT,
     CLAIM_TAKEN,
     RETURN_NOT_MEMBER,
-    RETURN_NO_REASON,
+    RETURN_NOT_REQUESTER,
     Assignment,
     assignment_of,
 )
@@ -259,12 +259,19 @@ class TestAssignmentService(unittest.TestCase):
         self.assertIn("王五", result.message)
 
     # ------------------------------------------------------------ 退回修改
-    def test_return_requires_reason(self):
-        """没有原因不收：申请人打开只看到「被退了」等于石沉大海。"""
-        number = self._order("r1", scope="person", key="张三")
+    def test_return_without_reason_is_allowed(self):
+        """原因不是必填：退这个动作本身已经说明「不能按现在这样批」。"""
+        number = self._order("r1", scope="person", key="张三", applicant="赵六")
         result = self.service.return_for_revision(KIND_ORDER, number, "张三", "   ")
-        self.assertFalse(result.is_success())
-        self.assertEqual(result.error_code, RETURN_NO_REASON.upper())
+        self.assertTrue(result.is_success(), result.message)
+        row = TEST_DB.execute_query(
+            "SELECT approval_status, approval_remark, custodian_key "
+            "FROM borrow_order WHERE order_number = ?",
+            (number,),
+        )[0]
+        self.assertEqual(row["approval_status"], "已驳回")
+        self.assertEqual(row["custodian_key"], "赵六")
+        self.assertIn(row["approval_remark"] or "", ("", None))
 
     def test_return_sends_order_back_to_requester(self):
         """退回落点是申请人，不是池；顺带关闭工单、写进退回原因。"""
@@ -356,6 +363,88 @@ class TestAssignmentService(unittest.TestCase):
         self.assertFalse(bad.is_success())
         ok = self.service.transfer(KIND_ORDER, number, "李四", "张三")
         self.assertTrue(ok.is_success(), ok.message)
+
+    def test_transfer_can_target_a_group(self):
+        """改派不只能改到人，也能改到组——「这个人不批」的下一步常常是
+        「这个组里换个人」。"""
+        TEST_DB.execute_insert(
+            "INSERT OR IGNORE INTO work_group (name, kind) VALUES (?, ?)",
+            ("生物教研室", "department"),
+        )
+        number = self._order("t2", scope="person", key="张三")
+        result = self.service.transfer(KIND_ORDER, number, "group:生物教研室", "张三")
+        self.assertTrue(result.is_success(), result.message)
+        row = TEST_DB.execute_query(
+            "SELECT custodian_scope, custodian_key FROM borrow_order WHERE order_number = ?",
+            (number,),
+        )[0]
+        self.assertEqual(row["custodian_scope"], "department")
+        self.assertEqual(row["custodian_key"], "生物教研室")
+
+    def test_requester_can_transfer_own_order(self):
+        """申请人也能改派：他被指定的人卡住时，这是他唯一的出口。"""
+        number = self._order("t3", scope="person", key="张三", applicant="赵六")
+        result = self.service.transfer(KIND_ORDER, number, "李四", "赵六")
+        self.assertTrue(result.is_success(), result.message)
+
+    def test_bystander_cannot_transfer(self):
+        number = self._order("t4", scope="person", key="张三", applicant="赵六")
+        result = self.service.transfer(KIND_ORDER, number, "李四", "王五")
+        self.assertFalse(result.is_success())
+        self.assertEqual(result.error_code, "NOT_OWNER")
+
+    # ------------------------------------------------------ 申请人退回（放宽）
+    def test_requester_escalates_to_group(self):
+        """申请人把单从「某人」放回「某个组」——单还在办，状态一字不动。"""
+        number = self._order("e1", scope="person", key="张三", applicant="赵六")
+        result = self.service.escalate(KIND_ORDER, number, "赵六")
+        self.assertTrue(result.is_success(), result.message)
+
+        row = TEST_DB.execute_query(
+            "SELECT * FROM borrow_order WHERE order_number = ?", (number,)
+        )[0]
+        self.assertEqual(row["custodian_scope"], "department")
+        # 赵六的组来自 PEOPLE（化学教研室）——没有成员表时就按主组兜底
+        self.assertEqual(row["custodian_key"], "化学教研室")
+        # 关键：业务状态没变，单还在待办里
+        self.assertEqual(row["approval_status"], "待审批")
+        self.assertIn(number, [r["ref"] for r in self.service.queue("李四", "化学教研室")])
+
+    def test_escalate_then_escalate_to_all(self):
+        number = self._order("e2", scope="person", key="张三", applicant="赵六")
+        self.assertTrue(self.service.escalate(KIND_ORDER, number, "赵六").is_success())
+        second = self.service.escalate(KIND_ORDER, number, "赵六")
+        self.assertTrue(second.is_success(), second.message)
+        row = TEST_DB.execute_query(
+            "SELECT custodian_scope FROM borrow_order WHERE order_number = ?", (number,)
+        )[0]
+        self.assertEqual(row["custodian_scope"], "all")
+        # 已经在全院池，再退就没有意义
+        third = self.service.escalate(KIND_ORDER, number, "赵六")
+        self.assertFalse(third.is_success())
+
+    def test_only_requester_can_escalate(self):
+        """管理员不能替申请人放弃「指定」——那是申请人的决定权。"""
+        number = self._order("e3", scope="person", key="张三", applicant="赵六")
+        result = self.service.escalate(KIND_ORDER, number, "张三")
+        self.assertFalse(result.is_success())
+        self.assertEqual(result.error_code, RETURN_NOT_REQUESTER.upper())
+
+    def test_escalate_to_named_group(self):
+        """同时属于多个组时，放给哪个组由申请人自己选。"""
+        TEST_DB.execute_insert(
+            "INSERT OR IGNORE INTO work_group (name, kind) VALUES (?, ?)",
+            ("生物教研室", "research"),
+        )
+        number = self._order("e4", scope="person", key="张三", applicant="赵六")
+        result = self.service.escalate(
+            KIND_ORDER, number, "赵六", target_group="生物教研室"
+        )
+        self.assertTrue(result.is_success(), result.message)
+        row = TEST_DB.execute_query(
+            "SELECT custodian_key FROM borrow_order WHERE order_number = ?", (number,)
+        )[0]
+        self.assertEqual(row["custodian_key"], "生物教研室")
 
     # ---------------------------------------------------------------- 算归属
     def test_resolve_target_three_levels(self):

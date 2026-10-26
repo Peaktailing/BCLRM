@@ -20,11 +20,17 @@ import streamlit as st
 
 from components.auth import get_current_user, require_auth
 from components.sidebar_nav import render_sidebar
+from business.assignment_service import (
+    KIND_REQUIREMENT,
+    assignment_service,
+)
 from business.manager_service import manager_service
 from business.material_pipeline_service import material_pipeline_service
 from business.recipe_service import recipe_business_service
 from business.requirement_issue_service import requirement_issue_service
+from business.requirement_review_service import requirement_review_service
 from business.requirement_service import requirement_business_service
+from domain.assignment import Assignment
 from domain.substance import ComponentRole
 from services.custodian_route import (
     SCOPE_COURSE,
@@ -417,6 +423,87 @@ with tab_ticket:
     else:
         st.info("还没有需求单。先在「需求试算」里生成一张。")
 
+    # ----------------------------------------------------------------
+    # 我的在办需求单：指定的人一直不批时，怎么放给别人
+    # ----------------------------------------------------------------
+    st.markdown("##### 我的在办需求单")
+    st.caption(
+        "单指定给了某个人、他却一直没批？不用干等：**放给组**（该组任一管理员"
+        "都能接），还没人接就**放给全院**；也可以直接**改派**给另一个组或另一个人。"
+        "单据内容不变，只是收件人换了。"
+    )
+
+    _my_sheets = assignment_service.my_open_sheets(current_user)
+    if not _my_sheets:
+        st.caption("没有在办的需求单。")
+    else:
+        for _sheet in _my_sheets:
+            _number = _sheet.get("sheet_number") or ""
+            _current = Assignment.of(
+                _sheet.get("custodian_scope") or "", _sheet.get("custodian_key") or ""
+            )
+            _status = _SHEET_STATUS_LABELS.get(
+                (_sheet.get("status") or "").strip(), _sheet.get("status") or ""
+            )
+            with st.expander(
+                f"{_number}｜{_sheet.get('title') or ''}｜{_status}｜{_current.describe()}",
+                expanded=False,
+            ):
+                _my_groups = assignment_service.groups_of(current_user)
+                _col_esc, _col_all, _col_move = st.columns([2, 1, 2])
+
+                if _current.is_person or _current.is_department:
+                    if _my_groups:
+                        _group_pick = _col_esc.selectbox(
+                            "放给哪个组",
+                            options=_my_groups,
+                            format_func=lambda g: assignment_service.group_label(g),
+                            key=f"esc_group_{_number}",
+                        )
+                        if _col_esc.button(
+                            "放给这个组",
+                            help="该组任一管理员都能接；单还在办，状态不变",
+                            key=f"esc_btn_{_number}",
+                        ):
+                            _r = assignment_service.escalate(
+                                KIND_REQUIREMENT, _number, current_user, _group_pick
+                            )
+                            (st.success if _r.is_success() else st.warning)(_r.message)
+                            st.rerun()
+                    if _col_all.button(
+                        "放给全院",
+                        help="全院管理员都能接（只在实在没人管时用）",
+                        key=f"esc_all_{_number}",
+                        disabled=_current.is_all,
+                    ):
+                        _r = assignment_service.escalate(
+                            KIND_REQUIREMENT, _number, current_user
+                        )
+                        (st.success if _r.is_success() else st.warning)(_r.message)
+                        st.rerun()
+
+                    _options = assignment_service.transfer_options()
+                    if _options:
+                        _labels = dict(_options)
+                        _pick = _col_move.selectbox(
+                            "改派给（人 / 组）",
+                            options=[value for value, _ in _options],
+                            format_func=lambda v: _labels.get(v, v),
+                            key=f"move_{_number}",
+                        )
+                        if _col_move.button(
+                            "改派",
+                            help="换一个人或换一个组办；单还在办",
+                            key=f"move_btn_{_number}",
+                        ):
+                            _r = assignment_service.transfer(
+                                KIND_REQUIREMENT, _number, _pick, current_user
+                            )
+                            (st.success if _r.is_success() else st.warning)(_r.message)
+                            st.rerun()
+                else:
+                    st.caption(_current.describe() + "；已在全院池，不需要再放。")
+
     st.markdown("##### 未完结领用单据")
     tickets = requirement_business_service.open_tickets()
     if tickets.success and tickets.data["items"]:
@@ -617,6 +704,60 @@ with tab_pipe:
             elif sheet_status == "issued":
                 st.success(f"这张需求单已全部兑付（首张借出单 {first_order or '—'}），不再占学年保底。")
             else:
+                # ------------------------------------------------ 双人复核
+                # 管制化学品要两签，顺序是「先复核、后发料」。放在兑付按钮
+                # 上方而不是藏进弹窗，是因为漏了这一步兑付会被直接拒绝。
+                _review_status = (sheet_row.get("second_approval_status") or "").strip()
+                _reviewer = (sheet_row.get("second_approver") or "").strip()
+                with st.expander(
+                    "🔐 管制试剂双人复核"
+                    + (
+                        "（已复核，可以兑付）" if _review_status == "已复核"
+                        else ("（等复核）" if _review_status == "待审批" else "（未送复核）")
+                    ),
+                    expanded=_review_status != "已复核",
+                ):
+                    if _review_status == "已复核":
+                        st.success(
+                            f"已由 {_reviewer or '—'} 复核通过：这一轮可以兑付。"
+                            "兑付下一批时要重新送复核。"
+                        )
+                    elif _review_status == "待审批":
+                        st.info(f"已送 {_reviewer or '—'} 复核，等他点头后才能兑付。")
+                        if _reviewer == current_user:
+                            if st.button("✅ 复核通过", type="primary", key="review_ok"):
+                                _r = requirement_review_service.approve(
+                                    picked, current_user
+                                )
+                                (st.success if _r.is_success() else st.error)(_r.message)
+                                st.rerun()
+                    else:
+                        st.caption(
+                            "含管制化学品的料必须两名管理员签字：先送复核，复核"
+                            "通过后才允许兑付。不含管控的单可以跳过这一步。"
+                        )
+
+                    _candidates = [
+                        n for n in assignment_service.admin_names()
+                        if n not in (current_user, (sheet_row.get("requester") or "").strip())
+                    ]
+                    if _review_status != "已复核" and _candidates:
+                        _pick_reviewer = st.selectbox(
+                            "复核人（另一名管理员）",
+                            options=[""] + _candidates,
+                            key="review_pick",
+                        )
+                        if st.button("送复核", key="review_send"):
+                            if not _pick_reviewer:
+                                st.error("请选择复核人")
+                            else:
+                                _r = requirement_review_service.request(
+                                    picked, current_user, _pick_reviewer
+                                )
+                                (st.success if _r.is_success() else st.error)(_r.message)
+                                if _r.is_success():
+                                    st.rerun()
+
                 if sheet_status == "partial":
                     st.info(
                         f"这张需求单已部分兑付（首张借出单 {first_order or '—'}）。"

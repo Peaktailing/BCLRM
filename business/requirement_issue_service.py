@@ -45,6 +45,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
 
 from business.borrow_service import borrow_service
+from business.requirement_review_service import requirement_review_service
 from domain.pipeline import Acceptance, IssueLine
 from domain.recipe import SourceKind
 from domain.units import Quantity, parse_unit
@@ -59,6 +60,7 @@ from services.core.borrow_order_service import (
     borrow_order_item_service,
     borrow_order_service,
 )
+from services.base.controlled_list_service import controlled_list_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from services.core.requirement_sheet_service import (
     LINE_ISSUED,
@@ -218,6 +220,20 @@ class RequirementIssueService:
                 data={"skipped": skipped},
             )
 
+        # ---------- 管控试剂：先复核，后发料 ----------
+        # 顺序不能倒。先发再补签，签的是已经发生的事，双人审批就退化成事后
+        # 追认。复核只管这一轮（见 requirement_review_service）。
+        controlled = self._controlled_names(plan)
+        if controlled and not requirement_review_service.is_approved(row):
+            return ServiceResult.fail(
+                message=(
+                    "这批料含管制化学品（" + "、".join(sorted(set(controlled)))
+                    + "），必须先送另一名管理员复核；复核通过后才能兑付"
+                ),
+                error_code="CONTROLLED_REVIEW_REQUIRED",
+                data={"controlled": sorted(set(controlled))},
+            )
+
         requester = acceptance.request.requester_name
         course_name, item_name = self._source_names(acceptance)
         order_number = self._next_order_number()
@@ -300,6 +316,12 @@ class RequirementIssueService:
                     settled.append({"line_id": line_id, **settled_row})
 
                 self._anchor(row, order_number, operator)
+                if controlled:
+                    # 落库而不是每次重算：名录会更新，重算会让一张当年合规的
+                    # 单突然「不合规」。
+                    self.sheets.update(
+                        row[RequirementSheetField.ID], {"controlled_flag": 1}
+                    )
                 sheet_status = self.sheets.recount_status(
                     row[RequirementSheetField.ID]
                 ) or status
@@ -316,6 +338,11 @@ class RequirementIssueService:
                 error_code="LEDGER_WRITE_FAILED",
                 data={"borrowed": borrowed},
             )
+
+        if controlled:
+            # 这一轮已经发完，复核结论作废：下一批料要重新送复核。第一批是
+            # 三瓶乙醇，第二批可能是两瓶乙醚，上一次那双眼睛没看过这批清单。
+            requirement_review_service.consume(row[RequirementSheetField.ID])
 
         parts = [f"已转借出单 {order_number}（{len(borrowed)} 瓶 / {len(settled)} 项）"]
         if failed:
@@ -367,6 +394,29 @@ class RequirementIssueService:
         )
         if not ok:
             raise RuntimeError(f"回填需求单兑付锚点失败：{row.get('sheet_number')}")
+
+    def _controlled_names(self, plan: List[Dict[str, Any]]) -> List[str]:
+        """这批要发的瓶里，哪些命中管控名录。
+
+        与建工单时同一套口径（CAS → 名称 → 别名，再看历史的
+        ``is_controlled`` 标记）：两条入口对「什么算管制」必须一致，否则同一
+        瓶试剂走工单要两签、走需求单却一签，规矩等于没有。
+        """
+        hits: List[str] = []
+        for item in plan:
+            for pick in item["picks"]:
+                bottle = self.bottles.get_by_bottle_number(pick["bottle_number"])
+                name = (
+                    item.get("name")
+                    or getattr(bottle, "reagent_name", "")
+                    or pick["bottle_number"]
+                )
+                cas = getattr(bottle, "cas_number", None)
+                if controlled_list_service.match(name, cas) or (
+                    getattr(bottle, "is_controlled", None) == 1
+                ):
+                    hits.append(str(name))
+        return hits
 
     @staticmethod
     def _by_line(borrowed: List[Dict[str, Any]]) -> Dict[int, float]:

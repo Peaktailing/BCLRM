@@ -191,6 +191,34 @@ class Database:
                 )
             """)
 
+            # 1.1 管理组（教研室 / 科研组）。
+            #
+            # 为什么不是 ``person.department`` 一列：一个人可能同时属于教研室和
+            # 科研组，组之间还会交叉；一列装不下，只能变成「填最后一个」。组
+            # 与人是多对多，所以拆成组表 + 成员表。
+            #
+            # ``kind`` 只用来显示和筛选（「来自化学教研室 / 来自某某课题组」），
+            # **不参与权限判定**：归属的粒度只有三级（人 / 组 / 全院），组是哪
+            # 一种组是组织架构的属性，不是权限的维度。
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS work_group (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    kind TEXT NOT NULL DEFAULT 'department',
+                    note TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS work_group_member (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_name TEXT NOT NULL,
+                    person_name TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (group_name, person_name)
+                )
+            """)
+
             # 2. 存储位置表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS storage_location (
@@ -473,7 +501,15 @@ class Database:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     -- 来源需求单号（追加末尾）。需求单转借出单时回填，
                     -- 用于「这张领用单是为哪张需求单发的」反查。
-                    requirement_number TEXT
+                    requirement_number TEXT,
+                    -- 双人审批（管控试剂）。controlled_flag=1 表示这张单里
+                    -- 有管制化学品，必须两个管理员签字才允许发料：一审把单
+                    -- 推进「待复核」并指定复核人，二审通过才真正扣库存。
+                    controlled_flag INTEGER DEFAULT 0,
+                    second_approver TEXT,
+                    second_approval_status TEXT DEFAULT '',
+                    second_approval_time TEXT,
+                    second_approval_remark TEXT
                 )
             """)
 
@@ -860,7 +896,15 @@ class Database:
                     -- 退回修改：管理员退单时必须写清哪里不对，申请人才知道改
                     -- 什么。退回落点恒为申请人（见 domain/assignment），这张
                     -- 单随即离开待办，改完重新提交。
-                    return_reason TEXT
+                    return_reason TEXT,
+                    -- 双人审批（管控试剂）：含管制化学品的单必须两个管理员签
+                    -- 字才能兑付。controlled_flag 在兑付时按实际发出的瓶判定，
+                    -- 复核在前、发料在后——顺序反了就成了「发完再补签」。
+                    controlled_flag INTEGER DEFAULT 0,
+                    second_approver TEXT,
+                    second_approval_status TEXT DEFAULT '',
+                    second_approval_time TEXT,
+                    second_approval_remark TEXT
                 )
             """)
 
@@ -1471,6 +1515,14 @@ class Database:
                     ("claimed_at", "TIMESTAMP"),
                     ("claimed_from_scope", "TEXT DEFAULT ''"),
                     ("claimed_from_key", "TEXT DEFAULT ''"),
+                    # 双人审批（管控试剂）五列。老单 controlled_flag 默认 0，
+                    # 也就是「按原来的单人审批走」——不能把历史上已经批完的
+                    # 单翻出来要求补签，那是倒着改账。
+                    ("controlled_flag", "INTEGER DEFAULT 0"),
+                    ("second_approver", "TEXT"),
+                    ("second_approval_status", "TEXT DEFAULT ''"),
+                    ("second_approval_time", "TEXT"),
+                    ("second_approval_remark", "TEXT"),
                 ):
                     if _tbl_cols and _col not in _tbl_cols:
                         cursor.execute(f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_ddl}")
@@ -1539,6 +1591,24 @@ class Database:
                 if cursor.rowcount and cursor.rowcount > 0:
                     logger.info(f"迁移完成：{cursor.rowcount} 个试剂瓶的当前位置已写入 bottle_placement")
 
+            # 9.5) 组回填：把 ``person.department`` 升级成真正的组。
+            #
+            #      这一步只是「把原来那一列翻译成两张表」，语义一字不改：老
+            #      系统里每个人只有一个科室，回填后它就是一个组、一条成员。
+            #      升级之后成员表是唯一口径（一个人可以属于多个组），
+            #      ``person.department`` 退化成「主组」，只在成员表查不到时兜底
+            #      ——没有任何成员记录的人不能因此从所有待办里消失。
+            cursor.execute(
+                "INSERT OR IGNORE INTO work_group (name, kind) "
+                "SELECT DISTINCT TRIM(department), 'department' FROM person "
+                "WHERE department IS NOT NULL AND TRIM(department) <> ''"
+            )
+            cursor.execute(
+                "INSERT OR IGNORE INTO work_group_member (group_name, person_name) "
+                "SELECT DISTINCT TRIM(department), name FROM person "
+                "WHERE department IS NOT NULL AND TRIM(department) <> ''"
+            )
+
             # 10) 统一待办视图：两张单（零星/课程领用工单、配方需求单）在同一个
             #     列表里出现。这一步不是"加锁"，是让管理员第一次能看见全部在办
             #     的单——两条路都走「申请 → 审批 → 借出」，但数据结构不同，原来
@@ -1564,9 +1634,11 @@ class Database:
                       WHERE i.order_id = o.id)                AS item_count,
                     COALESCE(o.custodian_scope, '')           AS custodian_scope,
                     COALESCE(o.custodian_key, '')             AS custodian_key,
-                    o.claimed_at                              AS claimed_at
+                    o.claimed_at                              AS claimed_at,
+                    COALESCE(g.kind, '')                      AS custodian_group_kind
                 FROM borrow_order o
                 LEFT JOIN person p ON p.name = o.applicant
+                LEFT JOIN work_group g ON g.name = o.custodian_key
                 UNION ALL
                 SELECT
                     'requirement'                             AS kind,
@@ -1582,9 +1654,11 @@ class Database:
                       WHERE l.sheet_id = s.id)                AS item_count,
                     COALESCE(s.custodian_scope, '')           AS custodian_scope,
                     COALESCE(s.custodian_key, '')             AS custodian_key,
-                    s.claimed_at                              AS claimed_at
+                    s.claimed_at                              AS claimed_at,
+                    COALESCE(g.kind, '')                      AS custodian_group_kind
                 FROM requirement_sheet s
                 LEFT JOIN person p ON p.name = s.requester
+                LEFT JOIN work_group g ON g.name = s.custodian_key
             """)
 
             self.connection.commit()

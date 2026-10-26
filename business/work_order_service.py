@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from business.borrow_service import borrow_service
 from business.experiment_plan_service import experiment_plan_business
@@ -27,6 +27,7 @@ from models.core.borrow_order import (
     APPROVAL_NOT_REQUIRED,
     APPROVAL_PENDING,
     APPROVAL_REJECTED,
+    APPROVAL_SECOND_PENDING,
     APPROVAL_WITHDRAWN,
     ITEM_STATUS_PENDING,
     ITEM_STATUS_RETURNED,
@@ -39,6 +40,9 @@ from models.core.borrow_order import (
     ORDER_STATUS_WITHDRAWN,
     ORDER_TYPE_COURSE,
     ORDER_TYPE_SPORADIC,
+    SECOND_APPROVED,
+    SECOND_PENDING,
+    SECOND_REJECTED,
 )
 from services.base.controlled_list_service import controlled_list_service
 from services.base.experiment_course_service import experiment_course_service
@@ -92,6 +96,21 @@ class WorkOrderService:
     def is_super_admin(self, name: Optional[str]) -> bool:
         """是否超级管理员（用于页面候选标注「应急」与脏配置提示）"""
         return self._role_of(name) == "super_admin"
+
+    def manager_names(self) -> List[str]:
+        """全部管理员（admin + super_admin）。
+
+        复核人从这里选：复核是**替人看一眼**，不需要某种特殊权限，只需要
+        系统里另一个能背责的账号。所以超管也在候选里——真正需要它是极少数
+        情况（全室只有一个管理员时）。
+        """
+        return sorted(
+            {
+                p.name
+                for p in person_service.get_all_persons()
+                if (getattr(p, "role", "") or "") in ADMIN_ROLES and p.name
+            }
+        )
 
     def list_approver_candidates(self, exclude_name: Optional[str] = None) -> List[str]:
         """正常提交流程的合格审批人候选：管理员（admin）账号，排除发起人本人。
@@ -256,6 +275,9 @@ class WorkOrderService:
                         "status": ORDER_STATUS_PENDING,
                         "approval_status": APPROVAL_PENDING,
                         "approver": approver_name,
+                        # 含管控 → 必须两签。落库而不是每次重算：名录会更新，
+                        # 重算会让一张当年合规的单突然「不合规」。
+                        "controlled_flag": 1,
                         "remark": remark,
                         "created_by": created_by,
                         # 归属：审批人即受理人（第一层「指定」）。approver_name
@@ -637,14 +659,27 @@ class WorkOrderService:
         """待审批工单列表。
 
         传了人名就按**能不能批**过滤（归属判定），不是按 ``approver`` 字段
-        等值匹配：归教研室池的单组里谁都能批，字段里那个名字只是上一手。
+        等值匹配：归组池的单组里谁都能批，字段里那个名字只是上一手。
+
+        「待复核」的单也在这里出现——对**复核人**来说它就是待办。复核人不
+        在归属里，所以单独按 ``second_approver`` 认。
         """
         orders = [
             order for order in borrow_order_service.get_all_parsed()
-            if order.approval_status == APPROVAL_PENDING
+            if order.approval_status in (APPROVAL_PENDING, APPROVAL_SECOND_PENDING)
         ]
         if approver_name:
-            orders = [o for o in orders if self.can_approve(o, approver_name)]
+            orders = [
+                o for o in orders
+                if (
+                    o.approval_status == APPROVAL_SECOND_PENDING
+                    and self.can_second_approve(o, approver_name)
+                )
+                or (
+                    o.approval_status == APPROVAL_PENDING
+                    and self.can_approve(o, approver_name)
+                )
+            ]
         return orders
 
     def can_approve(self, order, user_name: Optional[str], is_admin: bool = False) -> bool:
@@ -665,7 +700,8 @@ class WorkOrderService:
             return order.approver == user_name
         return explicit.can_handle(
             user_name,
-            self._department_of(user_name),
+            # 组是集合：一个人可能同时在教研室和科研组，两个组的池都该能审。
+            assignment_service.groups_of(user_name),
             is_admin=self._is_admin_plus(user_name),
             is_super_admin=self.is_super_admin(user_name),
         )
@@ -675,12 +711,19 @@ class WorkOrderService:
         self,
         order_id: int,
         approver_name: str,
-        remark: Optional[str] = None
+        remark: Optional[str] = None,
+        second_approver: str = "",
     ) -> ServiceResult:
-        """批准工单并执行领用（此时才真正扣库存、写领用流水）
+        """批准工单并执行领用（此时才真正扣库存、写领用流水）。
+
+        **含管制化学品的单，这一步只是第一签**：单进「待复核」，库存一动
+        不动，必须由另一个管理员复核通过才真正发料。两条都要有，因为管制试
+        剂的合规要求是「两个人看过」，不是「一个人点两次」——把复核人填成
+        自己，等于没有第二个人看过。
 
         Args:
-            approver_name: 审批人（必须与工单指定的审批人一致）
+            approver_name: 审批人（当前归属的成员，或原指定审批人）
+            second_approver: 含管控时必填——第二签的人，不能是自己
         """
         order = borrow_order_service.get_by_id(order_id)
         if not order:
@@ -696,28 +739,199 @@ class WorkOrderService:
                 error_code="NOT_ASSIGNED_APPROVER",
             )
 
+        now = datetime.now().strftime("%Y/%m/%d %H:%M")
+
+        # ---------------- 含管控：第一签，只签字不发料 ----------------
+        if self.needs_second_signature(order):
+            second = (second_approver or "").strip()
+            problem = self._check_second_approver(order, approver_name, second)
+            if problem is not None:
+                return problem
+
+            from db.database import db
+
+            with db.transaction():
+                claimed = borrow_order_service.update_where(
+                    {"id": order_id, "approval_status": APPROVAL_PENDING},
+                    {
+                        # 业务状态留在「待审批」：料还没出库，说「借用中」是假的。
+                        "approval_status": APPROVAL_SECOND_PENDING,
+                        "approval_time": now,
+                        "approval_remark": remark,
+                        "approver": approver_name,
+                        "controlled_flag": 1,
+                        "second_approver": second,
+                        "second_approval_status": SECOND_PENDING,
+                    },
+                )
+                if not claimed:
+                    current = borrow_order_service.get_by_id(order_id)
+                    return ServiceResult.fail(
+                        message=(
+                            "该工单已被其他会话处理（当前审批状态："
+                            f"{getattr(current, 'approval_status', None) or '未知'}），"
+                            "请刷新后重试"
+                        ),
+                        error_code="APPROVAL_RACE_LOST",
+                    )
+
+            from utils.audit import audit
+
+            audit(
+                approver_name,
+                "一审通过（含管控，待复核）",
+                target_type="order",
+                target_id=order.order_number,
+                detail=f"复核人：{second}" + (f"；意见：{remark}" if remark else ""),
+            )
+            return ServiceResult.ok(
+                data={"stage": "first", "second_approver": second},
+                message=(
+                    f"一审已通过，单已送 {second} 复核；"
+                    "复核通过后才扣库存发料——现在库里什么都没动"
+                ),
+            )
+
+        # ---------------- 单人审批：签字即发料 ----------------
+        return self._commit_approval(
+            order, approver_name, remark, APPROVAL_PENDING, {}, action="审批通过"
+        )
+
+    def needs_second_signature(self, order) -> bool:
+        """这张单要不要两个签字。
+
+        只看 ``controlled_flag``：它在建单时按实际清单判定并落库，不再每次
+        重算名录——名录会更新，重算会让一张当年合规的单突然「不合规」。
+        """
+        return bool(getattr(order, "controlled_flag", 0)) and (
+            getattr(order, "approval_status", "") == APPROVAL_PENDING
+        )
+
+    @staticmethod
+    def is_second_pending(order) -> bool:
+        """这张单是不是在等第二签（页面据此换按钮文案与流程）。"""
+        return getattr(order, "approval_status", "") == APPROVAL_SECOND_PENDING
+
+    def _check_second_approver(
+        self, order, first_approver: str, second: str
+    ) -> Optional[ServiceResult]:
+        """复核人合不合格。返回 ``None`` 表示合格。"""
+        if not second:
+            return ServiceResult.fail(
+                message=(
+                    "这张单含管制化学品，必须指定另一名管理员复核；"
+                    "复核人不能是审批人自己"
+                ),
+                error_code="SECOND_APPROVER_REQUIRED",
+            )
+        if second == (first_approver or "").strip():
+            return ServiceResult.fail(
+                message="复核人不能是审批人本人——双人审批的意义就是多一双眼睛",
+                error_code="SAME_SECOND_APPROVER",
+            )
+        if second == (getattr(order, "applicant", "") or "").strip():
+            return ServiceResult.fail(
+                message="复核人不能是领用人本人",
+                error_code="APPLICANT_CANNOT_REVIEW",
+            )
+        if not self._is_admin_plus(second):
+            return ServiceResult.fail(
+                message=f"复核人「{second}」不是管理员",
+                error_code="INVALID_SECOND_APPROVER",
+            )
+        return None
+
+    def can_second_approve(self, order, user_name: Optional[str]) -> bool:
+        """第二签只有被指定的那个人能做。
+
+        这里**不用**归属判定：复核是「代人看一眼」，认的是签字的人，不是单
+        归谁。换了归属就换复核人，那等于让审批人自己挑裁判。
+        """
+        if not (order and user_name):
+            return False
+        return (getattr(order, "second_approver", "") or "").strip() == user_name.strip()
+
+    @handle_exception(context="复核领用工单")
+    def approve_second(
+        self, order_id: int, approver_name: str, remark: Optional[str] = None
+    ) -> ServiceResult:
+        """第二签：复核通过，**此刻才真正扣库存、写领用流水**。"""
+        order = borrow_order_service.get_by_id(order_id)
+        if not order:
+            return ServiceResult.fail(message="工单不存在", error_code="ORDER_NOT_FOUND")
+        if order.approval_status != APPROVAL_SECOND_PENDING:
+            return ServiceResult.fail(
+                message=(
+                    f"该工单当前审批状态为「{order.approval_status}」，"
+                    "不是在等复核"
+                ),
+                error_code="INVALID_APPROVAL_STATE",
+            )
+        if not self.can_second_approve(order, approver_name):
+            return ServiceResult.fail(
+                message=f"这张单指定由「{order.second_approver or '—'}」复核",
+                error_code="NOT_SECOND_APPROVER",
+            )
+
+        now = datetime.now().strftime("%Y/%m/%d %H:%M")
+        return self._commit_approval(
+            order,
+            approver_name,
+            remark,
+            APPROVAL_SECOND_PENDING,
+            {
+                "second_approval_status": SECOND_APPROVED,
+                "second_approval_time": now,
+                "second_approval_remark": remark,
+            },
+            action="复核通过并发料",
+        )
+
+    def _commit_approval(
+        self,
+        order,
+        approver_name: str,
+        remark: Optional[str],
+        from_status: str,
+        extra_fields: Dict[str, Any],
+        action: str = "审批通过",
+    ) -> ServiceResult:
+        """把「签字」和「发料」放在一个事务里做完。
+
+        单人审批与双人审批的第二签走的是同一段：差别只在抢占的起始状态
+        （``待审批`` / ``待复核``）和要不要顺手写复核结论。不复制一份，是
+        因为发料那一段出过「一瓶失败就整单回滚」的坑，两份实现迟早会分叉。
+        """
+        order_id = order.id
         items = borrow_order_item_service.get_by_order(order_id)
         now = datetime.now().strftime("%Y/%m/%d %H:%M")
 
-        # 整段审批执行放在同一事务中：抢占状态、逐瓶领用、明细状态、实验进度
-        # 要么全部提交，要么进程中断/异常时全部回滚，避免“工单已批准但只执行了一半”。
         from db.database import db
 
         success_count = 0
         failures: List[str] = []
         with db.transaction():
-            # 原子抢占：仅当审批状态仍为「待审批」时才写入「已批准」。
+            # 原子抢占：仍停在起始状态时才写入「已批准」。
+            payload = {
+                "status": ORDER_STATUS_BORROWING,
+                "approval_status": APPROVAL_APPROVED,
+            }
+            if from_status == APPROVAL_PENDING:
+                # 签名跟着实际操作人走：一张归组池的单可能由组里任何一位管理
+                # 员批，approver 若还留着原指派人就成了代签。
+                payload.update(
+                    {
+                        "approval_time": now,
+                        "approval_remark": remark,
+                        "approver": approver_name,
+                    }
+                )
+            # 第二签**不覆盖**第一签的 approver / approval_time / remark：
+            # 那三个字段记的是「谁先批的、什么时候、说了什么」，被复核人盖掉
+            # 就等于把第一签抹了。复核结论写在 second_approval_* 上。
+            payload.update(extra_fields or {})
             claimed = borrow_order_service.update_where(
-                {"id": order_id, "approval_status": APPROVAL_PENDING},
-                {
-                    "status": ORDER_STATUS_BORROWING,
-                    "approval_status": APPROVAL_APPROVED,
-                    "approval_time": now,
-                    "approval_remark": remark,
-                    # 签名跟着实际操作人走：一张归教研室池的单可能由组里任何
-                    # 一位管理员批，approver 若还留着原指派人就成了代签。
-                    "approver": approver_name,
-                },
+                {"id": order_id, "approval_status": from_status}, payload
             )
             if not claimed:
                 current = borrow_order_service.get_by_id(order_id)
@@ -769,16 +983,17 @@ class WorkOrderService:
                     failures.append(f"{item.bottle_number}：{result.message}")
 
             if success_count == 0:
-                # 一瓶都没领成：恢复待审批，提示发起人调整
-                borrow_order_service.update_where(
-                    {"id": order_id},
-                    {
-                        "status": ORDER_STATUS_PENDING,
-                        "approval_status": APPROVAL_PENDING,
-                        "approval_time": None,
-                        "approval_remark": None,
-                    },
-                )
+                # 一瓶都没领成：退回起始状态，提示发起人调整。起始状态可能是
+                # 「待复核」——那就退回去等复核，别把第一签也一起抹掉。
+                restore = {
+                    "status": ORDER_STATUS_PENDING,
+                    "approval_status": from_status,
+                    "approval_time": None,
+                    "approval_remark": None,
+                }
+                if from_status == APPROVAL_SECOND_PENDING:
+                    restore["second_approval_status"] = SECOND_PENDING
+                borrow_order_service.update_where({"id": order_id}, restore)
                 return ServiceResult.fail(
                     message="批准执行失败：" + "；".join(failures),
                     error_code="APPROVE_EXECUTE_FAILED",
@@ -802,14 +1017,15 @@ class WorkOrderService:
         )
 
         from utils.audit import audit
+
         audit(
             approver_name,
-            "审批通过",
+            action,
             target_type="order",
             target_id=order.order_number,
             detail=f"批准 {success_count} 瓶领用" + (f"；意见：{remark}" if remark else ""),
         )
-        message = f"工单 {order.order_number} 审批通过，已完成 {success_count} 瓶领用"
+        message = f"工单 {order.order_number} {action}，已完成 {success_count} 瓶领用"
         if failures:
             message += "；失败：" + "；".join(failures)
         return ServiceResult.ok(
@@ -827,34 +1043,56 @@ class WorkOrderService:
         """退回修改（驳回）：不扣库存，单回到申请人手上。
 
         这是「单有问题」的唯一出口，与队列页的「退回修改」是同一件事——工单
-        上它叫驳回而已。``remark`` 是申请人唯一能看到的「改什么」，所以页面
-        必须要求填写（服务层不强制，历史调用没有它）。
+        上它叫驳回而已。
+
+        ``remark`` 可以不填：退这个动作本身已经说明「不能按现在这样批」，具体
+        哪里不对由两个人当面说清。强迫填一句话只会得到一百条「再改改」，既没
+        信息量，又把申请人挡在门外。填了照样留痕。
         """
         order = borrow_order_service.get_by_id(order_id)
         if not order:
             return ServiceResult.fail(message="工单不存在", error_code="ORDER_NOT_FOUND")
-        if order.approval_status != APPROVAL_PENDING:
+
+        # 两签的单在哪一签被退，退回都落在同一个地方：申请人。第二签驳回要
+        # 单独认人——复核人不是归属里的成员，他是被指定的那一双眼睛。
+        if order.approval_status == APPROVAL_SECOND_PENDING:
+            if not self.can_second_approve(order, approver_name):
+                return ServiceResult.fail(
+                    message=f"这张单指定由「{order.second_approver or '—'}」复核",
+                    error_code="NOT_SECOND_APPROVER",
+                )
+            from_status = APPROVAL_SECOND_PENDING
+            second_fields = {
+                "second_approval_status": SECOND_REJECTED,
+                "second_approval_time": datetime.now().strftime("%Y/%m/%d %H:%M"),
+                "second_approval_remark": remark,
+            }
+        elif order.approval_status == APPROVAL_PENDING:
+            if not self.can_approve(order, approver_name):
+                return ServiceResult.fail(
+                    message=f"这张单不归你办（当前归属见待办队列）",
+                    error_code="NOT_ASSIGNED_APPROVER",
+                )
+            from_status = APPROVAL_PENDING
+            second_fields = {}
+        else:
             return ServiceResult.fail(
-                message=f"该工单当前审批状态为「{order.approval_status}」，无法审批",
+                message=f"该工单当前审批状态为「{order.approval_status}」，无法退回",
                 error_code="INVALID_APPROVAL_STATE",
-            )
-        if not self.can_approve(order, approver_name):
-            return ServiceResult.fail(
-                message=f"这张单不归你办（当前归属见待办队列）",
-                error_code="NOT_ASSIGNED_APPROVER",
             )
 
         now = datetime.now().strftime("%Y/%m/%d %H:%M")
-        # 原子抢占：仅当审批状态仍为「待审批」才写入「已驳回」，
+        # 原子抢占：仅当审批状态仍停在起始状态才写入「已驳回」，
         # 防止撤回/批准并发时状态互相覆盖（QA 审查发现）
         if not borrow_order_service.update_where(
-            {"id": order_id, "approval_status": APPROVAL_PENDING},
+            {"id": order_id, "approval_status": from_status},
             {
                 "status": ORDER_STATUS_REJECTED,
                 "approval_status": APPROVAL_REJECTED,
                 "approval_time": now,
                 "approval_remark": remark,
                 "approver": approver_name,
+                **second_fields,
             },
         ):
             current = borrow_order_service.get_by_id(order_id)
