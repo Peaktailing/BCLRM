@@ -77,6 +77,14 @@ _common_pages = [
 
 _settings_page = st.Page("views/6_系统设置.py", title="系统设置", icon="⚙️")
 
+# 管理员的受理台：教师不接单，也不该看见这两个入口
+#   待办队列 = 「谁该发料」（申请人的单排成一队）
+#   调配台   = 「谁该点头」（管理员之间调保管权）
+_admin_pages = [
+    st.Page("views/15_待办队列.py", title="待办队列", icon="📋"),
+    st.Page("views/16_调配台.py", title="调配台", icon="🔀"),
+]
+
 
 if not is_logged_in():
     # 未登录：隐藏导航组件，仅渲染登录页
@@ -86,6 +94,9 @@ if not is_logged_in():
     ).run()
 else:
     pages = [_home_page] + _common_pages
+    # 仅管理员注册受理台（待办队列 + 调配台）
+    if st.session_state.get("user_role") in ("admin", "super_admin"):
+        pages += _admin_pages
     # 仅超级管理员注册「系统设置」页面
     if st.session_state.get("user_role") == "super_admin":
         pages.append(_settings_page)
