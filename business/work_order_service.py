@@ -153,6 +153,14 @@ class WorkOrderService:
         course_id = getattr(course, "id", None) if course else None
         item_id = getattr(exp_item, "id", None) if exp_item else None
 
+        # 归属（谁受理）：课程路由 → 申请人教研室 → 全院池。落在这里而不是
+        # 页面上，是因为「这张单归谁」是业务事实，不是渲染结果。含管控试剂
+        # 的工单已经选了审批人，那个人就是受理人（第一层「指定」）。
+        from business.assignment_service import assignment_service
+
+        _source_code = getattr(course, "course_name", None) if course else ""
+        _assignment = assignment_service.resolve_target(applicant, _source_code or "")
+
         # ---------- 审批判定：任一试剂命中管控目录即需先审批 ----------
         needs_approval = False
         controlled_types = set()
@@ -240,6 +248,10 @@ class WorkOrderService:
                         "approver": approver_name,
                         "remark": remark,
                         "created_by": created_by,
+                        # 归属：审批人即受理人（第一层「指定」）。approver_name
+                        # 在这一支里已经校验过是管理员。
+                        "custodian_scope": "person" if approver_name else _assignment.scope,
+                        "custodian_key": approver_name or _assignment.key,
                     })
                     if not order_id:
                         raise RuntimeError("创建工单失败")
@@ -377,6 +389,10 @@ class WorkOrderService:
                     "approval_status": APPROVAL_NOT_REQUIRED,
                     "remark": remark,
                     "created_by": created_by,
+                    # 无需审批的工单创建时就发料了，不进待办；归属仍记下来，
+                    # 供事后追溯「这单本来归谁」。
+                    "custodian_scope": _assignment.scope,
+                    "custodian_key": _assignment.key,
                 })
                 if not order_id:
                     raise RuntimeError("创建工单失败")

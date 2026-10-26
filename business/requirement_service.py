@@ -181,6 +181,17 @@ class RequirementBusinessService:
         }
 
         sheet_number = self.sheets.save(sheet, requester or "未署名", snapshot_data)
+
+        # 落归属（指定人 → 教研室池 → 全院池）。失败不阻断建单：归属为空的
+        # 单在业务上按 all 处理，退化成升级前的行为，比「算出了单却存不进去」
+        # 要好。这一步必须在落库之后——它要读回 requester/source_code。
+        try:
+            from business.assignment_service import assignment_service
+
+            assignment_service.assign_for_sheet(sheet_number)
+        except Exception as exc:
+            logger.warning(f"需求单 {sheet_number} 归属计算失败，按全院池处理: {exc}")
+
         audit(
             requester,
             "生成需求单",

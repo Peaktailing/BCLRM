@@ -1446,6 +1446,26 @@ class Database:
                 cursor.execute("ALTER TABLE borrow_order ADD COLUMN requirement_number TEXT")
                 logger.info("迁移完成：borrow_order 表添加 requirement_number 字段")
 
+            # 9) 单据归属三级降级：指定人 → 教研室池 → 全院池。
+            #    归属是**组/池**的时候没有「某人名下」可以抽卡，所以这两张表要能
+            #    表达「还没人接」。claimed_from_* 不是留档，是退回时要恢复的目标：
+            #    一张本来落 all 的单被接走，退回就该回 all，不能顺手收窄成
+            #    「他的教研室」。老数据两列为空 → 业务上按 all 处理（历史单本来
+            #    就人人可见，不前向收窄，否则等于把在办的单从待办里抽走）。
+            for _tbl in ("borrow_order", "requirement_sheet"):
+                cursor.execute(f"PRAGMA table_info({_tbl})")
+                _tbl_cols = {row[1] for row in cursor.fetchall()}
+                for _col, _ddl in (
+                    ("custodian_scope", "TEXT DEFAULT ''"),
+                    ("custodian_key", "TEXT DEFAULT ''"),
+                    ("claimed_at", "TIMESTAMP"),
+                    ("claimed_from_scope", "TEXT DEFAULT ''"),
+                    ("claimed_from_key", "TEXT DEFAULT ''"),
+                ):
+                    if _tbl_cols and _col not in _tbl_cols:
+                        cursor.execute(f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_ddl}")
+                        logger.info(f"迁移完成：{_tbl} 表添加 {_col} 字段（归属三级降级）")
+
             if rb_cols:
                 # 4) 回填物质外键：CAS 优先（唯一），名称兜底。CAS 为空不算声明，                #    与 chemical_info 的唯一索引口径一致。
                 #    用 Python 配对而不是一条相关子查询的 UPDATE：SQLite 在子查询
@@ -1508,6 +1528,54 @@ class Database:
                 """)
                 if cursor.rowcount and cursor.rowcount > 0:
                     logger.info(f"迁移完成：{cursor.rowcount} 个试剂瓶的当前位置已写入 bottle_placement")
+
+            # 10) 统一待办视图：两张单（零星/课程领用工单、配方需求单）在同一个
+            #     列表里出现。这一步不是"加锁"，是让管理员第一次能看见全部在办
+            #     的单——两条路都走「申请 → 审批 → 借出」，但数据结构不同，原来
+            #     要跑两个页面才看得全。
+            #
+            #     视图只做投影不做业务判定：哪些该我处理由服务层的三条 OR 决定
+            #     （person / department / all，空归属按 all）。状态过滤也留在
+            #     服务层，因为「在办」的口径会变，视图重建一次要 DROP。
+            cursor.execute("DROP VIEW IF EXISTS v_issue_queue")
+            cursor.execute("""
+                CREATE VIEW v_issue_queue AS
+                SELECT
+                    'order'                                   AS kind,
+                    o.order_number                            AS ref,
+                    COALESCE(NULLIF(o.course_name, ''), o.order_type) AS title,
+                    o.applicant                               AS applicant,
+                    COALESCE(p.department, '')                AS department,
+                    COALESCE(o.status, '')                    AS status,
+                    COALESCE(o.approval_status, '')           AS approval_status,
+                    COALESCE(o.borrow_time, o.created_at)     AS happened_at,
+                    o.created_at                              AS created_at,
+                    (SELECT COUNT(*) FROM borrow_order_item i
+                      WHERE i.order_id = o.id)                AS item_count,
+                    COALESCE(o.custodian_scope, '')           AS custodian_scope,
+                    COALESCE(o.custodian_key, '')             AS custodian_key,
+                    o.claimed_at                              AS claimed_at
+                FROM borrow_order o
+                LEFT JOIN person p ON p.name = o.applicant
+                UNION ALL
+                SELECT
+                    'requirement'                             AS kind,
+                    s.sheet_number                            AS ref,
+                    COALESCE(NULLIF(s.title, ''), '需求单')   AS title,
+                    COALESCE(s.requester, '')                 AS applicant,
+                    COALESCE(p.department, '')                AS department,
+                    COALESCE(s.status, '')                    AS status,
+                    ''                                        AS approval_status,
+                    s.created_at                              AS happened_at,
+                    s.created_at                              AS created_at,
+                    (SELECT COUNT(*) FROM requirement_line l
+                      WHERE l.sheet_id = s.id)                AS item_count,
+                    COALESCE(s.custodian_scope, '')           AS custodian_scope,
+                    COALESCE(s.custodian_key, '')             AS custodian_key,
+                    s.claimed_at                              AS claimed_at
+                FROM requirement_sheet s
+                LEFT JOIN person p ON p.name = s.requester
+            """)
 
             self.connection.commit()
 

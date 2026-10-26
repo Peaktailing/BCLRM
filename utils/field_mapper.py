@@ -305,6 +305,12 @@ class BorrowOrderField:
     REMARK = 'remark'
     CREATED_BY = 'created_by'
     REQUIREMENT_NUMBER = 'requirement_number'  # 来源需求单号（转单时回填）
+    # ---- 归属三级降级（指定人 → 教研室池 → 全院池）----
+    CUSTODIAN_SCOPE = 'custodian_scope'        # person / department / all（空按 all）
+    CUSTODIAN_KEY = 'custodian_key'            # 人名 / 教研室名 / ''
+    CLAIMED_AT = 'claimed_at'                  # 认领时刻
+    CLAIMED_FROM_SCOPE = 'claimed_from_scope'  # 认领前的归属（退回时恢复）
+    CLAIMED_FROM_KEY = 'claimed_from_key'
 
 
 class BorrowOrderItemField:
@@ -572,6 +578,12 @@ class RequirementSheetField:
     ISSUED_AT = 'issued_at'  # 兑付时间
     # ---- 发料人（文本类型）----
     ISSUED_BY = 'issued_by'  # 发料人
+    # ---- 归属三级降级（指定人 → 教研室池 → 全院池）----
+    CUSTODIAN_SCOPE = 'custodian_scope'        # person / department / all（空按 all）
+    CUSTODIAN_KEY = 'custodian_key'            # 人名 / 教研室名 / ''
+    CLAIMED_AT = 'claimed_at'                  # 认领时刻
+    CLAIMED_FROM_SCOPE = 'claimed_from_scope'  # 认领前的归属（退回时恢复）
+    CLAIMED_FROM_KEY = 'claimed_from_key'
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 
