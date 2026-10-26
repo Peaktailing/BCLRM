@@ -73,6 +73,17 @@ _LINE_STATUS_LABELS = {
     "issued": "已发",
 }
 
+#: 需求单流转状态。``returned`` 是「被退回修改」：单回到申请人手上，不占
+#: 学年保底，也不在管理员待办里；改完重新生成一张提交。
+_SHEET_STATUS_LABELS = {
+    "draft": "草稿",
+    "submitted": "已提交",
+    "partial": "部分兑付",
+    "issued": "已兑付",
+    "returned": "已退回修改",
+    "closed": "已关闭",
+}
+
 tab_lib, tab_edit, tab_plan, tab_ticket, tab_pipe = st.tabs(
     ["📚 配方库", "✍️ 配方编制", "🧮 需求试算", "📄 需求量与单据", "🔀 申领流转"]
 )
@@ -364,6 +375,12 @@ with tab_ticket:
                         "申请人": row["requester"],
                         "人数": row["persons"],
                         "批次": row["batches"],
+                        # 退回修改的单在这里可见：状态 + 原因，申请人不用去
+                        # 别处猜「为什么我的单没了」。
+                        "状态": _SHEET_STATUS_LABELS.get(
+                            (row.get("status") or "").strip(), row.get("status") or ""
+                        ),
+                        "退回原因": row.get("return_reason") or "",
                         "生成时间": row["created_at"],
                     }
                     for row in recent.data["items"]

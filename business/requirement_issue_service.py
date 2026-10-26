@@ -71,7 +71,9 @@ from utils.error_handler import ServiceResult, handle_exception, logger
 from utils.field_mapper import RequirementSheetField
 
 #: 这些状态下不再接受转单。``partial`` 不在其中——那正是还要继续发的意思。
-_BLOCKED_STATUSES = ("issued", "closed", "cancelled")
+#: 不能兑付的状态。``returned`` 也在内：单已经被退回要申请人改，改之前
+#: 发料等于按一张已知有问题的单出货。
+_BLOCKED_STATUSES = ("issued", "closed", "cancelled", "returned")
 
 #: 量的浮点容差。换算会带尾数，卡死等号会让行永远兑不完。
 _EPS = 1e-9

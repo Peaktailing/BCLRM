@@ -1,4 +1,4 @@
-"""单据归属业务：算目标、落库、认领、退回、转交。
+"""单据归属业务：算目标、落库、认领、退回修改、转交。
 
 这里补的是 BCLRM 一直缺的那一环：**单据有主**。
 
@@ -15,8 +15,10 @@
 2. **认领是一条带条件的 UPDATE**，`rowcount=0` 就是判定结果，不需要事务外
    加锁、不需要租约。判定点放在写，不放在读。
 3. **权限跟着当前归属走，不跟历史走**。收窄到人，别人当场看不见也动不了；
-   放宽回组，组里每个人当场看得见、退得动、批得动。退回只能放宽，落点按
-   来源算、按原持有人的科室算——见 `domain.assignment`。
+   放宽回组，组里每个人当场看得见、办得动、退得动（见 `domain.assignment`）。
+
+一个容易被搞混的分工：**退回不是「我不接」，是「这单要改」**。手上没料的
+管理员去发起调配，单留在他名下；退回只用于单本身有问题，落点永远是申请人。
 """
 from __future__ import annotations
 
@@ -29,11 +31,11 @@ from domain.assignment import (
     CLAIM_NOT_ALLOWED,
     CLAIM_OTHER_DEPARTMENT,
     CLAIM_TAKEN,
-    RELEASE_NOT_OWNER,
-    RELEASE_ROOT,
+    RETURN_INVALID_STATE,
+    RETURN_NOT_MEMBER,
+    RETURN_NO_REASON,
     Assignment,
     assignment_of,
-    claimed_from_of,
 )
 from services.base.person_service import person_service
 from services.core.issue_queue_service import (
@@ -296,62 +298,84 @@ class AssignmentService:
         return (True, "") if allowed else (False, current.handle_blocked_message())
 
     # ------------------------------------------------------------------
-    # 退回 / 转交
+    # 退回修改 / 转交
     # ------------------------------------------------------------------
-    @handle_exception(context="退回池")
-    def release(self, kind: str, ref: str, me: str, my_department: str = "") -> ServiceResult:
-        """把单放宽一级：人 → 组、组 → 全院。
+    @staticmethod
+    def requester_of(kind: str, row: Dict[str, Any]) -> str:
+        """申请人。两张表字段不同名，收在一处，别到处写 ``if kind ==``。"""
+        key = "applicant" if kind == KIND_ORDER else "requester"
+        return (row.get(key) or "").strip()
 
-        权限是「当前归属的成员集合」，所以组池里的单组里谁都能放回全院池。
-        **落点不看退的人是谁**：指定来的单落到原持有人的教研室，认领来的单
-        恢复认领前的原处。超管替张三退，不能因为超管自己是生物室就落到生物室
-        ——那是退回，不是改派。
+    @handle_exception(context="退回修改")
+    def return_for_revision(
+        self, kind: str, ref: str, me: str, reason: str = "", my_department: str = ""
+    ) -> ServiceResult:
+        """退单要申请人改。**落点恒为申请人**，不是任何池。
+
+        理由见 ``domain.assignment``：手上没料是调配的事，单不动；单要退，一
+        定是单本身有问题（数量、瓶、用途、课程），只有申请人能改。所以退回
+        不带「给谁办」的含义，不需要挑接收人，也不存在「退到上一级池」。
+
+        权限是当前归属的成员集合（能办的人才能退）+ 超管兜底。
         """
         row = self.issues.row(kind, ref)
         if not row:
             return ServiceResult.fail(message=f"单据不存在：{ref}", error_code="NOT_FOUND")
 
+        reason = (reason or "").strip()
+        if not reason:
+            return ServiceResult.fail(
+                message="退回必须写原因：申请人要知道改哪里，否则退回等于石沉大海",
+                error_code=RETURN_NO_REASON.upper(),
+            )
+
         current = assignment_of(row)
-        if current.is_all:
-            return ServiceResult.fail(
-                message="这张单已经在全院池，退无可退", error_code=RELEASE_ROOT.upper()
-            )
-
         my_department = (my_department or self.department_of(me) or "").strip()
-        is_super = self.is_super_admin(me)
-        if not current.can_release(me, my_department, is_super_admin=is_super):
-            if current.is_person:
-                message = f"只有 {current.key} 本人或超级管理员可以退回这张单"
-            else:
-                message = f"只有 {current.key} 的管理员可以退回这张单"
-            return ServiceResult.fail(message=message, error_code=RELEASE_NOT_OWNER.upper())
-
-        # 落点按「原持有人」的科室算，不按操作人的科室算。
-        holder_department = self.department_of(current.key) if current.is_person else ""
-        target = current.after_release(holder_department, claimed_from_of(row))
-        if target is None:
+        if not current.can_return(
+            me,
+            my_department,
+            is_admin=self.is_admin(me),
+            is_super_admin=self.is_super_admin(me),
+        ):
             return ServiceResult.fail(
-                message="这张单已经在全院池，退无可退", error_code=RELEASE_ROOT.upper()
+                message=current.handle_blocked_message(), error_code=RETURN_NOT_MEMBER.upper()
             )
 
-        changed = self.issues.release(
-            kind, ref, target.scope, target.key, current.scope, current.key
+        requester = self.requester_of(kind, row)
+        if not requester:
+            return ServiceResult.fail(
+                message="这张单没有申请人，退不回去", error_code="NO_REQUESTER"
+            )
+        if requester == me:
+            return ServiceResult.fail(
+                message="这是你自己提交的单，有问题请直接改单重提", error_code="SELF_RETURN"
+            )
+
+        changed = self.issues.return_to_requester(
+            kind, ref, requester, reason, current.scope, current.key
         )
         if not changed:
             return ServiceResult.fail(
-                message="这张单刚被改动过，请刷新后再试", error_code="STALE"
+                message="这张单刚被改动过，或已经办结，请刷新后再看",
+                error_code=RETURN_INVALID_STATE.upper(),
             )
         audit(
             me,
-            "退回池",
+            "退回修改",
             _table_of(kind),
             ref,
-            f"{current.describe()} → {target.describe()}",
+            f"{current.describe()} → 退回 {requester} 修改：{reason}",
         )
         return ServiceResult.ok(
-            data={"kind": kind, "ref": ref, "custodian_scope": target.scope,
-                  "custodian_key": target.key},
-            message=f"已退回：{target.describe()}",
+            data={
+                "kind": kind,
+                "ref": ref,
+                "requester": requester,
+                "custodian_scope": "person",
+                "custodian_key": requester,
+                "return_reason": reason,
+            },
+            message=f"已退回 {requester} 修改：{reason}",
         )
 
     @handle_exception(context="转交")

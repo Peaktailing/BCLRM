@@ -817,14 +817,19 @@ class WorkOrderService:
             message=message,
         )
 
-    @handle_exception(context="驳回领用工单")
+    @handle_exception(context="退回修改领用工单")
     def reject_order(
         self,
         order_id: int,
         approver_name: str,
         remark: Optional[str] = None
     ) -> ServiceResult:
-        """驳回工单（不扣库存，工单关闭）"""
+        """退回修改（驳回）：不扣库存，单回到申请人手上。
+
+        这是「单有问题」的唯一出口，与队列页的「退回修改」是同一件事——工单
+        上它叫驳回而已。``remark`` 是申请人唯一能看到的「改什么」，所以页面
+        必须要求填写（服务层不强制，历史调用没有它）。
+        """
         order = borrow_order_service.get_by_id(order_id)
         if not order:
             return ServiceResult.fail(message="工单不存在", error_code="ORDER_NOT_FOUND")
@@ -835,7 +840,7 @@ class WorkOrderService:
             )
         if not self.can_approve(order, approver_name):
             return ServiceResult.fail(
-                message=f"只有指定审批人「{order.approver}」可以审批该工单",
+                message=f"这张单不归你办（当前归属见待办队列）",
                 error_code="NOT_ASSIGNED_APPROVER",
             )
 
@@ -863,8 +868,22 @@ class WorkOrderService:
         for item in borrow_order_item_service.get_by_order(order_id):
             borrow_order_item_service.update(item.id, {"status": "已驳回"})
 
+        # 退回修改 = 单回到申请人手上，不是回到池里。落在池里没有意义：
+        # 池子本来就没到人，再退一次只是原地打转，而问题还留在单据里。
+        try:
+            from business.assignment_service import KIND_ORDER, assignment_service as _asg
+            from domain.assignment import Assignment as _Assignment
+
+            _asg.assign(
+                KIND_ORDER,
+                order.order_number,
+                _Assignment.returned_to(order.applicant or ""),
+            )
+        except Exception as _asg_err:  # pragma: no cover - 只为不阻断退回
+            logger.warning(f"退回后回写归属失败：{_asg_err}")
+
         logger.info(
-            "工单已驳回",
+            "工单已退回修改",
             order_number=order.order_number,
             approver=approver_name,
         )
@@ -872,10 +891,10 @@ class WorkOrderService:
         from utils.audit import audit
         audit(
             approver_name,
-            "驳回工单",
+            "退回修改",
             target_type="order",
             target_id=order.order_number,
-            detail=remark or "（无意见）",
+            detail=remark or "（无原因）",
         )
         return ServiceResult.ok(
             data={"order_number": order.order_number},

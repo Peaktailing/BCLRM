@@ -19,28 +19,29 @@ BCLRM 原来只有一条「全院都能看见、谁点谁办」的隐含规则�
 
 判定只有一条总纲：**权限由「当前归属」决定，不由历史决定。**
 
-每一层归属就是一个成员集合，五类动作全部从集合里派生：
+每一层归属就是一个成员集合，动作全部从集合里派生：
 
-============  ==================  ====  ====  ====  ====  ====
-当前归属       成员集合             可见   接单   受理   退回
-============  ==================  ====  ====  ====  ====
-person:张三    {张三}               张三   —     张三   张三
-department:X  X 的全体管理员        全组   任一人  任一人  任一人
-all           全院管理员            全院   任一人  任一人   —
-============  ==================  ====  ====  ====  ====  ====
+============  =====================  ====  ====  ========  ====
+当前归属       成员集合               可见   接单   受理/审批   退回
+============  =====================  ====  ====  ========  ====
+person:张三    {张三}                 张三   —     张三        张三
+department:X  X 的全体管理员          全组   任一人  任一人       任一人
+all           全院管理员              全院   任一人  任一人       任一人
+============  =====================  ====  ====  ========  ====
 
-（可见三列对超管一律放行，超管是兜底角色，不属于「其他人」。）
+（可见一列对超管一律放行，超管是兜底角色，不属于「其他人」；审批**不**放行。）
 
-两个差别的来源不是特权，而是这个动作在这一层有没有意义：接单只对「还没到
-人」的单有意义，退回只对「还没到全院」的单有意义。
+**「退回」不是把活转给别人，是退单要人改。**
 
-于是收窄与放宽互为镜像：**认领把集合从一组人改成一个人，其他人当场既看不见
-也动不了；退回把集合改回一组人，组里每个人当场既看得见也退得动、批得动。**
+管理员手上没料，正确动作是发起调配（调拨/平账），单还在他名下——料的问题用料的
+手段解决，不该把单推走。所以退回只对应一种情况：**这张单本身有问题**（数量不对、
+瓶选错、用途不明、课程挂错），必须回到申请人那里改。
 
-上一版在这里写过「同教研室可见但不可退」。那句话对 ``person`` 层是对的
-（收窄之后同室本来就看不见），对 ``department`` 层是错的：组池里的单还没有
-主人，主人就是整个组，组里任何人放它回全院池，只是把「没人认」这件事说得更
-大声一点，并没有替谁做决定。
+落点因此也只有一个：**申请人**。不论这单原本在人手上、在教研室池里还是在全院池
+里，退都是退回给申请人，不存在「退到上一级池让别人接」这种动作——那不是退回，
+是改派，而改派有它自己的入口。
+
+一句话记住：**退 = 单有问题；调 = 料有问题。**
 """
 from __future__ import annotations
 
@@ -60,8 +61,9 @@ CLAIM_ASSIGNED = "assigned"                # 本来就指定了某人
 CLAIM_NOT_ALLOWED = "not_allowed"          # 不是管理员 / 状态不允许
 
 #: 退回被拒的原因
-RELEASE_NOT_OWNER = "not_owner"            # 不在当前归属的成员集合里
-RELEASE_ROOT = "root"                      # 已经落在 all，退无可退
+RETURN_NOT_MEMBER = "not_member"           # 不在当前归属的成员集合里
+RETURN_NO_REASON = "no_reason"             # 没写原因（退单必须说清哪里不对）
+RETURN_INVALID_STATE = "invalid_state"     # 单已经不在办（已办结/已关闭）
 
 #: 受理/审批被拒
 ACT_NOT_MEMBER = "not_member"              # 不在当前归属的成员集合里
@@ -80,8 +82,8 @@ class ClaimError(Exception):
         self.message = message
 
 
-class ReleaseError(Exception):
-    """退回失败。"""
+class ReturnError(Exception):
+    """退回修改失败。"""
 
     def __init__(self, reason: str, message: str) -> None:
         super().__init__(message)
@@ -200,29 +202,39 @@ class Assignment:
             return bool(is_admin) and bool(my_department) and self.key == my_department.strip()
         return bool(is_admin)
 
-    def can_release(
-        self, me: str, my_department: str = "", is_super_admin: bool = False
+    def can_return(
+        self,
+        me: str,
+        my_department: str = "",
+        is_admin: bool = False,
+        is_super_admin: bool = False,
     ) -> bool:
-        """能不能把这张单退回上一级（放宽归属）。
+        """能不能把这张单退回去要申请人改。
 
-        成员集合里的每个人都能放，不设「必须本人」：
-        ``person`` 层只有本人（别人本来就看不见），``department`` 层是**组里
-        任何一个人**。组池里的单没有主，组员把它推回全院池，是把「还没人认」
-        这件事说得更明白，不是替谁做决定。
+        与 :meth:`can_handle` 同一套成员集合——**能办的人才能退**，因为「这单
+        有问题」是个专业判断，得先看懂才说得出来。组池里的单本室任一人可退，
+        全院池的任一管理员可退。超管兜底（申请人账号停用、经办人离职）。
 
-        退回永远只能放宽：本层 → 上一级，落到的具体位置由
-        :meth:`after_release` 按来源算，不由退的人算。
+        注意这里没有「退给上一级」这回事：落点恒为申请人，见
+        :meth:`returned_to`。
         """
-        if self.is_all:
-            return False
-        if self.is_person:
-            return self.key == (me or "").strip() or is_super_admin
-        return is_super_admin or (
-            bool(my_department) and self.key == my_department.strip()
-        )
+        me = (me or "").strip()
+        if is_super_admin:
+            return True
+        return self.can_handle(me, my_department, is_admin=is_admin, is_super_admin=False)
+
+    def returned_to(self, requester: str) -> "Assignment":
+        """退回之后的归属：**申请人**，不是任何池。
+
+        单回到申请人手上，他改数量、换瓶、补用途，改完重新提交时归属重算。
+        落在池里没有意义：池子里的单本来就没到人手上，再退一次只是原地打转，
+        而问题还留在单据里。
+        """
+        requester = (requester or "").strip()
+        return Assignment.person(requester) if requester else Assignment.everywhere()
 
     def can_transfer(self, me: str, is_super_admin: bool = False) -> bool:
-        """能不能把这张单点名叫别人办。
+        """能不能把这张单点名叫别人办（改派）。
 
         只在 ``person`` 层有意义。组池里的单要「给某人」，正确动作是认领
         （自己接）而不是替同事指定——替别人接活不叫分工，叫代签。
@@ -238,33 +250,6 @@ class Assignment:
         if self.is_department:
             return f"这张单归 {self.key}，只有该教研室的管理员可以办理"
         return "只有管理员可以办理单据"
-
-    def after_release(
-        self,
-        holder_department: str = "",
-        claimed_from: Optional["Assignment"] = None,
-    ) -> Optional["Assignment"]:
-        """退回之后落到哪一级。``None`` 表示退无可退。
-
-        原则只有一条：**退回只能放宽，不能顺手收窄。**
-
-        - 认领来的单（有 ``claimed_from``）：恢复原处。原来在全院池，退回
-          还回全院池，不能因为接单人有教研室就降成「他的教研室」。
-        - 指定来的单（没有 ``claimed_from``）：降到下一级。指定给某人 → 本
-          教研室（没有教研室就全院）；教研室 → 全院。
-
-        ``holder_department`` 必须是**原持有人的科室**，不是操作人的科室：
-        超管替张三退回时，单要落回张三的教研室，不能落到超管自己的室——那
-        是「退回」变成「改派」。
-        """
-        if self.is_all:
-            return None
-        if claimed_from is not None and not claimed_from.is_person:
-            return claimed_from
-        if self.is_person:
-            department = (holder_department or "").strip()
-            return Assignment.department(department) if department else Assignment.everywhere()
-        return Assignment.everywhere()
 
     def describe(self) -> str:
         if self.is_person:
@@ -289,7 +274,12 @@ def assignment_of(row: dict) -> Assignment:
 
 
 def claimed_from_of(row: dict) -> Optional[Assignment]:
-    """读「认领前的归属」。没有就是 ``None``（指定来的单）。"""
+    """读「认领前的归属」。
+
+    目前**没有业务读者**：退回不再按来源还原，落点恒为申请人。留着它是因为
+    这五列是历史事实（这单当初从哪个池被人接走），排查「谁把全院池的单收成
+    自己的」时要看它。
+    """
     if not row:
         return None
     getter = row.get if hasattr(row, "get") else lambda k, d=None: row[k]
@@ -307,12 +297,13 @@ __all__ = [
     "CLAIM_OTHER_DEPARTMENT",
     "CLAIM_ASSIGNED",
     "CLAIM_NOT_ALLOWED",
-    "RELEASE_NOT_OWNER",
-    "RELEASE_ROOT",
+    "RETURN_NOT_MEMBER",
+    "RETURN_NO_REASON",
+    "RETURN_INVALID_STATE",
     "ACT_NOT_MEMBER",
     "AssignmentError",
     "ClaimError",
-    "ReleaseError",
+    "ReturnError",
     "Assignment",
     "assignment_of",
     "claimed_from_of",

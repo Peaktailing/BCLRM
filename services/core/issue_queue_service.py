@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from db.database import db
@@ -124,29 +125,51 @@ class IssueQueueService:
             (me, now, from_scope, from_key, ref, from_scope, from_key),
         )
 
-    def release(
+    def return_to_requester(
         self,
         kind: str,
         ref: str,
-        scope: str,
-        key: str,
+        requester: str,
+        reason: str,
         from_scope: str,
         from_key: str,
     ) -> int:
-        """放宽归属：本层 → 上一级（``person`` → ``department``/``all``，
-        ``department`` → ``all``）。
+        """退回修改：归属回到申请人手上，单随即离开待办。
 
-        条件同样是**读到的旧状态的字面量**（scope + key 一起），所以一条
-        UPDATE 同时回答「还是我看到的那张单吗」和「它还在我以为的那一层吗」。
-        组池里的单被人抢先认领，`rowcount=0`，不会把别人名下的单悄悄推回池。
+        两张表的状态字段语义不同，只能分开写：
+
+        - 工单：复用「已驳回」。驳回本来就是「这张单不能就这么过」，申请人
+          改完重新提一张；额外带 ``approval_status = '待审批'`` 做原子抢占，
+          已经批过的单不会被退回踩平。
+        - 需求单：置 ``returned``，并把原因写进 ``return_reason``。它不在
+          在办状态里，所以退回后自动退出待办与保底累计。
+
+        条件里带的是**读到的旧状态字面量**（scope + key），组池被人抢先认领
+        时 `rowcount=0`，不会把别人手上的单退走。
         """
         table, column = self._table(kind)
+        if kind == KIND_ORDER:
+            return self.db.execute_update(
+                f"UPDATE {table} SET custodian_scope = 'person', custodian_key = ?, "
+                "claimed_at = NULL, status = '已驳回', approval_status = '已驳回', "
+                "approval_remark = ?, approval_time = ? "
+                f"WHERE {column} = ? AND COALESCE(custodian_scope, '') = ? "
+                "AND COALESCE(custodian_key, '') = ? AND approval_status = '待审批'",
+                (
+                    requester,
+                    reason,
+                    _now(),
+                    ref,
+                    from_scope,
+                    from_key,
+                ),
+            )
         return self.db.execute_update(
-            f"UPDATE {table} SET custodian_scope = ?, custodian_key = ?, "
-            "claimed_at = NULL, claimed_from_scope = '', claimed_from_key = '' "
+            f"UPDATE {table} SET custodian_scope = 'person', custodian_key = ?, "
+            "claimed_at = NULL, status = 'returned', return_reason = ? "
             f"WHERE {column} = ? AND COALESCE(custodian_scope, '') = ? "
-            "AND COALESCE(custodian_key, '') = ?",
-            (scope, key, ref, from_scope, from_key),
+            "AND COALESCE(custodian_key, '') = ? AND status IN ('submitted', 'partial')",
+            (requester, reason, ref, from_scope, from_key),
         )
 
     def transfer(self, kind: str, ref: str, target: str, from_key: str) -> int:
@@ -164,6 +187,10 @@ class IssueQueueService:
         if kind not in TABLES:
             raise ValueError(f"未知的单据类型：{kind}")
         return TABLES[kind]
+
+
+def _now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 issue_queue_service = IssueQueueService()

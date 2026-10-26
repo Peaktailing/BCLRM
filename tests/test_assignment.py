@@ -26,7 +26,8 @@ from domain.assignment import (
     CLAIM_ASSIGNED,
     CLAIM_OTHER_DEPARTMENT,
     CLAIM_TAKEN,
-    RELEASE_NOT_OWNER,
+    RETURN_NOT_MEMBER,
+    RETURN_NO_REASON,
     Assignment,
     assignment_of,
 )
@@ -111,26 +112,23 @@ class TestAssignmentRules(unittest.TestCase):
         self.assertFalse(target.can_claim("王五", "生物教研室"))
         self.assertTrue(target.can_claim("超管", "生物教研室", is_super_admin=True))
 
-    def test_same_department_administrator_cannot_release(self):
-        """收窄到人之后，同室的人既看不见也退不了。"""
-        target = Assignment.person("张三")
-        self.assertTrue(target.can_release("张三", "化学教研室"))
-        self.assertFalse(target.can_release("李四", "化学教研室"))
-        self.assertFalse(target.visible_to("李四", "化学教研室"))
-        self.assertFalse(target.can_transfer("李四"))
-        self.assertTrue(target.can_release("超管", "生物教研室", is_super_admin=True))
+    def test_return_right_follows_membership(self):
+        """能办的人才能退：收窄到人只有本人，组池本室任一，全院池任一。"""
+        person = Assignment.person("张三")
+        self.assertTrue(person.can_return("张三", "化学教研室", is_admin=True))
+        self.assertFalse(person.can_return("李四", "化学教研室", is_admin=True))
+        self.assertFalse(person.visible_to("李四", "化学教研室"))
+        self.assertFalse(person.can_transfer("李四"))
+        self.assertTrue(person.can_return("超管", "生物教研室", is_super_admin=True))
 
-    def test_department_pool_member_can_release(self):
-        """放宽回组之后，组里每个人都能退（再退一级就是全院池）。"""
-        target = Assignment.department("化学教研室")
-        self.assertTrue(target.can_release("张三", "化学教研室"))
-        self.assertTrue(target.can_release("李四", "化学教研室"))
-        # 别的教研室不行，没登记科室的人也不行（不能靠空值命中）
-        self.assertFalse(target.can_release("王五", "生物教研室"))
-        self.assertFalse(target.can_release("无科室", ""))
-        self.assertTrue(target.can_release("超管", "生物教研室", is_super_admin=True))
-        # 组池再退只能退到全院，退无可退时由 after_release 返回 all
-        self.assertTrue(target.after_release("化学教研室").is_all)
+        room = Assignment.department("化学教研室")
+        self.assertTrue(room.can_return("李四", "化学教研室", is_admin=True))
+        self.assertFalse(room.can_return("赵六", "化学教研室", is_admin=False))  # 教师
+        self.assertFalse(room.can_return("王五", "生物教研室", is_admin=True))
+
+        pool = Assignment.everywhere()
+        self.assertTrue(pool.can_return("王五", "生物教研室", is_admin=True))
+        self.assertFalse(pool.can_return("赵六", "化学教研室", is_admin=False))
 
     def test_handle_follows_scope(self):
         """「能办」跟「能看」同一套成员集合；person 层超管也不代办。"""
@@ -149,28 +147,18 @@ class TestAssignmentRules(unittest.TestCase):
         self.assertTrue(pool.can_handle("王五", "生物教研室", is_admin=True))
         self.assertFalse(pool.can_handle("赵六", "化学教研室", is_admin=False))
 
-    def test_root_pool_has_no_release(self):
-        self.assertFalse(Assignment.everywhere().can_release("张三", is_super_admin=True))
-        self.assertIsNone(Assignment.everywhere().after_release("化学教研室"))
-
-    def test_release_restores_claimed_from(self):
-        """认领来的单退回原处：原来在全院池就回全院池，不能被降成「他的教研室」。"""
-        provider = Assignment.everywhere()
-        self.assertTrue(Assignment.person("张三").after_release("化学教研室", provider).is_all)
-
-        from_department = Assignment.department("生物教研室")
-        restored = Assignment.person("张三").after_release("化学教研室", from_department)
-        self.assertEqual(restored.scope, "department")
-        self.assertEqual(restored.key, "生物教研室")
-
-    def test_release_demotes_assigned_order(self):
-        """指定来的单（没有 claimed_from）降一级。"""
-        target = Assignment.person("张三")
-        demoted = target.after_release("化学教研室", None)
-        self.assertEqual(demoted.scope, "department")
-        self.assertEqual(demoted.key, "化学教研室")
-        # 没有教研室的人，退回只能落到全院
-        self.assertTrue(target.after_release("", None).is_all)
+    def test_return_always_lands_on_requester(self):
+        """不管原来在哪一层，退回落点都是申请人——不是上一级池。"""
+        for target in (
+            Assignment.person("张三"),
+            Assignment.department("化学教研室"),
+            Assignment.everywhere(),
+        ):
+            landed = target.returned_to("赵六")
+            self.assertTrue(landed.is_person)
+            self.assertEqual(landed.key, "赵六")
+        # 没有申请人时兜底到全院池，不造出 person:""
+        self.assertTrue(Assignment.person("张三").returned_to("").is_all)
 
     def test_assignment_of_reads_legacy_blank_as_all(self):
         self.assertTrue(assignment_of({"custodian_scope": "", "custodian_key": ""}).is_all)
@@ -270,81 +258,89 @@ class TestAssignmentService(unittest.TestCase):
         self.assertEqual(result.error_code, CLAIM_ASSIGNED.upper())
         self.assertIn("王五", result.message)
 
-    # ---------------------------------------------------------------- 退回
-    def test_same_department_administrator_cannot_release(self):
-        """李四与张三同室，也看得到这张单，但不能退。"""
+    # ------------------------------------------------------------ 退回修改
+    def test_return_requires_reason(self):
+        """没有原因不收：申请人打开只看到「被退了」等于石沉大海。"""
         number = self._order("r1", scope="person", key="张三")
-        result = self.service.release(KIND_ORDER, number, "李四", "化学教研室")
+        result = self.service.return_for_revision(KIND_ORDER, number, "张三", "   ")
         self.assertFalse(result.is_success())
-        self.assertEqual(result.error_code, RELEASE_NOT_OWNER.upper())
-        row = TEST_DB.execute_query(
-            "SELECT custodian_key FROM borrow_order WHERE order_number = ?", (number,)
-        )[0]
-        self.assertEqual(row["custodian_key"], "张三")
+        self.assertEqual(result.error_code, RETURN_NO_REASON.upper())
 
-    def test_owner_release_returns_to_original_pool(self):
-        """认领来的单，退回回到原来那一级（all），不降成「他的教研室」。"""
-        number = self._order("r2", scope="all", key="")
-        self.service.claim(KIND_ORDER, number, "张三", "化学教研室")
-        result = self.service.release(KIND_ORDER, number, "张三", "化学教研室")
+    def test_return_sends_order_back_to_requester(self):
+        """退回落点是申请人，不是池；顺带关闭工单、写进退回原因。"""
+        number = self._order("r2", scope="person", key="张三", applicant="赵六")
+        result = self.service.return_for_revision(
+            KIND_ORDER, number, "张三", "第 2 行数量按人数算多了", "化学教研室"
+        )
         self.assertTrue(result.is_success(), result.message)
+
         row = TEST_DB.execute_query(
             "SELECT * FROM borrow_order WHERE order_number = ?", (number,)
         )[0]
-        self.assertEqual(row["custodian_scope"], "all")
-        self.assertEqual(row["custodian_key"], "")
+        self.assertEqual(row["custodian_scope"], "person")
+        self.assertEqual(row["custodian_key"], "赵六")
+        self.assertEqual(row["approval_status"], "已驳回")
+        self.assertEqual(row["approval_remark"], "第 2 行数量按人数算多了")
         self.assertFalse(row["claimed_at"])
-        self.assertEqual(row["claimed_from_scope"], "")
+        # 退回后离开待办：它不是「还没人办」，是「等着改」
+        self.assertNotIn(number, [r["ref"] for r in self.service.queue("张三", "化学教研室")])
 
-    def test_assigned_order_release_demotes_to_department(self):
-        number = self._order("r3", scope="person", key="张三")
-        result = self.service.release(KIND_ORDER, number, "张三", "化学教研室")
+    def test_return_from_pool_goes_to_requester_not_to_upper_pool(self):
+        """组池里的单退回也是回申请人——不存在「退到全院池让别人接」。"""
+        number = self._order("r3", scope="department", key="化学教研室", applicant="赵六")
+        result = self.service.return_for_revision(
+            KIND_ORDER, number, "李四", "这瓶是管制试剂，应先走审批", "化学教研室"
+        )
         self.assertTrue(result.is_success(), result.message)
         row = TEST_DB.execute_query(
             "SELECT custodian_scope, custodian_key FROM borrow_order WHERE order_number = ?",
             (number,),
         )[0]
-        self.assertEqual(row["custodian_scope"], "department")
-        self.assertEqual(row["custodian_key"], "化学教研室")
+        self.assertEqual(row["custodian_scope"], "person")
+        self.assertEqual(row["custodian_key"], "赵六")
 
-    def test_super_admin_can_release_other_people(self):
-        number = self._order("r4", scope="person", key="张三")
-        result = self.service.release(KIND_ORDER, number, "超管", "生物教研室")
-        self.assertTrue(result.is_success(), result.message)
-
-    def test_department_pool_member_releases_to_root(self):
-        """组池里的单，组里任何人能推回全院池——退的是「没人认」，不是别人。"""
-        number = self._order("r5", scope="department", key="化学教研室")
-        result = self.service.release(KIND_ORDER, number, "李四", "化学教研室")
-        self.assertTrue(result.is_success(), result.message)
-        row = TEST_DB.execute_query(
-            "SELECT custodian_scope, custodian_key FROM borrow_order WHERE order_number = ?",
-            (number,),
-        )[0]
-        self.assertEqual(row["custodian_scope"], "all")
-        self.assertEqual(row["custodian_key"], "")
-
-    def test_other_department_cannot_release_pool_item(self):
-        number = self._order("r6", scope="department", key="化学教研室")
-        result = self.service.release(KIND_ORDER, number, "王五", "生物教研室")
+    def test_other_department_cannot_return_pool_item(self):
+        number = self._order("r4", scope="department", key="化学教研室")
+        result = self.service.return_for_revision(
+            KIND_ORDER, number, "王五", "x", "生物教研室"
+        )
         self.assertFalse(result.is_success())
-        self.assertEqual(result.error_code, RELEASE_NOT_OWNER.upper())
+        self.assertEqual(result.error_code, RETURN_NOT_MEMBER.upper())
 
-    def test_super_admin_release_lands_in_holder_department(self):
-        """超管代退落到**原持有人**的教研室，不是超管自己的教研室。"""
-        number = self._order("r7", scope="person", key="张三")
-        result = self.service.release(KIND_ORDER, number, "超管", "生物教研室")
+    def test_super_admin_can_return_other_people(self):
+        """超管兜底：经办人离职、申请人账号异常时只有他能退。"""
+        number = self._order("r5", scope="person", key="张三", applicant="赵六")
+        result = self.service.return_for_revision(
+            KIND_ORDER, number, "超管", "用途写不清", "生物教研室"
+        )
         self.assertTrue(result.is_success(), result.message)
+
+    def test_requirement_sheet_return_sets_status_and_reason(self):
+        """需求单退回：状态 returned + 原因落库，且退出在办状态。"""
+        number = f"{PREFIX}req-r6"
+        TEST_DB.execute_insert(
+            "INSERT INTO requirement_sheet (sheet_number, title, requester, status, "
+            "custodian_scope, custodian_key) VALUES (?,?,?,?,?,?)",
+            (number, "有机合成", "赵六", "submitted", "department", "化学教研室"),
+        )
+        result = self.service.return_for_revision(
+            KIND_REQUIREMENT, number, "李四", "配方浓度填错了", "化学教研室"
+        )
+        self.assertTrue(result.is_success(), result.message)
+
         row = TEST_DB.execute_query(
-            "SELECT custodian_scope, custodian_key FROM borrow_order WHERE order_number = ?",
-            (number,),
+            "SELECT * FROM requirement_sheet WHERE sheet_number = ?", (number,)
         )[0]
-        self.assertEqual(row["custodian_scope"], "department")
-        self.assertEqual(row["custodian_key"], "化学教研室")
+        self.assertEqual(row["status"], "returned")
+        self.assertEqual(row["return_reason"], "配方浓度填错了")
+        self.assertEqual(row["custodian_key"], "赵六")
+        self.assertNotIn(
+            number, [r["ref"] for r in self.service.queue("李四", "化学教研室")]
+        )
 
     def test_claimed_item_leaves_colleague_queue(self):
         """收窄到人之后，同室同事的待办里就看不见了。"""
-        number = self._order("r8", scope="department", key="化学教研室")
+        number = self._order("r7", scope="department", key="化学教研室")
         before = [r["ref"] for r in self.service.queue("李四", "化学教研室")]
         self.assertIn(number, before)
 

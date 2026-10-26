@@ -662,18 +662,23 @@ with tab_approval:
                             st.error(f"❌ {_r.message}")
             with _c_no:
                 if st.button(
-                    "❌ 驳回",
+                    "📝 退回修改",
+                    help="单有问题才退（数量、瓶子、用途）：单回到申请人手上，"
+                         "库存不动。手上没料请走调配，不要把单推走",
                     use_container_width=True,
                     key=f"appr_no_{order.id}",
                 ):
-                    _r = work_order_service.reject_order(
-                        order.id, user_name, _appr_remark
-                    )
-                    if _r.is_success():
-                        st.warning(_r.message)
-                        st.rerun()
+                    if not (_appr_remark or "").strip():
+                        st.error("退回必须写原因：申请人要据此知道改哪里")
                     else:
-                        st.error(f"❌ {_r.message}")
+                        _r = work_order_service.reject_order(
+                            order.id, user_name, _appr_remark
+                        )
+                        if _r.is_success():
+                            st.warning(_r.message)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {_r.message}")
             if _is_mine:
                 with _c_wd:
                     _render_withdraw_button(order)

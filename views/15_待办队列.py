@@ -40,7 +40,11 @@ st.title("📋 待办队列")
 st.caption(
     "所有还在办的单在这里排成一队：零星/课程领用工单 + 配方需求单。"
     "归属三级：指定给某人（只有他看得见）→ 本教研室（本室任一管理员可接可办）"
-    "→ 全院池（全院管理员可接可办）。退回永远放宽一级。"
+    "→ 全院池（全院管理员可接可办）。"
+)
+st.caption(
+    "两个动作不要混：**退回 = 单有问题**（退给申请人改，必须写原因）；"
+    "**手上没料 = 走调配**（单留在我名下，料的问题用料的办法解决）。"
 )
 
 user_name = st.session_state.get("user_name") or ""
@@ -112,6 +116,7 @@ STATUS_LABELS = {
     "submitted": "已提交",
     "partial": "部分兑付",
     "issued": "已兑付",
+    "returned": "已退回修改",
     "closed": "已关闭",
 }
 
@@ -165,10 +170,12 @@ st.markdown(
     + ("✅ 你可以受理这张单" if _can_do else f"⛔ {_why_not}")
 )
 
-col_claim, col_release, col_transfer = st.columns([1, 1, 2])
+col_claim, col_return, col_transfer = st.columns([1, 1, 2])
 
 _can_claim = current.can_claim(user_name, my_department, is_super_admin=is_super)
-_can_release = current.can_release(user_name, my_department, is_super_admin=is_super)
+_can_return = current.can_return(
+    user_name, my_department, is_admin=is_admin, is_super_admin=is_super
+)
 _can_transfer = current.can_transfer(user_name, is_super_admin=is_super)
 
 if _can_claim:
@@ -176,28 +183,35 @@ if _can_claim:
         _flash(assignment_service.claim(kind, ref, user_name, my_department))
         st.rerun()
 
-if _can_release:
-    # 退回永远放宽一级：人 → 组，组 → 全院。按钮上把落点写清楚，别让人
-    # 点完才知道单去了哪。
-    if current.is_person:
-        _release_label = "退回教研室池"
-        _release_hint = "放回原持有人的教研室；他室与本院其他管理员之后都能接"
-    else:
-        _release_label = "推回全院池"
-        _release_hint = "本室都不接：放回全院池，全院管理员都能接"
-    if col_release.button(_release_label, help=_release_hint, use_container_width=True):
-        _flash(assignment_service.release(kind, ref, user_name, my_department))
+if _can_return:
+    # 退回 = 退单要申请人改，不是把活推给别人。所以按钮不挑接收人，只要求
+    # 写清哪里不对——没有原因，申请人打开就只看到「被退了」。
+    _return_reason = st.text_input(
+        "退回原因（必填）",
+        placeholder="例：第 3 行数量按人数算多了；这瓶是管制试剂，须先走审批",
+        key=f"return_reason_{kind}_{ref}",
+    )
+    if col_return.button(
+        "退回修改",
+        help="单有问题才退：数量、瓶子、用途、课程挂错。手上没料请走调配，单不动",
+        use_container_width=True,
+    ):
+        _flash(
+            assignment_service.return_for_revision(
+                kind, ref, user_name, _return_reason, my_department
+            )
+        )
         st.rerun()
 
 if _can_transfer:
     candidates = [n for n in assignment_service.admin_names() if n != current.key]
     if candidates:
         target = col_transfer.selectbox("转交给", options=candidates, key=f"transfer_{kind}_{ref}")
-        if col_transfer.button("转交", use_container_width=True):
+        if col_transfer.button("转交", help="我办不了，换个人办（改派）", use_container_width=True):
             _flash(assignment_service.transfer(kind, ref, target, user_name))
             st.rerun()
 
-if not (_can_claim or _can_release or _can_transfer):
+if not (_can_claim or _can_return or _can_transfer):
     st.caption(
         f"{current.describe()}；这张单不归你办。需要改派请联系超级管理员。"
     )

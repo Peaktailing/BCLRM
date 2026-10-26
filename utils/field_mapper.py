@@ -582,8 +582,10 @@ class RequirementSheetField:
     CUSTODIAN_SCOPE = 'custodian_scope'        # person / department / all（空按 all）
     CUSTODIAN_KEY = 'custodian_key'            # 人名 / 教研室名 / ''
     CLAIMED_AT = 'claimed_at'                  # 认领时刻
-    CLAIMED_FROM_SCOPE = 'claimed_from_scope'  # 认领前的归属（退回时恢复）
+    CLAIMED_FROM_SCOPE = 'claimed_from_scope'  # 认领前的归属（历史事实，无业务读者）
     CLAIMED_FROM_KEY = 'claimed_from_key'
+    # ---- 退回修改（文本类型）：退单必须写清哪里不对 ----
+    RETURN_REASON = 'return_reason'
     # ---- 记录ID（系统自动生成）----
     ID = 'id'  # 记录ID
 

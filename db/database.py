@@ -856,7 +856,11 @@ class Database:
                     -- 料真的发出去了，这张单才退出保底累计（保底只认 submitted）。
                     order_number TEXT,
                     issued_at TIMESTAMP,
-                    issued_by TEXT
+                    issued_by TEXT,
+                    -- 退回修改：管理员退单时必须写清哪里不对，申请人才知道改
+                    -- 什么。退回落点恒为申请人（见 domain/assignment），这张
+                    -- 单随即离开待办，改完重新提交。
+                    return_reason TEXT
                 )
             """)
 
@@ -1413,6 +1417,12 @@ class Database:
                 if rs_cols and _col not in rs_cols:
                     cursor.execute(f"ALTER TABLE requirement_sheet ADD COLUMN {_col} {_ddl}")
                     logger.info(f"迁移完成：requirement_sheet 表添加 {_col} 字段（兑付）")
+
+            # 5b) requirement_sheet 加退回原因：退单必须说清哪里不对。
+            #     老单没有这一列，留 NULL——「没退过」本来就是 NULL。
+            if rs_cols and "return_reason" not in rs_cols:
+                cursor.execute("ALTER TABLE requirement_sheet ADD COLUMN return_reason TEXT")
+                logger.info("迁移完成：requirement_sheet 表添加 return_reason 字段（退回修改）")
 
             # 6) requirement_line 加兑付三列：兑付粒度从单头下沉到明细行。
             #    老单一个都没兑过，issued_quantity 补 0、status 补 open 即可
