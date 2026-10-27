@@ -1,0 +1,11 @@
+{
+  "version": "<MAJOR.MINOR.PATCH.BUILD>",
+  "approved": true,
+  "approver": "<非 AI 验收人姓名>",
+  "approver_type": "human",
+  "signature": "<签字记录/签署编号>",
+  "approved_at": "<ISO-8601>",
+  "observation_waived": false,
+  "rehearsal_report": "<root>/logs/rehearsals/<时间>-<版本>.json",
+  "notes": "验收范围、已知问题、未通过项（不得为空泛描述）"
+}

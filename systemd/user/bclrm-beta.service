@@ -1,0 +1,21 @@
+[Unit]
+Description=BCLRM 验收环境 beta（Streamlit，仅监听 127.0.0.1:8601）
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/biochm/BCLRM/current_beta/payload
+EnvironmentFile=-/home/biochm/BCLRM/env/beta.env
+Environment=BCLRM_ENV=beta
+Environment=BCLRM_DATA_DIR=/home/biochm/BCLRM/data/beta
+Environment=BCLRM_RELEASE_FILE=/home/biochm/BCLRM/current_beta/release.json
+Environment=BCLRM_MOBILE_UI=0
+ExecStartPre=/home/biochm/BCLRM/current_beta/.venv/bin/python scripts/runtime_cli.py check
+ExecStart=/home/biochm/BCLRM/current_beta/.venv/bin/python -m streamlit run app.py --server.port 8601 --server.address 127.0.0.1 --server.headless true
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target

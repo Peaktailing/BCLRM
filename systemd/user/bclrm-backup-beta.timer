@@ -1,0 +1,11 @@
+[Unit]
+Description=BCLRM 备份 timer：beta 每日快照（保留 2 份）
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=300
+Persistent=true
+Unit=bclrm-backup-beta.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=BCLRM prod 每日在线备份（SQLite backup API + 附件）
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
+ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/backup.py --root /home/biochm/BCLRM --env prod --kind daily --mode hot --source timer --second-copy-root /media/biochm/3696A6CB96A68B47/bclrm-backup
+# 第二副本失败必须显式失败（非零退出），由 timer 状态与系统设置页暴露，不静默跳过

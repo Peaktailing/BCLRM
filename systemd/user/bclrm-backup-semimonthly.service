@@ -1,0 +1,8 @@
+[Unit]
+Description=BCLRM prod 半月档（从最近已验证每日备份复制）
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
+ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/backup.py --root /home/biochm/BCLRM --env prod --kind semimonthly --copy-latest-from daily --source timer --second-copy-root /media/biochm/3696A6CB96A68B47/bclrm-backup

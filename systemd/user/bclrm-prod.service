@@ -1,0 +1,27 @@
+[Unit]
+Description=BCLRM 生产环境（Streamlit，仅监听 127.0.0.1:8501）
+After=network.target
+# 用户级服务：由 systemctl --user 管理，需 lingering 才能开机自启（见 docs/部署说明.md）
+
+[Service]
+Type=simple
+WorkingDirectory=/home/biochm/BCLRM/current_prod/payload
+# 绝对路径 EnvironmentFile：unit 不依赖调用者的 shell 环境
+EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
+Environment=BCLRM_ENV=prod
+Environment=BCLRM_DATA_DIR=/home/biochm/BCLRM/data/prod
+Environment=BCLRM_RELEASE_FILE=/home/biochm/BCLRM/current_prod/release.json
+Environment=BCLRM_MOBILE_UI=0
+# 启动前只读校验 schema（D14：不自动迁移；迁移由部署器显式执行）
+ExecStartPre=/home/biochm/BCLRM/current_prod/.venv/bin/python scripts/runtime_cli.py check
+# 端口与监听地址只由 unit 指定（D10）；release 内 .venv 绝对路径
+ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python -m streamlit run app.py --server.port 8501 --server.address 127.0.0.1 --server.headless true
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+# 备份/迁移失败时不要带着错配数据根反复重启：由 Restart=always 负责进程崩溃，
+# schema 不满足时 ExecStartPre 会持续失败并进入 failed，提示部署器介入。
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=BCLRM prod 年度全量冷存（短停服务；合规期限确认前永不自动删除）
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
+# 年度冷存必须先停服；失败时 ExecStopPost 负责把服务拉回
+ExecStartPre=/usr/bin/systemctl --user stop bclrm-prod.service
+ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/backup.py --root /home/biochm/BCLRM --env prod --kind annual --mode cold --service-stopped --source timer --second-copy-root /media/biochm/3696A6CB96A68B47/bclrm-backup
+ExecStopPost=/usr/bin/systemctl --user start bclrm-prod.service

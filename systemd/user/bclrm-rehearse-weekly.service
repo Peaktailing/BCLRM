@@ -1,0 +1,9 @@
+[Unit]
+Description=BCLRM 每周恢复+升级演练（临时目录、备用端口，绝不占用 8501/8601）
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
+ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/rehearse_upgrade.py --root /home/biochm/BCLRM --env prod --port-start 8700
+TimeoutStartSec=1800

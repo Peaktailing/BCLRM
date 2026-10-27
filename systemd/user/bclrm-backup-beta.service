@@ -1,0 +1,8 @@
+[Unit]
+Description=BCLRM beta 每日快照（beta 可丢弃，保留 2 份）
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/home/biochm/BCLRM/env/beta.env
+ExecStart=/home/biochm/BCLRM/current_beta/.venv/bin/python /home/biochm/BCLRM/current_beta/payload/scripts/backup.py --root /home/biochm/BCLRM --env beta --kind daily --mode hot --source timer

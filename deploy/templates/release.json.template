@@ -1,0 +1,14 @@
+{
+  "version": "<MAJOR.MINOR.PATCH.BUILD>",
+  "git_sha": "<完整40位git sha>",
+  "artifact_sha256": "<payload树哈希64位>",
+  "python_version": "3.10.12",
+  "requirements_lock_sha256": "<requirements.lock 64位sha256>",
+  "schema_versions": {
+    "main.db": 2,
+    "archive_cold.db": 1,
+    "attach_cold.db": 1,
+    "operation_log.db": 1
+  },
+  "built_at": "<ISO-8601 UTC>"
+}

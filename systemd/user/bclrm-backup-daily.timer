@@ -1,0 +1,11 @@
+[Unit]
+Description=BCLRM 备份 timer：每日热备（保留 7 天）
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+RandomizedDelaySec=300
+Persistent=true
+Unit=bclrm-backup-daily.service
+
+[Install]
+WantedBy=timers.target
