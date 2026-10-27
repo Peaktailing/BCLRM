@@ -20,6 +20,7 @@ import streamlit as st
 from business.evidence_service import PHASE_BORROW, PHASE_RETURN, evidence_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth, require_super_admin, require_admin
+from config.settings import MOBILE_UI
 from utils.password_utils import hash_password
 from services.base.person_service import person_service
 from services.base.operation_log_service import operation_log_service
@@ -29,6 +30,7 @@ from services.core.return_record_service import return_record_service
 from db.database import db
 from utils.audit import audit
 from utils.error_handler import logger
+from utils.qr_label import app_root_of, normalize_base_url
 
 # 表名安全校验正则：仅允许字母、数字、下划线
 _TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_]+$')
@@ -255,9 +257,14 @@ def main():
             else:
                 st.error("❌ 修改角色失败，请重试")
 
-    # ========== 现场取证（手机拍照） ==========
+    # ========== 现场拍照留证 ==========
+    # 手机入口是预研功能（D11）：关闭时只保留电脑端拍照留证设置，
+    # 不显示手机访问地址与 /m 文案。
     st.divider()
-    st.subheader("📷 现场取证")
+    st.subheader("📷 现场拍照留证")
+    _ec_flash = st.session_state.pop("_evidence_settings_flash", "")
+    if _ec_flash:
+        st.success(_ec_flash)
     st.caption(
         "借出与归还时的拍照留证。**必拍开关放在这里，是因为「拍不拍」"
         "是这个实验室的危化品管理口径，不是软件该替人决定的事**——"
@@ -269,7 +276,37 @@ def main():
     _ev_max_mb = evidence_service.max_mb()
     _ev_max_edge = evidence_service.max_edge()
     _ev_quality = evidence_service.quality()
-    _ev_base_url = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
+    _ev_base_url_raw = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
+    _ev_base_url_norm = ""
+    _ev_current_base = ""
+    if MOBILE_UI:
+        try:
+            _ev_base_url_norm = normalize_base_url(_ev_base_url_raw)
+        except ValueError as _exc:
+            _ev_base_url_norm = ""
+            st.error(f"当前保存的手机访问地址不可用：{_exc}。请重新填写并保存。")
+
+        # 当前这次访问的入口。打印标签时可选「跟随当前访问地址」，所以哪怕
+        # 固定地址没填，手机端也能先用起来（SSH 隧道、临时端口都跟走）。
+        _ev_current_base = app_root_of(getattr(st.context, "url", "") or "")
+
+        if _ev_base_url_norm:
+            st.caption(
+                f"手机打开：`{_ev_base_url_norm}/m`。"
+                "修改地址后，已经打印出去的旧标签不会自动更新，需要重打。"
+            )
+        elif _ev_base_url_raw:
+            st.caption("当前地址无效，固定地址模式不可用；打印标签时仍可跟随当前访问地址。")
+        else:
+            st.caption(
+                "固定地址可以空着：打印标签时选「跟随当前访问地址」，"
+                "会用你此刻打开系统的入口生成二维码（本机/SSH 隧道也可以）。"
+            )
+        if _ev_current_base:
+            st.caption(
+                f"这次访问的入口：`{_ev_current_base}/m`。"
+                "只有同样能访问这个地址的设备扫得开；换端口或换机器后标签需要重打。"
+            )
 
     with st.form("evidence_settings"):
         _c1, _c2 = st.columns(2)
@@ -285,7 +322,12 @@ def main():
                 value=_ev_require_return,
                 help="打开后，「提交归还」前必须上传回库照片（剩余量、瓶身状态）",
             )
-        _c3, _c4 = st.columns(2)
+        if MOBILE_UI:
+            _c3, _c4 = st.columns(2)
+            _new_base_url = _ev_base_url_raw
+        else:
+            _c3 = st.container()
+            _new_base_url = _ev_base_url_raw  # 不动既有配置，原样带回
         with _c3:
             _new_max_mb = st.number_input(
                 "单张照片上限（MB）",
@@ -295,16 +337,20 @@ def main():
                 step=1,
                 help="压缩后仍超过这个体积就拒绝入库（防的是异常文件，不是正常照片）",
             )
-        with _c4:
-            _new_base_url = st.text_input(
-                "手机访问地址",
-                value=_ev_base_url,
-                placeholder="http://192.168.1.10:8601",
-                help=(
-                    "填了之后，瓶身二维码里是一条 URL，手机用系统相机或微信扫一扫"
-                    "就能直接打开取证页；不填则二维码里是短码，需要用取证页的摄像头扫"
-                ),
-            )
+        if MOBILE_UI:
+            with _c4:
+                _new_base_url = st.text_input(
+                    "手机访问地址",
+                    value=_ev_base_url_raw,
+                    placeholder="http://192.168.1.10:8601",
+                    help=(
+                        "给「手机能直连服务器」的正式部署用：填了之后，瓶身二维码是一条"
+                        "长期有效的 URL，手机用系统相机或微信扫一扫就能打开取证页。"
+                        "可以只写 192.168.1.10:8601，保存时会自动补 http://；"
+                        "路径只填到端口，不要带 /m 以外的内容。"
+                        "SSH 隧道/临时端口可以留空，打印标签时选「跟随当前访问地址」。"
+                    ),
+                )
         _c5, _c6, _c7 = st.columns(3)
         with _c5:
             _new_max_edge = st.number_input(
@@ -331,20 +377,38 @@ def main():
                 help="按常见手机照片估算，实际随画面复杂度浮动",
             )
         if st.form_submit_button("保存取证设置", type="primary"):
+            if MOBILE_UI:
+                try:
+                    _normalized_base = normalize_base_url(_new_base_url)
+                except ValueError as _exc:
+                    st.error(f"手机访问地址无效：{_exc}")
+                    st.stop()
+            else:
+                # 手机关闭：不改手机地址，避免历史配置被顺手清空
+                _normalized_base = _ev_base_url_raw
+
             _operator = st.session_state.get("user_name", "")
-            _saved = system_config_service.set_many(
-                {
-                    EvidenceConfig.REQUIRE_BORROW: "1" if _new_require_borrow else "0",
-                    EvidenceConfig.REQUIRE_RETURN: "1" if _new_require_return else "0",
-                    EvidenceConfig.MAX_MB: str(int(_new_max_mb)),
-                    EvidenceConfig.PHOTO_MAX_EDGE: str(int(_new_max_edge)),
-                    EvidenceConfig.PHOTO_QUALITY: str(int(_new_quality)),
-                    EvidenceConfig.MOBILE_BASE_URL: (_new_base_url or "").strip(),
-                },
-                _operator,
-            )
+            _pending = {
+                EvidenceConfig.REQUIRE_BORROW: "1" if _new_require_borrow else "0",
+                EvidenceConfig.REQUIRE_RETURN: "1" if _new_require_return else "0",
+                EvidenceConfig.MAX_MB: str(int(_new_max_mb)),
+                EvidenceConfig.PHOTO_MAX_EDGE: str(int(_new_max_edge)),
+                EvidenceConfig.PHOTO_QUALITY: str(int(_new_quality)),
+            }
+            if MOBILE_UI:
+                _pending[EvidenceConfig.MOBILE_BASE_URL] = _normalized_base
+            _saved = system_config_service.set_many(_pending, _operator)
             if _saved:
-                st.success(f"✅ 已保存 {_saved} 项取证设置")
+                # rerun 会把 st.success 冲掉，所以把提示存到会话里，
+                # 让下一次渲染在标题下显示。
+                _flash = f"✅ 已保存 {_saved} 项取证设置"
+                if MOBILE_UI:
+                    _flash += (
+                        f"；手机地址：{_normalized_base}/m"
+                        if _normalized_base
+                        else "；手机地址为空，打印标签时默认跟随当前访问地址"
+                    )
+                st.session_state["_evidence_settings_flash"] = _flash
                 st.rerun()
             else:
                 st.error("❌ 保存失败，请重试")
@@ -352,7 +416,7 @@ def main():
     st.caption(
         "取证明细：借出照片挂在工单上（`evidence_borrow`），归还照片同挂工单"
         "（`evidence_return`）。一张单两个阶段互不覆盖，查单时都能看到。"
-        "手机端入口：`/m`，或扫瓶身二维码。"
+        + ("手机端入口：`/m`，或扫瓶身二维码。" if MOBILE_UI else "")
     )
 
     # ========== 数据库数据查看 ==========

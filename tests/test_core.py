@@ -153,24 +153,41 @@ class TestPasswordUtils(unittest.TestCase):
 class TestDatabaseSingleton(unittest.TestCase):
     """测试数据库单例模式修复"""
 
+    def _main_path(self):
+        from tests import TEST_DATA_ROOT
+        return os.path.join(str(TEST_DATA_ROOT), "db", "main.db")
+
+    def _archive_path(self):
+        from tests import TEST_DATA_ROOT
+        return os.path.join(str(TEST_DATA_ROOT), "db", "archive_cold.db")
+
     def test_different_paths_create_different_instances(self):
         from db.database import Database
-        db1 = Database(os.path.join(project_root, "db/main.db"))
-        db2 = Database(os.path.join(project_root, "db/archive_cold.db"))
+        db1 = Database(self._main_path())
+        db2 = Database(self._archive_path())
         self.assertIsNot(db1, db2)
 
     def test_same_path_returns_same_instance(self):
         from db.database import Database
-        path = os.path.join(project_root, "db/main.db")
+        path = self._main_path()
         db1 = Database(path)
         db2 = Database(path)
         self.assertIs(db1, db2)
 
     def test_relative_path_normalization(self):
         from db.database import Database
-        db1 = Database("db/main.db")
-        db2 = Database(os.path.join(project_root, "db/main.db"))
+        path = self._main_path()
+        db1 = Database(os.path.relpath(path))
+        db2 = Database(path)
         self.assertIs(db1, db2)
+
+    def test_default_path_follows_data_root(self):
+        """无参 Database() 必须跟随 BCLRM_DATA_DIR，不得落到代码目录。"""
+        from config.settings import DB_MAIN_PATH
+        from db.database import Database
+        self.assertEqual(
+            os.path.abspath(Database().db_path), os.path.abspath(DB_MAIN_PATH)
+        )
 
 
 # ============================================================================

@@ -32,6 +32,16 @@ def _redact_params(params: Optional[tuple]) -> str:
     return f"{count} params (types: {types})"
 
 
+def _default_main_path() -> str:
+    """主库默认路径：跟随运行时数据根，不在 db 包目录里生成“分裂库”。
+
+    延迟导入避免与 config.settings 形成模块环；settings 不依赖本模块。
+    """
+    from config.settings import DB_MAIN_PATH
+
+    return DB_MAIN_PATH
+
+
 class Database:
     """SQLite 数据库管理类
 
@@ -52,7 +62,7 @@ class Database:
         现在按 db_path 分别缓存实例，每个数据库路径独立管理连接。
         """
         if db_path is None:
-            db_path = os.path.join(os.path.dirname(__file__), 'main.db')
+            db_path = _default_main_path()
         # 规范化路径避免因相对/绝对路径差异导致重复实例
         normalized = os.path.abspath(db_path)
         with cls._instances_lock:
@@ -69,14 +79,14 @@ class Database:
         """初始化数据库连接
 
         Args:
-            db_path: 数据库文件路径，默认为 'db/main.db'
+            db_path: 数据库文件路径，缺省为主库（跟随 BCLRM_DATA_DIR 数据根）
         """
         # 避免重复初始化（__init__ 在 __new__ 之后总会调用）
         if hasattr(self, '_initialized') and self._initialized:
             return
 
         if db_path is None:
-            db_path = os.path.join(os.path.dirname(__file__), 'main.db')
+            db_path = _default_main_path()
 
         self.db_path = os.path.abspath(db_path)
         self._initialized = True
@@ -172,7 +182,21 @@ class Database:
 
         根据试剂管理系统的需求创建所有必要的表结构。
         归档库、附件库、日志库使用各自的初始化方法。
+
+        schema 闸门：已到目标版本直接返回；低于目标版本执行迁移，成功后
+        写台账并推进 ``user_version``。存在未完成迁移时拒绝继续。
         """
+        from db import schema_guard
+
+        schema_guard.prepare(self.connection)
+        schema_guard.assert_no_running(self.connection, "main.db")
+        if schema_guard.version_of(self.connection) >= schema_guard.MAIN_SCHEMA_VERSION:
+            return
+
+        schema_guard.begin_migration(
+            self.connection, schema_guard.MAIN_MIGRATION_ID,
+            "main.db", schema_guard.MAIN_SCHEMA_VERSION,
+        )
         cursor = self.connection.cursor()
 
         try:
@@ -186,6 +210,7 @@ class Database:
                     phone TEXT,
                     student_or_work_id TEXT,
                     password_hash TEXT,
+                    must_change_password INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -1166,6 +1191,15 @@ class Database:
             # 数据库迁移：为已有表添加新字段
             self._run_migrations()
 
+            # 主体全部成功后才推进版本号，失败时保持旧版本 + running 台账
+            schema_guard.finish_migration(
+                self.connection, schema_guard.MAIN_MIGRATION_ID,
+                schema_guard.MAIN_SCHEMA_VERSION,
+            )
+            logger.info(
+                f"schema 已推进到 v{schema_guard.MAIN_SCHEMA_VERSION}: {self.db_path}"
+            )
+
         except Exception as e:
             self.connection.rollback()
             logger.error(f"数据库表初始化失败: {str(e)}", exception=e)
@@ -1175,6 +1209,16 @@ class Database:
         """执行数据库迁移（为已有表补充新字段）"""
         try:
             cursor = self.connection.cursor()
+
+            # 迁移：person 表增加 must_change_password 字段（beta 首登强改密，D12）。
+            # 新库建表时已带该列，这里只补老库；幂等，可重复执行。
+            cursor.execute("PRAGMA table_info(person)")
+            person_columns = {row[1] for row in cursor.fetchall()}
+            if person_columns and "must_change_password" not in person_columns:
+                cursor.execute(
+                    "ALTER TABLE person ADD COLUMN must_change_password INTEGER DEFAULT 0"
+                )
+                logger.info("迁移完成：person 表添加 must_change_password 字段")
 
             # 数据清洗：历史批量导入将 NaN 写成字符串 'nan'，规范为 NULL（幂等）
             cursor.execute("UPDATE chemical_info SET msds = NULL WHERE msds = 'nan'")
@@ -1979,7 +2023,12 @@ def init_log_db() -> Database:
     日志库为空时一次性迁移（迁移后主库表保留只读，兼容旧查询入口）。
     """
     from config.settings import DB_LOG_PATH, DB_MAIN_PATH
+    from db import schema_guard
     log_db = Database(DB_LOG_PATH)
+    schema_guard.prepare(log_db.connection)
+    schema_guard.assert_no_running(log_db.connection, "operation_log.db")
+    if schema_guard.version_of(log_db.connection) >= schema_guard.AUX_SCHEMA_VERSION:
+        return log_db
     cursor = log_db.connection.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS operation_log (
@@ -2010,6 +2059,9 @@ def init_log_db() -> Database:
                 )
                 logger.info(f"审计日志历史迁移完成: {len(rows)} 条 → {DB_LOG_PATH}")
     log_db.connection.commit()
+    schema_guard.stamp_if_blank(
+        log_db.connection, "operation_log.db", schema_guard.AUX_SCHEMA_VERSION
+    )
     return log_db
 
 
@@ -2020,7 +2072,12 @@ def init_attach_db() -> Database:
     与业务库解耦，附件下载不依赖主业务库在线。
     """
     from config.settings import DB_ATTACH_PATH
+    from db import schema_guard
     attach_db = Database(DB_ATTACH_PATH)
+    schema_guard.prepare(attach_db.connection)
+    schema_guard.assert_no_running(attach_db.connection, "attach_cold.db")
+    if schema_guard.version_of(attach_db.connection) >= schema_guard.AUX_SCHEMA_VERSION:
+        return attach_db
     attach_db.connection.cursor().execute("""
         CREATE TABLE IF NOT EXISTS attachment_index (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2034,6 +2091,9 @@ def init_attach_db() -> Database:
         )
     """)
     attach_db.connection.commit()
+    schema_guard.stamp_if_blank(
+        attach_db.connection, "attach_cold.db", schema_guard.AUX_SCHEMA_VERSION
+    )
     return attach_db
 
 
@@ -2043,7 +2103,12 @@ def init_archive_db() -> Database:
     记录归档批次元数据；具体的过期数据搬运逻辑见 docs/架构演进规划.md。
     """
     from config.settings import DB_ARCHIVE_PATH
+    from db import schema_guard
     archive_db = Database(DB_ARCHIVE_PATH)
+    schema_guard.prepare(archive_db.connection)
+    schema_guard.assert_no_running(archive_db.connection, "archive_cold.db")
+    if schema_guard.version_of(archive_db.connection) >= schema_guard.AUX_SCHEMA_VERSION:
+        return archive_db
     archive_db.connection.cursor().execute("""
         CREATE TABLE IF NOT EXISTS archive_batch (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2054,6 +2119,9 @@ def init_archive_db() -> Database:
         )
     """)
     archive_db.connection.commit()
+    schema_guard.stamp_if_blank(
+        archive_db.connection, "archive_cold.db", schema_guard.AUX_SCHEMA_VERSION
+    )
     return archive_db
 
 
@@ -2074,3 +2142,27 @@ def init_aux_databases() -> dict:
         "attach": DB_ATTACH_PATH,
         "archive": DB_ARCHIVE_PATH,
     }
+
+
+def init_all_schemas() -> dict:
+    """显式迁移入口：主库建表/迁移 + 三个辅助库初始化。
+
+    只允许部署器（停服、冷备之后）和 dev 自动启动路径调用；
+    prod/beta 的普通启动走 :func:`validate_schemas`，不建表、不迁移。
+    """
+    db.init_tables()
+    return init_aux_databases()
+
+
+def validate_schemas(require_all: bool = True) -> dict:
+    """只读校验四库 schema 版本，返回逐库结果。
+
+    prod/beta 启动时调用：只比对 ``release.json`` 的 schema_versions，
+    不创建目录、不建表、不写 WAL。
+    """
+    from config.settings import SCHEMA_VERSIONS
+    from db import schema_guard
+
+    schema_map = dict(SCHEMA_VERSIONS)
+    schema_guard.assert_complete(schema_map, require_all=require_all)
+    return schema_guard.validate_map(schema_map)

@@ -308,6 +308,106 @@ def truncate_name(name: str, limit: int = NAME_MAX_CHARS) -> str:
     return cut + "…"
 
 
+def normalize_base_url(raw: str) -> str:
+    """把管理员填的「手机访问地址」收敛成 ``scheme://host[:port]``。
+
+    这个值会被直接拼进瓶身二维码，**不能原样相信**：少一个 ``http://``，
+    二维码扫出来就不是链接，手机相机只会显示一串文字；多一个 ``/m`` 或
+    查询串，拼出来就是 ``/m/m?bottle=...``。因此保存前、出码前都走这里。
+
+    规则：
+
+    * 空串返回空串（表示走短码，不是错误）
+    * 没写协议时补 ``http://``——内网地址通常就是 ``192.168.1.10:8601``
+    * 只接受 http / https；不允许用户名密码；不允许路径（``/`` 与 ``/m``
+      除外，``/m?bottle=...`` 这种测试链接也可以直接粘进来）
+    * 端口必须是 1–65535 的整数
+
+    Raises:
+        ValueError: 地址不可用，消息可直接展示给管理员。
+    """
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    if "://" not in text:
+        text = "http://" + text
+    try:
+        parsed = urlparse(text)
+        # .port 在端口非法时会抛 ValueError，必须在这里取一次
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("地址格式不对，请检查主机名和端口") from exc
+
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("只支持 http:// 或 https:// 地址")
+    if not parsed.hostname:
+        raise ValueError("地址里没有主机名或 IP")
+    if parsed.username or parsed.password:
+        raise ValueError("地址里不要带用户名和密码")
+    if any(ch.isspace() for ch in parsed.hostname):
+        raise ValueError("主机名里不能有空格")
+
+    path = (parsed.path or "").rstrip("/")
+    if path not in ("", MOBILE_PATH):
+        raise ValueError("只填到端口即可；路径只接受 /m")
+    # 直接粘贴 /m?bottle=... 的测试链接时，查询串丢掉，只留基地址。
+    if (parsed.query or parsed.fragment) and path != MOBILE_PATH:
+        raise ValueError("地址里不要带 ? 或 # 后面的内容")
+
+    if port is not None and not (1 <= port <= 65535):
+        raise ValueError("端口必须在 1–65535 之间")
+
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"  # IPv6 必须带方括号才能拼回 URL
+    netloc = host if port is None else f"{host}:{port}"
+    return f"{parsed.scheme}://{netloc}"
+
+
+def app_root_of(url: str) -> str:
+    """从浏览器当前页 URL 反推应用根地址，用于「跟随当前访问地址」。
+
+    同一个程序可能通过内网 IP、SSH 隧道（``http://localhost:8501``）或反向
+    代理访问。把其中任何一条写死，另外两条打印出来的码就打不开。这里取
+    **用户此刻正在用的那一条**：去掉查询串，再去掉当前页面的那段路径。
+
+    Streamlit 的页面路径只有一段（不允许 ``a/b``），所以去掉最后一段就是
+    应用根；反向代理加的子路径（``https://host/lims``）会留在前面。
+
+    Args:
+        url: 一般是 ``st.context.url``。取不到时传空串即可。
+
+    Returns:
+        ``scheme://host[:port][/子路径]``；无法解析时返回空串，由调用方回退
+        到固定地址或短码。
+
+    Note:
+        这是浏览器上报的值，只用来拼链接，**不能当权限或安全判断依据**。
+    """
+    text = (url or "").strip()
+    if not text or "://" not in text:
+        return ""
+    try:
+        parsed = urlparse(text)
+        port = parsed.port
+    except ValueError:
+        return ""
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return ""
+    if parsed.username or parsed.password:
+        return ""
+
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = host if port is None else f"{host}:{port}"
+
+    path = (parsed.path or "").rstrip("/")
+    if path:
+        path = path.rsplit("/", 1)[0].rstrip("/")
+    return f"{parsed.scheme}://{netloc}{path}"
+
+
 def payload_of(
     bottle_number: str,
     base_url: str = "",
@@ -331,7 +431,12 @@ def payload_of(
     number = (bottle_number or "").strip()
     if not number:
         return ""
-    base = (base_url or "").strip().rstrip("/")
+    try:
+        base = normalize_base_url(base_url)
+    except ValueError:
+        # 配置页保存时会拦，这里只是防御旧配置/手改库：宁可回退短码，
+        # 也不能把一条打不开的地址印到瓶子上。
+        base = ""
     if base:
         return f"{base}{MOBILE_PATH}?{BOTTLE_PARAM}={quote(number, safe='')}"
 
@@ -729,6 +834,8 @@ __all__ = [
     "human_expiry",
     "tidy_name",
     "truncate_name",
+    "normalize_base_url",
+    "app_root_of",
     "payload_of",
     "parse_fields",
     "parse",

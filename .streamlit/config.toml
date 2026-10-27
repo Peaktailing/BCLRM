@@ -3,7 +3,10 @@ gatherUsageStats = false
 
 [server]
 headless = true
-port = 8501
+# 只监听本机：对外一律走 SSH 端口转发（不开放局域网端口）。
+# 端口与地址由 unit/CLI 显式传入（prod 8501 / beta 8601 / dev 8602），
+# 不在跟踪配置里固定，避免某个环境误继承另一个环境的端口。
+address = "127.0.0.1"
 enableCORS = true
 enableXsrfProtection = true
 

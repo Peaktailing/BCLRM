@@ -25,11 +25,13 @@ from utils.qr_label import (
     SHORT_PREFIX,
     V3_PREFIX,
     _make,
+    app_root_of,
     fit,
     human_expiry,
     label_fit,
     label_layout,
     label_png,
+    normalize_base_url,
     normalize_expiry,
     parse,
     parse_fields,
@@ -46,12 +48,153 @@ EXPIRY = "2027-06-30"
 NAME = "乙醇"
 
 
+class TestNormalizeBaseURL(unittest.TestCase):
+    """手机访问地址的收敛规则。
+
+    这个值会被直接拼进二维码，少一个 http:// 就会让整张标签失效。
+    所以允许人少写协议、多写斜杠，但不允许把路径、账号、查询串带进去。
+    """
+
+    def test_empty_means_short_code(self):
+        self.assertEqual(normalize_base_url(""), "")
+        self.assertEqual(normalize_base_url("   "), "")
+
+    def test_bare_host_gets_http(self):
+        self.assertEqual(
+            normalize_base_url("192.168.1.10:8601"),
+            "http://192.168.1.10:8601",
+        )
+
+    def test_trailing_slash_and_spaces_are_trimmed(self):
+        self.assertEqual(
+            normalize_base_url("  http://192.168.1.10:8601/  "),
+            "http://192.168.1.10:8601",
+        )
+
+    def test_pasted_mobile_link_is_reduced_to_base(self):
+        """管理员直接粘「测试链接」是常见操作，不能把它拼成 /m/m。"""
+        self.assertEqual(
+            normalize_base_url("http://h:8601/m?bottle=202610230001"),
+            "http://h:8601",
+        )
+
+    def test_host_is_lowercased(self):
+        self.assertEqual(
+            normalize_base_url("HTTPS://Lab-PC:8601"),
+            "https://lab-pc:8601",
+        )
+
+    def test_ipv6_keeps_brackets(self):
+        self.assertEqual(
+            normalize_base_url("http://[fe80::1]:8601"),
+            "http://[fe80::1]:8601",
+        )
+
+    def test_rejects_other_scheme(self):
+        with self.assertRaises(ValueError):
+            normalize_base_url("ftp://192.168.1.10:21")
+
+    def test_rejects_path_other_than_mobile(self):
+        with self.assertRaises(ValueError):
+            normalize_base_url("http://192.168.1.10:8601/base")
+
+    def test_rejects_userinfo(self):
+        with self.assertRaises(ValueError):
+            normalize_base_url("http://user:pass@192.168.1.10:8601")
+
+    def test_rejects_bad_port(self):
+        for raw in ("http://h:0", "http://h:70000", "http://h:abc"):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                normalize_base_url(raw)
+
+    def test_rejects_query_without_mobile_path(self):
+        with self.assertRaises(ValueError):
+            normalize_base_url("http://h:8601?x=1")
+
+
+class TestAppRootOf(unittest.TestCase):
+    """「跟随当前访问地址」的推导规则。
+
+    现场可能走内网直连、SSH 端口转发或反向代理。打印标签时，唯一一定
+    能用的地址是「用户此刻正在用的那一条」，所以要从当前页 URL 反推应用根。
+    """
+
+    def test_mobile_page_over_ssh_tunnel(self):
+        self.assertEqual(
+            app_root_of("http://localhost:8501/m?bottle=202610230001"),
+            "http://localhost:8501",
+        )
+
+    def test_regular_page_drops_its_path(self):
+        self.assertEqual(
+            app_root_of("http://localhost:8501/1_实时库存"),
+            "http://localhost:8501",
+        )
+
+    def test_reverse_proxy_subpath_is_preserved(self):
+        """反向代理挂在 /lims 下时，只能去掉页面段，不能吞掉子路径。"""
+        self.assertEqual(
+            app_root_of("https://lab.example/lims/m"),
+            "https://lab.example/lims",
+        )
+
+    def test_trailing_slash_is_ignored(self):
+        self.assertEqual(
+            app_root_of("http://192.168.1.10:8601/"),
+            "http://192.168.1.10:8601",
+        )
+
+    def test_query_and_fragment_are_removed(self):
+        self.assertEqual(
+            app_root_of("http://h:8601/1_实时库存?x=1#top"),
+            "http://h:8601",
+        )
+
+    def test_ipv6_keeps_brackets(self):
+        self.assertEqual(
+            app_root_of("http://[fe80::1]:8601/m"),
+            "http://[fe80::1]:8601",
+        )
+
+    def test_host_is_lowercased(self):
+        self.assertEqual(
+            app_root_of("HTTPS://Lab-PC:8601/m"),
+            "https://lab-pc:8601",
+        )
+
+    def test_unusable_input_returns_empty(self):
+        for raw in (
+            "",
+            "   ",
+            None,
+            "localhost:8501/m",  # 缺协议，不能猜
+            "ftp://h:21/m",
+            "http://user:pass@h:8601/m",
+            "http://h:70000/m",
+            "javascript:alert(1)",
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(app_root_of(raw), "")
+
+
 class TestPayload(unittest.TestCase):
     def test_url_payload_when_base_configured(self):
         payload = payload_of(BOTTLE, "http://192.168.1.10:8601")
         self.assertEqual(
             payload, f"http://192.168.1.10:8601{MOBILE_PATH}?{BOTTLE_PARAM}={BOTTLE}"
         )
+
+    def test_bare_host_still_produces_a_real_url(self):
+        """内网里人只会写 IP:端口，出码时必须补协议，否则相机不认。"""
+        payload = payload_of(BOTTLE, "192.168.1.10:8601")
+        self.assertEqual(
+            payload, f"http://192.168.1.10:8601{MOBILE_PATH}?{BOTTLE_PARAM}={BOTTLE}"
+        )
+
+    def test_invalid_base_falls_back_to_short_code(self):
+        """旧配置/手改库里的坏地址不能印成一条打不开的 URL。"""
+        payload = payload_of(BOTTLE, "ftp://bad")
+        self.assertTrue(payload.startswith(V3_PREFIX))
 
     def test_base_url_trailing_slash_is_trimmed(self):
         """多一个斜杠会出现 //m，某些手机会当成协议相对地址。"""

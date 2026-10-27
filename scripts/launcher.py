@@ -81,18 +81,28 @@ def main():
         print("  reagent-manager")
         return
 
-    # 提取端口号
-    port = "8501"
+    # 提取端口号：prod/beta 必须显式指定（unit 或 CLI），dev 才允许默认 8501
+    port = None
     for i, arg in enumerate(args):
         if arg == "--port" and i + 1 < len(args):
             port = args[i + 1]
             break
+    if not port:
+        port = os.environ.get("BCLRM_PORT", "").strip() or None
 
-    # 启动 Streamlit
-    print(f"正在启动试剂库管理系统（端口 {port}）...")
+    from config.settings import ENV, IS_DEV
+
+    if not port:
+        if not IS_DEV:
+            print(f"✗ BCLRM_ENV={ENV} 必须通过 --port 或 BCLRM_PORT 指定端口")
+            sys.exit(2)
+        port = "8501"
+
+    # 启动 Streamlit：地址固定 127.0.0.1，对外走 SSH 端口转发
+    print(f"正在启动试剂库管理系统（env={ENV}，端口 {port}，仅监听 127.0.0.1）...")
     subprocess.run(
         [sys.executable, "-m", "streamlit", "run", "app.py",
-         "--server.port", port, "--server.address", "0.0.0.0"],
+         "--server.port", port, "--server.address", "127.0.0.1"],
         cwd=project_root
     )
 

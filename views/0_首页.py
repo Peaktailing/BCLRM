@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
-from config.settings import SYSTEM_NAME, VERSION
+from config.settings import SYSTEM_NAME, VERSION, MOBILE_UI
 from business.dashboard_service import dashboard_service
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
@@ -118,6 +118,12 @@ def _load_user_manual() -> str:
 
 
 _manual_md = _load_user_manual()
+if _manual_md and not MOBILE_UI:
+    # 手机取证是预研（执行版 D11）：生产口径连手册里的章节都不展示，
+    # 避免老师看到一个点不进去的入口。
+    from utils.manual_filter import hide_mobile_sections
+
+    _manual_md = hide_mobile_sections(_manual_md)
 if _manual_md:
     st.divider()
     with st.expander("📖 用户使用手册（点击展开 / 收起）", expanded=False):

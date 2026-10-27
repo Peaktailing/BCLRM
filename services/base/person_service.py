@@ -79,7 +79,10 @@ class PersonService(BaseService):
             )
 
         password_hash = hash_password(password)
-        success = self.update_by_field("name", user_name, {"password_hash": password_hash})
+        success = self.update_by_field(
+            "name", user_name,
+            {"password_hash": password_hash, "must_change_password": 0},
+        )
         if success:
             logger.info(f"用户 {user_name} 密码已设置")
             return ServiceResult.ok(data=True, message="密码设置成功")
@@ -133,6 +136,13 @@ class PersonService(BaseService):
                 message="用户名或密码错误",
                 error_code="AUTH_FAILED",
             )
+
+        # beta 首登强改密（执行版 D12）：部署器重置凭据时把
+        # person.must_change_password 置 1，改密后由 set_password 清零；
+        # 默认初始密码同样强制改密，避免"一次性密码被长期沿用"。
+        person.must_change_password = bool(
+            getattr(person, "must_change_password", False)
+        ) or password == DEFAULT_INITIAL_PASSWORD
 
         # 历史 ``salt:hash`` 格式：验证通过后立即升级为 PBKDF2 新格式，
         # 避免旧格式长期留存，也避免被 is_password_hash_set 误判为未设置。

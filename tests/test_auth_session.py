@@ -72,5 +72,48 @@ class TestClearBusinessSessionState(unittest.TestCase):
         self.assertEqual(clear_business_session_state({}), [])
 
 
+class TestForcePasswordChange(unittest.TestCase):
+    """beta 首登强改密（执行版 D12）：仍用默认密码登录就必须先改密。"""
+
+    @staticmethod
+    def _make_user(name: str, password: str):
+        from services.base.person_service import person_service
+        if not person_service.get_by_name(name):
+            person_service.create({"name": name, "role": "user"})
+        result = person_service.set_password(name, password)
+        assert result.is_success(), result.message
+        return person_service
+
+    def test_default_password_login_requires_change(self):
+        from config.settings import DEFAULT_INITIAL_PASSWORD
+        svc = self._make_user("_force_pw_default", DEFAULT_INITIAL_PASSWORD)
+        result = svc.authenticate("_force_pw_default", DEFAULT_INITIAL_PASSWORD)
+        self.assertTrue(result.is_success(), result.message)
+        self.assertTrue(result.data.must_change_password)
+
+    def test_changed_password_login_does_not_require_change(self):
+        from config.settings import DEFAULT_INITIAL_PASSWORD
+        svc = self._make_user("_force_pw_changed", DEFAULT_INITIAL_PASSWORD)
+        self.assertTrue(svc.set_password("_force_pw_changed", "N3w-pass!").is_success())
+        result = svc.authenticate("_force_pw_changed", "N3w-pass!")
+        self.assertTrue(result.is_success(), result.message)
+        self.assertFalse(result.data.must_change_password)
+
+    def test_persisted_flag_from_beta_reset_forces_change(self):
+        """beta_reset 写库的标志位必须生效，改密后自动清零（D12）。"""
+        svc = self._make_user("_force_pw_beta", "BETA-onetime-pw")
+        self.assertTrue(svc.update_by_field(
+            "name", "_force_pw_beta", {"must_change_password": 1}
+        ))
+        result = svc.authenticate("_force_pw_beta", "BETA-onetime-pw")
+        self.assertTrue(result.is_success(), result.message)
+        self.assertTrue(result.data.must_change_password)
+
+        self.assertTrue(svc.set_password("_force_pw_beta", "Ch4nged-pw!").is_success())
+        again = svc.authenticate("_force_pw_beta", "Ch4nged-pw!")
+        self.assertTrue(again.is_success(), again.message)
+        self.assertFalse(again.data.must_change_password)
+
+
 if __name__ == "__main__":
     unittest.main()

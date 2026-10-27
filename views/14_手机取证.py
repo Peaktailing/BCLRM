@@ -8,10 +8,12 @@
 
 1. **系统相机 / 微信扫一扫**（推荐）：瓶身二维码里是一个 URL
    （``http://内网地址:8601/m?bottle=B-001``），扫完直接进本页并带上瓶号。
-   这条路依赖「系统设置 → 手机访问地址」，配了才好用。
-2. **页内扫码**：没配地址时，码里是短码 ``BCLRM:B:B-001``，得用本页的
-   摄像头扫。这条路受浏览器限制（``BarcodeDetector`` 只在安卓 Chrome 系
-   可用），所以本页始终保留手输框——扫码是加速，不是唯一入口。
+   印在瓶子上的地址来自「系统设置 → 手机访问地址」，或打印标签时选
+   「跟随当前访问地址」。
+2. **页内扫码**：码里是短码 ``BCLRM:B:B-001``，用本页摄像头扫。跳转目标
+   永远是**当前这次访问的入口**（直连、SSH 隧道、反向代理都跟走），不看
+   系统设置。受浏览器限制（``BarcodeDetector`` 只在安卓 Chrome 系可用），
+   所以本页始终保留手输框——扫码是加速，不是唯一入口。
 
 ## 为什么页内扫码不用 CDN 上的 jsQR
 
@@ -39,13 +41,33 @@ from business.evidence_service import (
 )
 from components.auth import require_auth, get_current_user
 from components.sidebar_nav import render_sidebar
+from config.settings import MOBILE_UI
 from services.base.system_config_service import EvidenceConfig, system_config_service
 from services.core.borrow_order_service import borrow_order_item_service
 from services.core.reagent_bottle_service import reagent_bottle_service
 from utils.photo_utils import human_size
-from utils.qr_label import human_expiry, parse_fields
+from utils.qr_label import (
+    app_root_of,
+    human_expiry,
+    normalize_base_url,
+    parse_fields,
+)
 
-st.set_page_config(page_title="手机取证", page_icon="📷", layout="centered")
+st.set_page_config(
+    page_title="手机取证",
+    page_icon="📷",
+    layout="centered",
+    # 现场是单手操作，侧栏默认收起；要看导航点左上角展开即可。
+    initial_sidebar_state="collapsed",
+)
+
+# 直接执行本页（streamlit run views/14_手机取证.py）时的守卫：
+# 环境关闭手机入口时，不渲染任何业务界面，只给固定提示（执行版 D11）。
+if not MOBILE_UI:
+    st.markdown("## 当前环境未开启手机取证")
+    st.caption("手机取证仍是预研功能，未纳入本环境的发布范围。")
+    st.caption("请在电脑端「领用归还」页上传交接照片；如有疑问请联系管理员。")
+    st.stop()
 
 if not require_auth():
     st.stop()
@@ -55,6 +77,27 @@ current_user = get_current_user() or ""
 
 #: 「还在办」的工单状态。已归还 / 已驳回 / 已撤回 不再需要补拍。
 _OPEN_ORDER_STATUSES = ("待审批", "借用中", "部分归还")
+
+
+def _flash(level: str, message: str) -> None:
+    """把提示留到下一次 rerun 显示。
+
+    上传成功后必须 rerun 才能刷新照片墙，而 rerun 会把当前帧的 st.success
+    冲掉——现场看到的结果会是「点了上传，什么都没发生」。所以先存进会话，
+    下一页渲染时再显示。
+    """
+    st.session_state["_m_flash"] = (level, message)
+
+
+_m_flash = st.session_state.pop("_m_flash", None)
+if _m_flash:
+    _level, _text = _m_flash
+    if _level == "warning":
+        st.warning(_text)
+    elif _level == "error":
+        st.error(_text)
+    else:
+        st.success(_text)
 
 
 def _render_html(markup: str) -> None:
@@ -146,10 +189,12 @@ def _render_photos(order_number: str, phase: str, expanded: bool = False) -> Non
     with st.expander(
         f"{PHASE_LABELS[phase]}照片（{len(photos)} 张）", expanded=expanded
     ):
-        cols = st.columns(3)
+        # 手机上两列已经是极限：三列时每张缩略图只有一百来像素，
+        # 标签上的批号根本看不清，照片墙就失去意义了。
+        cols = st.columns(2)
         for index, photo in enumerate(photos):
-            with cols[index % 3]:
-                # 照片墙读缩略图：一屏六张，原图要传 1.8 MB，缩略图 200 KB。
+            with cols[index % 2]:
+                # 照片墙读缩略图：一屏四张，原图要传 1.8 MB，缩略图 200 KB。
                 # 手机流量和渲染时间都省在这里，不是省在压原图上。
                 content = evidence_service.read_thumb(photo["stored_name"])
                 if content:
@@ -198,25 +243,53 @@ def _render_upload(order_number: str, phase: str, default_expanded: bool, key_su
             type=["jpg", "jpeg", "png", "webp"],
             key=f"m_up_{phase}_{order_number}_{key_suffix}",
         )
-        if st.button("上传", key=f"m_btn_{phase}_{order_number}_{key_suffix}"):
+        st.caption(
+            "只收 JPG / PNG / WebP。iPhone 请直接用相机拍，"
+            "或先在相册里转成 JPG；HEIC 原图服务端打不开。"
+        )
+        if st.button(
+            "上传",
+            key=f"m_btn_{phase}_{order_number}_{key_suffix}",
+            use_container_width=True,
+        ):
             if not files:
                 st.warning("还没选照片")
             else:
-                result = evidence_service.attach(
-                    order_number, phase, files, current_user, note="手机取证"
-                )
+                with st.spinner("正在保存照片…"):
+                    result = evidence_service.attach(
+                        order_number, phase, files, current_user, note="手机取证"
+                    )
                 if result.success:
-                    st.success(result.message)
+                    failed = (getattr(result, "data", None) or {}).get("failed") or []
+                    if failed:
+                        _flash(
+                            "warning",
+                            result.message + "；未保存：" + "；".join(failed),
+                        )
+                    else:
+                        _flash("success", result.message)
                     st.rerun()
                 else:
-                    st.error(result.message)
+                    failed = (getattr(result, "data", None) or {}).get("failed") or []
+                    st.error(
+                        result.message
+                        + ("；" + "；".join(failed) if failed else "")
+                    )
 
 
 # ---------------------------------------------------------------- 页面
 st.markdown("## 📷 手机取证")
 st.caption("扫瓶身二维码，或输入瓶号。照片会挂在这一瓶当前的那张单上。")
 
-base_url = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
+base_url = ""
+_mobile_base_raw = system_config_service.get(EvidenceConfig.MOBILE_BASE_URL, "")
+try:
+    base_url = normalize_base_url(_mobile_base_raw)
+except ValueError as _exc:
+    st.warning(
+        f"「手机访问地址」配置无效：{_exc}。"
+        "页内扫码仍可用，但瓶身码不会指向本系统；请让超管到系统设置修正。"
+    )
 
 # 扫码进来时带 ?bottle=xxx，预填到输入框。
 #
@@ -234,13 +307,21 @@ if _scanned_raw and _scanned_raw != st.session_state.get("_m_qs_mark", ""):
 
 bottle_number = ""
 
+# 扫码器跳回「当前这次访问」的入口，而不是系统设置里那个固定地址。
+#
+# 现场可能是内网直连，也可能是 SSH 端口转发（http://localhost:8501）。
+# 既然这一页已经打开了，说明手里这台设备能走通当前这条路；跳回配置里的
+# 另一个地址反而可能打不开。固定地址只用于「印在瓶子上、给别的设备扫」。
+_current_base = app_root_of(getattr(st.context, "url", "") or "")
+_scanner_base = _current_base or base_url
+
 with st.expander("📷 扫一张", expanded=not st.session_state.get("m_bottle_input")):
-    prefix = (base_url.rstrip("/") + "/m?bottle=") if base_url else "/m?bottle="
+    prefix = (_scanner_base.rstrip("/") + "/m?bottle=") if _scanner_base else "/m?bottle="
     _render_html(_scanner_html(prefix))
-    if not base_url:
+    if not _scanner_base:
         st.caption(
-            "提示：在「系统设置 → 现场取证」里填上手机访问地址后，"
-            "瓶身二维码会变成一条 URL，用手机相机直接扫就能进这一页。"
+            "页内扫码只认得出瓶号，跳转回当前访问地址；"
+            "系统设置里的「手机访问地址」只影响印在瓶身上的二维码。"
         )
 
 manual = st.text_input(
@@ -299,10 +380,11 @@ else:
     st.markdown("### 在办工单")
     for row in open_rows:
         order_number = row.get("order_number") or ""
+        order_status = row.get("order_status") or ""
         with st.container(border=True):
             st.markdown(
                 f"**{order_number}**　{row.get('order_type') or ''}"
-                f"　{row.get('order_status') or ''}"
+                f"　{order_status}"
             )
             st.caption(
                 f"领用人 {row.get('applicant') or '—'}　"
@@ -313,9 +395,14 @@ else:
             # 只有一个阶段有意义：还在审批这一环就是借出，已经借出就是归还
             phase = (
                 PHASE_RETURN
-                if (row.get("order_status") or "") in ("借用中", "部分归还")
+                if order_status in ("借用中", "部分归还")
                 else PHASE_BORROW
             )
+            if phase == PHASE_BORROW and order_status == "待审批":
+                st.caption(
+                    "这张单还没批准。现在拍的照片会作为借出取证的补充；"
+                    "正式发料仍要在电脑端完成审批。"
+                )
             _render_photos(order_number, phase, expanded=True)
             _render_upload(
                 order_number,
@@ -326,27 +413,24 @@ else:
 
 if rows and not open_rows:
     with st.expander("这瓶借过哪些单", expanded=False):
-        st.dataframe(
-            [
-                {
-                    "工单": row.get("order_number"),
-                    "类型": row.get("order_type"),
-                    "状态": row.get("order_status"),
-                    "领用人": row.get("applicant"),
-                    "领用": row.get("borrow_qty"),
-                    "已还": row.get("returned_qty"),
-                    "借款照片": evidence_service.count(
-                        row.get("order_number") or "", PHASE_BORROW
-                    ),
-                    "归还照片": evidence_service.count(
-                        row.get("order_number") or "", PHASE_RETURN
-                    ),
-                }
-                for row in rows
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
+        # 手机上没有横向拖表格的习惯，一单一张卡比 8 列表格好读。
+        for row in rows:
+            _order_number = row.get("order_number") or ""
+            with st.container(border=True):
+                st.markdown(
+                    f"**{_order_number}**　{row.get('order_type') or ''}"
+                    f"　{row.get('order_status') or ''}"
+                )
+                st.caption(
+                    f"领用人 {row.get('applicant') or '—'}　"
+                    f"领用 {row.get('borrow_qty')} {row.get('unit') or ''}　"
+                    f"已还 {row.get('returned_qty') or 0}"
+                    + (f"　{row.get('course_name')}" if row.get("course_name") else "")
+                )
+                st.caption(
+                    f"借出照片 {evidence_service.count(_order_number, PHASE_BORROW)} 张"
+                    f"　归还照片 {evidence_service.count(_order_number, PHASE_RETURN)} 张"
+                )
 
 st.divider()
 with st.expander("按工单号直接补拍（手上没有瓶子时）", expanded=False):
@@ -370,3 +454,7 @@ with st.expander("按工单号直接补拍（手上没有瓶子时）", expanded
         _render_upload(
             target_order.strip(), target_phase, default_expanded=True, key_suffix="manual"
         )
+
+st.divider()
+st.caption("手机端只做现场取证；审批、改单、查账请回电脑端。")
+st.page_link("views/0_首页.py", label="回首页", icon="🏠")

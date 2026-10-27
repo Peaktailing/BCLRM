@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
+from config.settings import MOBILE_UI
 from business.borrow_service import borrow_service
 from business.work_order_service import work_order_service
 from business.experiment_plan_service import experiment_plan_business
@@ -39,6 +40,14 @@ from business.evidence_service import (
 from components.sidebar_nav import render_sidebar
 from components.auth import require_auth
 from utils.error_handler import logger
+
+#: 照片没存上时的补拍提示。手机关闭时不能把人指向一个不存在的入口，
+#: 改为在本页重新上传（电脑端本来就有上传控件）。
+_PHOTO_RETRY_HINT = (
+    "请到「手机取证」页按工单号补拍。"
+    if MOBILE_UI
+    else "请在本页重新上传照片，或联系管理员。"
+)
 
 st.set_page_config(page_title="领用归还", layout="wide")
 
@@ -708,7 +717,7 @@ with tab_approval:
                                     st.success(f"✅ {_r.message}")
                                     st.warning(
                                         f"照片未保存：{_ev.message}。"
-                                        "请到「手机取证」页按工单号补拍。"
+                                        f"{_PHOTO_RETRY_HINT}"
                                     )
                                     st.stop()
                             st.success(f"✅ {_r.message}")
@@ -988,7 +997,7 @@ with tab_return:
                                         st.success(f"✅ {result.message}")
                                         st.warning(
                                             f"照片未保存：{_ev.message}。"
-                                            "请到「手机取证」页按工单号补拍。"
+                                            f"{_PHOTO_RETRY_HINT}"
                                         )
                                         st.stop()
                                 st.success(f"✅ {result.message}")
