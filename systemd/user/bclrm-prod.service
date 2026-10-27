@@ -12,6 +12,8 @@ Environment=BCLRM_ENV=prod
 Environment=BCLRM_DATA_DIR=/home/biochm/BCLRM/data/prod
 Environment=BCLRM_RELEASE_FILE=/home/biochm/BCLRM/current_prod/release.json
 Environment=BCLRM_MOBILE_UI=0
+# 制品不可变：禁止把 __pycache__ 写进 payload，否则 artifact 哈希失效
+Environment=PYTHONDONTWRITEBYTECODE=1
 # 启动前只读校验 schema（D14：不自动迁移；迁移由部署器显式执行）
 ExecStartPre=/home/biochm/BCLRM/current_prod/.venv/bin/python scripts/runtime_cli.py check
 # 端口与监听地址只由 unit 指定（D10）；release 内 .venv 绝对路径

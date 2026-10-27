@@ -5,6 +5,8 @@ After=network.target
 # 启用前必须先 systemctl --user stop bclrm-prod.service。
 
 [Service]
+# 制品不可变：禁止把 __pycache__ 写进 payload
+Environment=PYTHONDONTWRITEBYTECODE=1
 Type=simple
 WorkingDirectory=/home/biochm/BCLRM/legacy/prod-aaf65c74555a5a201132aa1efa903251f5275052
 ExecStart=/home/biochm/BCLRM/legacy/prod-aaf65c74555a5a201132aa1efa903251f5275052/.venv/bin/python -m streamlit run app.py --server.port 8501 --server.address 127.0.0.1 --server.headless true

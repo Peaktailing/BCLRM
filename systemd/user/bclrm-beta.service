@@ -10,6 +10,8 @@ Environment=BCLRM_ENV=beta
 Environment=BCLRM_DATA_DIR=/home/biochm/BCLRM/data/beta
 Environment=BCLRM_RELEASE_FILE=/home/biochm/BCLRM/current_beta/release.json
 Environment=BCLRM_MOBILE_UI=0
+# 制品不可变：禁止把 __pycache__ 写进 payload，否则 artifact 哈希失效
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStartPre=/home/biochm/BCLRM/current_beta/.venv/bin/python scripts/runtime_cli.py check
 ExecStart=/home/biochm/BCLRM/current_beta/.venv/bin/python -m streamlit run app.py --server.port 8601 --server.address 127.0.0.1 --server.headless true
 Restart=always
