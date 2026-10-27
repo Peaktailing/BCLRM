@@ -1,0 +1,20 @@
+[Unit]
+Description=BCLRM 开发环境（Streamlit，仅监听 127.0.0.1:8602）
+After=network.target
+# 开发线直接跑工作区代码，数据根独立；不参与 prod/beta 的发布与回滚
+
+[Service]
+Type=simple
+WorkingDirectory=/home/biochm/WorkBuddy/2026-10-21-14-45-03/repos/BCLRM
+EnvironmentFile=-/home/biochm/BCLRM/env/dev.env
+Environment=BCLRM_ENV=dev
+Environment=BCLRM_DATA_DIR=/home/biochm/BCLRM/data/dev
+Environment=BCLRM_MOBILE_UI=1
+ExecStart=/usr/bin/python3 -m streamlit run app.py --server.port 8602 --server.address 127.0.0.1 --server.headless true
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target

@@ -176,13 +176,24 @@ def tree_state(root: Path) -> Dict[str, tuple]:
 #: 真实部署根。测试只允许读它，绝不允许任何工具把默认 root 当成测试目录。
 REAL_DEPLOY_ROOT = Path("/home/biochm/BCLRM")
 
+#: 只盯发布工具会写的结构。线上服务正常运行时 data/、logs/、backups/ 一直在变，
+#: 把它们算进来会让门禁与生产运行互斥；真正要防的是“测试把 release、部署记录、
+#: 验收文件写到默认根”。
+_GUARDED_ENTRIES = {
+    "releases", "deployments", "acceptance", "config-backups",
+    "releases-index.json", "release_train.json",
+}
+
 
 def _real_root_state() -> Optional[Dict[str, tuple]]:
-    """记录真实部署根；不存在时返回 None，测试结束后必须仍然不存在。"""
+    """记录真实部署根中发布结构的快照；根不存在时返回 None。"""
     if not REAL_DEPLOY_ROOT.exists():
         return None
     state = {}
     for path in REAL_DEPLOY_ROOT.rglob("*"):
+        rel = path.relative_to(REAL_DEPLOY_ROOT)
+        if rel.parts[0] not in _GUARDED_ENTRIES:
+            continue
         stat = path.lstat()
         state[str(path)] = (stat.st_mode, stat.st_mtime_ns, stat.st_size)
     return state
