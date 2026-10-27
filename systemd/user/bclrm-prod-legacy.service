@@ -1,0 +1,16 @@
+[Unit]
+Description=BCLRM 生产 legacy 回滚副本（仅监听 127.0.0.1:8501，默认禁用）
+After=network.target
+# 只在首次上线的专用回滚路径启动；与 bclrm-prod.service 互斥（同一端口）。
+# 启用前必须先 systemctl --user stop bclrm-prod.service。
+
+[Service]
+Type=simple
+WorkingDirectory=/home/biochm/BCLRM/legacy/prod-aaf65c74555a5a201132aa1efa903251f5275052
+ExecStart=/home/biochm/BCLRM/legacy/prod-aaf65c74555a5a201132aa1efa903251f5275052/.venv/bin/python -m streamlit run app.py --server.port 8501 --server.address 127.0.0.1 --server.headless true
+Restart=no
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target
