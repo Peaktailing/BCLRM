@@ -437,6 +437,7 @@ def create_backup(
         raise BackupError(f"未知备份模式：{mode}")
     if mode == "cold" and not service_stopped:
         raise BackupError("冷备要求调用方确认服务已停（--service-stopped）")
+    layout.ensure_backup_volume(root)
 
     data_root = layout.data_dir(root, env)
     db_dir = data_root / "db"
@@ -908,6 +909,7 @@ def clone_snapshot(
     root = Path(root)
     if kind not in BACKUP_KINDS:
         raise BackupError(f"未知备份类型：{kind}")
+    layout.ensure_backup_volume(root)
     report = verify_snapshot(source_snapshot)
     if not report["ok"]:
         raise BackupVerificationError("源快照校验失败，拒绝复制")

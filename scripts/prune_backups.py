@@ -56,6 +56,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     release_decisions: List[Dict[str, Any]] = []
     try:
         if args.env:
+            if not args.releases:
+                layout.ensure_backup_volume(root)
             snapshot_decisions = backup_mod.plan_prune(root, args.env, now=now)
         if args.releases:
             if not layout.releases_dir(root).is_dir():

@@ -1,0 +1,17 @@
+[Unit]
+Description=BCLRM 每日维护：停机冷备、校验轮换、代码备份、重启
+Documentation=file:/home/biochm/BCLRM/docs/部署说明.md
+After=network.target data-bclrm-vault.mount
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=BCLRM_CODE_REPO=/home/biochm/WorkBuddy/2026-10-21-14-45-03/repos/BCLRM
+ExecStart=/usr/bin/python3 /home/biochm/BCLRM/ops/daily_maintenance.py --root /home/biochm/BCLRM --execute --json
+# 兜底：脚本被信号杀死或异常退出时，只要 prod 未运行就拉回
+ExecStopPost=/bin/sh -c '/usr/bin/systemctl --user is-active --quiet bclrm-prod.service || /usr/bin/systemctl --user start bclrm-prod.service'
+TimeoutStartSec=3600
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

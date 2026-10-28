@@ -29,6 +29,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 #: 真实部署根；测试/演练一律用 --root 覆盖，绝不能把默认值当测试目录
 DEFAULT_ROOT = Path("/home/biochm/BCLRM")
+#: 主备份加密卷（LUKS2 文件容器）挂载点；未挂载时禁止写备份
+BACKUP_VOLUME = Path("/data/bclrm/vault")
 #: 工具链版本写进备份 manifest，便于日后判断“哪版工具做的快照”
 TOOL_NAME = "bclrm-release-tools"
 TOOL_VERSION = "1.0.0"
@@ -79,6 +81,25 @@ def data_dir(root: Path, env: str) -> Path:
 
 def backups_dir(root: Path, env: str) -> Path:
     return Path(root) / "backups" / env
+
+
+def ensure_backup_volume(root: Path) -> None:
+    """默认部署根的主备份必须落在已挂载的加密卷上。
+
+    卷未挂载时，``/data/bclrm/vault`` 只是 /data 上的普通目录，继续写入
+    会静默生成明文备份。测试/演练使用临时 ``--root`` 时不做此检查。
+    """
+    if Path(root).resolve() != DEFAULT_ROOT.resolve():
+        return
+    if not BACKUP_VOLUME.is_dir() or not os.path.ismount(BACKUP_VOLUME):
+        raise LayoutError(
+            f"加密备份卷未挂载：{BACKUP_VOLUME}；拒绝把主备份写成 /data 明文"
+        )
+    target = (Path(root) / "backups").resolve()
+    if BACKUP_VOLUME not in target.parents:
+        raise LayoutError(
+            f"backups 未指向加密卷：{target}（应位于 {BACKUP_VOLUME} 下）"
+        )
 
 
 def acceptance_file(root: Path, version: str) -> Path:

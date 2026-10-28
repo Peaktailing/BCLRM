@@ -1,0 +1,13 @@
+[Unit]
+Description=BCLRM 加密备份卷挂载（/data/bclrm/vault）
+Requires=bclrm-vault.service
+After=bclrm-vault.service
+
+[Mount]
+What=/dev/mapper/bclrm-vault
+Where=/data/bclrm/vault
+Type=ext4
+Options=defaults
+
+[Install]
+WantedBy=multi-user.target

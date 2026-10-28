@@ -1,0 +1,11 @@
+[Unit]
+Description=BCLRM 每日维护 timer：05:00 停机冷备 + 轮换 + 代码备份 + 重启
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+AccuracySec=1s
+Persistent=true
+Unit=bclrm-maintenance.service
+
+[Install]
+WantedBy=timers.target

@@ -72,6 +72,12 @@ def test_systemd_units_are_loopback_and_user_level():
         assert "/home/biochm/BCLRM/current_" in text
         assert ".venv/bin/python" in text
         assert "0.0.0.0" not in text
-    assert (unit_dir / "bclrm-backup-daily.timer").is_file()
-    assert (unit_dir / "bclrm-backup-semimonthly.timer").is_file()
+    assert (unit_dir / "bclrm-maintenance.timer").is_file()
+    maintenance = (unit_dir / "bclrm-maintenance.service").read_text(encoding="utf-8")
+    assert "OnCalendar=*-*-* 05:00:00" in (
+        unit_dir / "bclrm-maintenance.timer"
+    ).read_text(encoding="utf-8")
+    assert "daily_maintenance.py" in maintenance
+    assert "ExecStopPost=" in maintenance
+    assert "backup.py" not in maintenance  # 编排由脚本负责，unit 不直接清表/备份
     assert (unit_dir / "bclrm-backup-annual.timer").is_file()

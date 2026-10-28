@@ -137,6 +137,10 @@ class SshRemote:
         "-o", "StrictHostKeyChecking=accept-new",
         "-o", "ServerAliveInterval=30",
         "-o", "ServerAliveCountMax=4",
+        # 一次同步会执行多条远端命令；复用连接避免每条都重付握手时间
+        "-o", "ControlMaster=auto",
+        "-o", "ControlPersist=120",
+        "-o", f"ControlPath={Path.home() / '.ssh' / 'bclrm-%C'}",
     )
     DEFAULT_KEY = Path.home() / ".ssh" / "id_ed25519_13"
 
