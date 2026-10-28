@@ -5,4 +5,5 @@ After=network.target
 [Service]
 Type=oneshot
 EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
-ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/backup.py --root /home/biochm/BCLRM --env prod --kind semimonthly --copy-latest-from daily --source timer --second-copy-root /media/biochm/3696A6CB96A68B47/bclrm-backup
+ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/backup.py --root /home/biochm/BCLRM --env prod --kind semimonthly --copy-latest-from daily --source timer
+ExecStartPost=/usr/bin/python3 /home/biochm/BCLRM/ops/offsite_sync.py --root /home/biochm/BCLRM --ssh-key /home/biochm/.ssh/id_ed25519_13 --env prod --json

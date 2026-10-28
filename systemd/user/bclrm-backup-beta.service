@@ -6,3 +6,4 @@ After=network.target
 Type=oneshot
 EnvironmentFile=-/home/biochm/BCLRM/env/beta.env
 ExecStart=/home/biochm/BCLRM/current_beta/.venv/bin/python /home/biochm/BCLRM/current_beta/payload/scripts/backup.py --root /home/biochm/BCLRM --env beta --kind daily --mode hot --source timer
+ExecStartPost=/usr/bin/python3 /home/biochm/BCLRM/ops/offsite_sync.py --root /home/biochm/BCLRM --ssh-key /home/biochm/.ssh/id_ed25519_13 --env beta --json
