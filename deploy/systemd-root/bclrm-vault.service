@@ -1,16 +1,15 @@
 [Unit]
-Description=BCLRM 加密备份卷解锁（LUKS2 文件容器）
-Documentation=file:/home/biochm/BCLRM/docs/部署说明.md
+Description=BCLRM 加密备份卷（LUKS2 文件容器解锁并挂载）
+DefaultDependencies=no
 After=local-fs.target
-RequiresMountsFor=/data/bclrm
-Before=data-bclrm-vault.mount
 ConditionPathExists=/data/bclrm/vault.img
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/sbin/cryptsetup open --key-file /etc/bclrm-vault.key --type luks2 /data/bclrm/vault.img bclrm-vault
-ExecStop=/usr/sbin/cryptsetup close bclrm-vault
+# 解锁与挂载放在同一服务里，避免额外 mount unit 与 local-fs.target 形成环
+ExecStart=/bin/sh -c '/usr/sbin/cryptsetup open --key-file /etc/bclrm-vault.key --type luks2 /data/bclrm/vault.img bclrm-vault && /bin/mount /dev/mapper/bclrm-vault /data/bclrm/vault'
+ExecStop=/bin/sh -c '/bin/umount /data/bclrm/vault; /usr/sbin/cryptsetup close bclrm-vault'
 TimeoutStartSec=120
 TimeoutStopSec=60
 

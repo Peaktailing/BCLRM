@@ -129,7 +129,7 @@ class Maintenance:
         if self.root.resolve() == DEFAULT_ROOT.resolve():
             if not VAULT.is_mount():
                 raise PreflightError(
-                    f"加密备份卷未挂载：{VAULT}（先 systemctl start data-bclrm-vault.mount）"
+                    f"加密备份卷未挂载：{VAULT}（先 sudo systemctl start bclrm-vault.service）"
                 )
             if VAULT not in backups.parents:
                 raise PreflightError(f"backups 未指向加密卷：{backups}")

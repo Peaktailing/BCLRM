@@ -1,7 +1,6 @@
 [Unit]
 Description=BCLRM 每日维护：停机冷备、校验轮换、代码备份、重启
-Documentation=file:/home/biochm/BCLRM/docs/部署说明.md
-After=network.target data-bclrm-vault.mount
+After=network.target
 
 [Service]
 Type=oneshot
