@@ -210,8 +210,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--env", default="prod", choices=("prod", "beta"),
                         help="未给 --snapshot 时取该环境最近验证快照")
     parser.add_argument("--kind", choices=backup_mod.BACKUP_KINDS)
-    parser.add_argument("--release", type=Path, help="目标 release 目录")
-    parser.add_argument("--version", help="目标版本（与 --release 二选一）")
+    parser.add_argument("--release", type=Path,
+                        help="目标 release 目录；与 --version 互斥，"
+                             "两者都不给时用该环境当前指针")
+    parser.add_argument("--version", help="目标版本（与 --release 互斥）")
     parser.add_argument("--python", help="解释器覆盖（默认 release/.venv/bin/python）")
     parser.add_argument("--port-start", type=int, default=8700)
     parser.add_argument("--health-timeout", type=float, default=90.0)
@@ -222,10 +224,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
-    if bool(args.release) == bool(args.version):
-        parser.error("--release 与 --version 必须二选一")
+    if args.release and args.version:
+        parser.error("--release 与 --version 只能二选一")
     root = Path(args.root)
-    release = args.release or layout.release_dir(root, args.version)
+    if args.release or args.version:
+        release = args.release or layout.release_dir(root, args.version)
+    else:
+        # 定时演练不写死版本：默认演练该环境当前指针指向的 release，
+        # 这样每次发版后无需改 timer 单元。
+        release = layout.read_pointer(root, args.env)
+        if release is None:
+            parser.error(
+                f"{args.env} 尚未部署（缺少 current_{args.env} 指针），"
+                "请显式给 --release 或 --version"
+            )
     try:
         snapshot = resolve_snapshot(args)
         if args.port_start in (8501, 8601):

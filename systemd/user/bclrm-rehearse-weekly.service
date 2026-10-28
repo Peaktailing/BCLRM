@@ -5,5 +5,5 @@ After=network.target
 [Service]
 Type=oneshot
 EnvironmentFile=-/home/biochm/BCLRM/env/prod.env
-ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/rehearse_upgrade.py --root /home/biochm/BCLRM --env prod --port-start 8700
+ExecStart=/home/biochm/BCLRM/current_prod/.venv/bin/python /home/biochm/BCLRM/current_prod/payload/scripts/rehearse_upgrade.py --root /home/biochm/BCLRM --env prod --release /home/biochm/BCLRM/current_prod --port-start 8700
 TimeoutStartSec=1800

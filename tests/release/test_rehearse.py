@@ -77,3 +77,26 @@ def test_rehearsal_with_real_server_on_spare_port(prod_root, snapshot):
         "--health-timeout", "120",
     ])
     assert code == 0
+
+
+def test_rehearsal_defaults_to_current_env_pointer(prod_root, snapshot):
+    """定时任务不写版本：默认演练 current_prod 指向的 release。"""
+    release = make_release(prod_root, "0.8.19.2")
+    layout.switch_pointer(prod_root, "prod", "0.8.19.2")
+    report_path = prod_root / "logs" / "rehearsals" / "pointer.json"
+    code = rehearse_upgrade.main([
+        "--root", str(prod_root), "--snapshot", str(snapshot),
+        "--no-server", "--report", str(report_path), "--json",
+    ])
+    assert code == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["version"] == "0.8.19.2"
+    assert Path(report["release"]) == release.resolve()
+
+
+def test_rehearsal_without_pointer_or_release_fails(prod_root, snapshot):
+    with pytest.raises(SystemExit) as exc:
+        rehearse_upgrade.main([
+            "--root", str(prod_root), "--snapshot", str(snapshot), "--no-server",
+        ])
+    assert exc.value.code == 2

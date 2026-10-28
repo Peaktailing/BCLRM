@@ -80,4 +80,12 @@ def test_systemd_units_are_loopback_and_user_level():
     assert "daily_maintenance.py" in maintenance
     assert "ExecStopPost=" in maintenance
     assert "backup.py" not in maintenance  # 编排由脚本负责，unit 不直接清表/备份
-    assert (unit_dir / "bclrm-backup-annual.timer").is_file()
+    # 年度冷存已退役（负责人 2026-10-28 决定），不再保留 annual 定时任务
+    assert not (unit_dir / "bclrm-backup-annual.timer").exists()
+    assert not (unit_dir / "bclrm-backup-annual.service").exists()
+    rehearsal = (unit_dir / "bclrm-rehearse-weekly.service").read_text(
+        encoding="utf-8"
+    )
+    # 定时演练跟随指针，不写死版本
+    assert "--release /home/biochm/BCLRM/current_prod" in rehearsal
+    assert "--port-start 8700" in rehearsal

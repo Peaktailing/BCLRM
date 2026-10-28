@@ -1077,6 +1077,8 @@ def plan_prune(root: Path, env: str, *,
             decide(snapshot, "keep", protected[snapshot["name"]])
             continue
         if kind == "annual":
+            # annual 生成器已于 2026-10-28 退役；这里保留兼容，
+            # 万一存在历史年度快照也永不自动删除。
             decide(snapshot, "keep", "年度冷存：合规期限确认前禁止自动删除（D22）")
             continue
 
